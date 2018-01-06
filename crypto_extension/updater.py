@@ -9,8 +9,6 @@ from pprint import pprint
 from datetime import datetime
 from time import sleep
 
-
-
 EXT_PATH = "%s/Library/Application Support/com.dmitrynikolaev.numi/extensions" % os.path.expanduser("~")
 COINCAP_BASE_URL = "https://api.coinmarketcap.com/v1"
 #WCI_API_KEY = "B8BDV74aQIoF5rQYgZNdQ8VBfdgPN0";
@@ -60,15 +58,16 @@ def get_data():
 
     # Write data to extension
     try:
-        file = open("%s/Default.js" % EXT_PATH,"w")
+        file = open("%s/data.js" % EXT_PATH,"w")
         file.write(buf)
         file.close()
     except Exception as e:
         print_data(markets)
         pass
     else:
-        now = datetime.now()
-        print("%s: %s" % (now.ctime(), buf))
+        print_data(markets)
+        #now = datetime.now()
+        #print("%s: %s" % (now.ctime(), buf))
 
 #----------------------------------------------------------------------
 def humanize(money):
