@@ -9,9 +9,15 @@ from pprint import pprint
 from datetime import datetime
 from time import sleep
 
-#WCI_API_KEY = "B8BDV74aQIoF5rQYgZNdQ8VBfdgPN0";
-#WCI_MARKETS_URL = "https://www.worldcoinindex.com/apiservice/getmarkets";
-#wci_uri = WCI_MARKETS_URL + "?key=" + WCI_API_KEY + "&fiat=cad";
+WCI_API_KEY = "B8BDV74aQIoF5rQYgZNdQ8VBfdgPN0";
+WCI_MARKETS_URL = "https://www.worldcoinindex.com/apiservice/getmarkets";
+wci_uri = WCI_MARKETS_URL + "?key=" + WCI_API_KEY + "&fiat=cad";
+
+def get_wci_markets():
+
+    r = requests.get(wci_uri)
+    r = json.loads(r.text)
+    pprint(r)
 
 class bcolors:
     HEADER = '\033[95m'
@@ -43,6 +49,7 @@ coins = [
     {"name":"omisego", "symbol": "OMG", "js_name":"OMG_CAD"},
     {"name":"burst", "symbol": "BURST", "js_name":"BURST_CAD"},
     {"name":"deepbrain-chain", "symbol": "DBC", "js_name":"DBC_CAD"},
+    {"name":"walton", "symbol": "WTC", "js_name":"WTC_CAD"},
     {"name":"neo", "symbol": "NEO", "js_name":"NEO_CAD"},
     {"name":"request-network", "symbol": "REQ", "js_name":"REQ_CAD"},
     {"name":"tron", "symbol":"TRX", "js_name":"TRX_CAD"},
@@ -53,12 +60,13 @@ coins = [
     {"name":"eos", "symbol":"EOS", "js_name":"EOS_CAD"},
     {"name":"bitcoin-cash", "symbol":"BCH", "js_name":"BCH_CAD"},
     {"name":"binance-coin", "symbol":"BNB", "js_name":"BNB_CAD"},
-    {"name":"storj", "symbol": "STORJ", "js_name":"STIRJ_CAD"},
+    {"name":"storj", "symbol": "STORJ", "js_name":"STORJ_CAD"},
+    #{"name":"dotcoin", "symbol": "DOT", "js_name":"DOT_CAD"},
 ]
 
 portfolio = [
     {"symbol":"XRB", "amount":6500.0},
-    {"symbol":"ETH", "amount":122.0},
+    {"symbol":"ETH", "amount":124.0},
     {"symbol":"IOT", "amount":2685.0},
     {"symbol":"SC", "amount":124609.0},
     {"symbol":"ADA", "amount":9712.0},
@@ -72,11 +80,13 @@ portfolio = [
     {"symbol":"SUB", "amount":828.00},
     {"symbol":"TRX", "amount":13791.79},
     {"symbol":"AST", "amount":1485.00},
-    {"symbol":"NAV", "amount":348.00},
+    {"symbol":"NAV", "amount":174.24},
+    {"symbol":"WTC", "amount":100.00},
     {"symbol":"EOS", "amount":91.90},
     #{"symbol":"SAFEX", "amount":17707.17},
     {"symbol":"BNB", "amount":17.69},
     {"symbol":"STORJ", "amount":115.88},
+    #{"symbol":"DOT", "amount":8072.23475754},
     {"symbol":"BTC", "amount":0.01}
 ]
 
@@ -101,7 +111,8 @@ def get_data():
         r = requests.get(COINCAP_TICKER_URL)
         data = json.loads(r.text)
     except Exception as e:
-        pass
+        print("Request error: %s" % str(e))
+        #pass
 
     # Get coin prices
     for coin in coins:
@@ -112,6 +123,8 @@ def get_data():
             coin['price'] = round(float(result['price_cad']),2)
             coin['mcap'] = round(float(result['market_cap_cad']),2) + 0.1
             coin['rank'] = result['rank']
+            coin['percent_change_1h'] = float(result['percent_change_1h'])
+            coin['percent_change_24h'] = float(result['percent_change_24h'])
             coin['percent_change_7d'] = float(result['percent_change_7d'])
 
             buf += "%s=%s;  " % (coin['js_name'], coin['price'])
@@ -132,8 +145,6 @@ def get_data():
         pass
     else:
         print_markets(markets)
-        #now = datetime.now()
-        #print("%s: %s" % (now.ctime(), buf))
 
 #----------------------------------------------------------------------
 def humanize(money):
@@ -147,69 +158,134 @@ def humanize(money):
         title = 'thousand'
     elif mag >=6 and mag <=8:
         amount = round(money.amount/pow(10,6),2)
-        title = 'million'
+        title = 'M'
     elif mag >=9 and mag <=11:
         amount = round(money.amount/pow(10,9),2)
-        title = 'billion'
+        title = 'B'
     elif mag >= 12 and mag <= 14:
         amount = round(money.amount/pow(10,12),2)
-        title = 'trillion'
+        title = 'T'
 
-    return '$%s %s' %(amount, title)
+    return '$%s%s' %(amount, title)
 
 #----------------------------------------------------------------------
-def print_portfolio():
-
-    total = Money(0.0, 'CAD')
-    print("    Portfolio")
-
-    for hold in portfolio:
-        for coin in coins:
-            if coin['symbol'] != hold['symbol']:
-                continue
-            value = Money(round(hold['amount'] * coin['price'],2),'CAD')
-            total += value
-            print("\t%s: $%s" %(hold['symbol'], value))
-
-    print("\tTotal: %s$%s%s" %(bcolors.OKGREEN, round(total,2), bcolors.ENDC))
+def colorize(perc):
+    return "%s%s%s" %(
+        bcolors.FAIL if perc < 0 else bcolors.OKGREEN,
+        str(round(perc,1)) + '%',
+        bcolors.ENDC)
 
 #----------------------------------------------------------------------
 def print_markets(markets):
 
-    print("%s\n    Markets\n\tMcap=%s, 24Vol=%s " %(
+    print("%s\n  Markets\n    Mcap=%s, 24Vol=%s " %(
         datetime.now().strftime("%h %d %H:%M:%S"),
         humanize(Money(markets['total_market_cap_cad']+0.1, 'CAD')),
         humanize(Money(markets['total_24h_volume_cad']+0.1, 'CAD'))))
 
-    print("    Coins")
-    line = ''
+    print("  Watching (CAD)")
     sorted_coins = sorted(coins, key=lambda k: k['mcap'])
 
-    #pprint(sorted_coins)
+    header = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap"]
+    col_widths = [len(col) for col in header]
+    rows = [header]
 
     for coin in sorted_coins[::-1]:
-        m = Money(amount=coin['price'], currency='CAD')
-
-        perc = "%s%s%s" %(
-            bcolors.FAIL if coin['percent_change_7d'] < 0 else bcolors.OKGREEN,
-            str(round(coin['percent_change_7d'],1)) + '%',
-            bcolors.ENDC
-        )
-
-        print("\t%s: %s, 7d=%s, Mcap=%s, Rank=%s" %(
+        row =[
+            "#%s" % coin['rank'],
             coin['symbol'],
-            m.format('en_US', '$###,###', currency_digits=True),
-            perc,
-            humanize(Money(coin['mcap'], 'CAD')),
-            coin['rank']
-        ))
+            Money(amount=coin['price'], currency='CAD').format('en_US', '$###,###'),
+            str(round(coin["percent_change_1h"],1))+"%",
+            str(round(coin["percent_change_24h"],1))+"%",
+            str(round(coin["percent_change_7d"],1))+"%",
+            humanize(Money(coin['mcap'], 'CAD'))
+        ]
 
-    print('\t%s' % line)
+        # TODO: remove esc characters then calculate col_width
+        #import re
+        #re.compile(r'\x1b[^m]*m')
+        for idx in range(0, len(row)):
+            col_widths[idx] = max(len(row[idx]), col_widths[idx])
 
+        rows.append(row)
+
+    for idx in range(0, len(rows)):
+        row = rows[idx]
+
+        if idx == 0:
+            print("    %s%s%s" %(
+                bcolors.BOLD, "".join(row[n].ljust(col_widths[n]+2) for n in range(0,len(row))),bcolors.ENDC))
+            continue
+
+        row[0] = row[0].ljust(col_widths[0]+2)
+        row[1] = row[1].ljust(col_widths[1]+2)
+        row[2] = row[2].ljust(col_widths[2]+2)
+        row[3] =  "%s%s" %(bcolors.FAIL if float(row[3][:-1]) < 0 else bcolors.OKGREEN, row[3].ljust(col_widths[3]+2))
+        row[4] =  "%s%s" %(bcolors.FAIL if float(row[4][:-1]) < 0 else bcolors.OKGREEN, row[4].ljust(col_widths[4]+2))
+        row[5] =  "%s%s" %(bcolors.FAIL if float(row[5][:-1]) < 0 else bcolors.OKGREEN, row[5].ljust(col_widths[5]+2))
+        row[6] = bcolors.ENDC + row[6].ljust(col_widths[6]+2)
+
+        print("    " + "".join(row)) # + bcolors.ENDC)
+
+#----------------------------------------------------------------------
+def print_portfolio():
+
+    import re
+    re.compile(r'\x1b[^m]*m')
+
+    total = Money(0.0, 'CAD')
+    print("  Portfolio (CAD)")
+
+    header = ['Symbol', 'Amount', 'Price', 'Value', 'Portion']
+    data = [header]
+
+    # Build table data
+    for hold in portfolio:
+        for coin in coins:
+            if coin['symbol'] != hold['symbol']:
+                continue
+
+            row =[
+                coin['symbol'],
+                hold['amount'],
+                Money(amount=coin['price'], currency='CAD'), #.format('en_US', '$###,###'),
+                Money(round(hold['amount'] * coin['price'],2),'CAD'),
+                "%##.##"
+            ]
+            total += hold['value']
+            data.append(row)
+
+    # Get column widths
+    widths=[0,0,0,0,0]
+    for idx in range(0, len(portfolio)):
+        widths[idx] = max(len(str(portfolio[idx])), widths[idx])
+
+    # Print portfolio table
+    for datarow in data:
+        # Portfolio %
+        fmt_row = []
+        datarow[4] = round((datarow[3] / datarow[2])*100,2)
+
+        row = [
+            coin['symbol'],
+            hold['amount'],
+
+        ]
+
+        print("    %s: $%s (%s)" %(
+            hold['symbol'],
+            hold['value'].format('en_US', '###,###', currency_digits=True),
+            str(hold['perc']) + '%'))
+
+    print("    ---------------")
+    print("    Total: %s$%s%s" %(
+        bcolors.OKGREEN,
+        total.format('en_US', '###,###', currency_digits=True),
+        bcolors.ENDC))
 #----------------------------------------------------------------------
 if __name__ == "__main__":
     print("Updating prices in CAD every %ss...\n" % frequency)
     while True:
         get_data()
-        print_portfolio()
+        #print_portfolio()
         update_spinner()
