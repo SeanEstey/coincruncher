@@ -44,7 +44,7 @@ coins = [
     {"name":"bitcoin-cash", "symbol":"BCH", "js_name":"BCH_CAD"},
     {"name":"binance-coin", "symbol":"BNB", "js_name":"BNB_CAD"},
     {"name":"storj", "symbol": "STORJ", "js_name":"STORJ_CAD"},
-    #{"name":"dotcoin", "symbol": "DOT", "js_name":"DOT_CAD"},
+    {"name":"dotcoin", "symbol": "DOT", "js_name":"DOT_CAD"},
 ]
 portfolio = [
     {"symbol":"XRB", "amount":6500.0},
@@ -68,7 +68,7 @@ portfolio = [
     #{"symbol":"SAFEX", "amount":17707.17},
     {"symbol":"BNB", "amount":17.69},
     {"symbol":"STORJ", "amount":115.88},
-    #{"symbol":"DOT", "amount":8072.23475754},
+    {"symbol":"DOT", "amount":8072.23},
     {"symbol":"BTC", "amount":0.01}
 ]
 
@@ -195,7 +195,12 @@ def show_watchlist():
         data = json.loads(r.text)
     except Exception as e:
         print("Request error: %s" % str(e))
-        #pass
+
+    try:
+        r = requests.get("%s/ticker/%s/?convert=CAD" %(COINCAP_BASE_URL, 'dotcoin'))
+        data.append(json.loads(r.text)[0])
+    except Exception as e:
+        print("Request error for dotcoin")
 
     rows = []
     for coin in coins:
