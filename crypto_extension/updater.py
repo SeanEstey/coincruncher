@@ -21,6 +21,7 @@ msg = ''
 currency = "CAD"
 data = []
 coins = [
+    {"name":"ripple", "symbol":"XRP", "js_name":"XRP_CAD"},
     {"name":"bitcoin", "symbol":"BTC", "js_name":"BTC_CAD"},
     {"name":"ethereum", "symbol": "ETH", "js_name":"ETH_CAD"},
     {"name":"raiblocks", "symbol":"XRB", "js_name":"XRB_CAD"},
