@@ -164,13 +164,27 @@ def get_wci_markets():
 
 #----------------------------------------------------------------------
 def show_markets():
-    r = requests.get(COINCAP_BASE_URL + "/global?convert=%s" % currency)
-    markets = json.loads(r.text)
+    try:
+        r = requests.get(COINCAP_BASE_URL + "/global?convert=%s" % currency)
+        markets = json.loads(r.text)
+    except Exception as e:
+        return False
 
-    print("%s\n  Markets\n    Mcap=%s, 24Vol=%s " %(
-        datetime.now().strftime("%h %d %H:%M:%S"),
+    row = [
         humanize(Money(markets['total_market_cap_cad']+0.1, 'CAD')),
-        humanize(Money(markets['total_24h_volume_cad']+0.1, 'CAD'))))
+        humanize(Money(markets['total_24h_volume_cad']+0.1, 'CAD')),
+        str(round(markets['bitcoin_percentage_of_market_cap'],2))+'%',
+        str(markets['active_currencies'])
+    ]
+    header = ['Market Cap', '24h Volume', 'BTC Dominance', 'Currencies']
+    col_widths = [len(n) for n in header]
+    col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
+
+    print("\n    %s\n\n    %sGlobal (CAD)%s" % (
+        datetime.now().strftime("%h %d %H:%M:%S"), bcolors.BOLD, bcolors.ENDC))
+    print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
+    print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
+    print("")
 
 #----------------------------------------------------------------------
 def show_watchlist():
@@ -204,7 +218,7 @@ def show_watchlist():
     for row in rows:
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("  Watching (CAD)")
+    print("    %sWatching (CAD)%s" %(bcolors.BOLD, bcolors.ENDC))
     print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in sorted(rows, key=lambda x: int(x[0])):
         print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
@@ -240,7 +254,7 @@ def show_portfolio():
         row[3] = row[3].format('en_US', '$###,###')
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("\n  Portfolio (CAD)")
+    print("\n    %sPortfolio (CAD)%s" % (bcolors.BOLD, bcolors.ENDC))
     print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in rows: #sorted(rows, key=lambda x: int(x[0])):
         print("    " + "".join(justify(str(row[n]), col_widths[n]+2) for n in range(0,len(row))))
@@ -256,7 +270,7 @@ if __name__ == "__main__":
     print("Updating prices in CAD every %ss...\n" % frequency)
 
     while True:
-        #show_markets()
+        show_markets()
         show_watchlist()
         show_portfolio()
         update_spinner()
