@@ -20,58 +20,6 @@ frequency = 30
 msg = ''
 currency = "CAD"
 data = []
-coins = [
-    {"name":"ripple", "symbol":"XRP", "js_name":"XRP_CAD"},
-    {"name":"bitcoin", "symbol":"BTC", "js_name":"BTC_CAD"},
-    {"name":"ethereum", "symbol": "ETH", "js_name":"ETH_CAD"},
-    {"name":"raiblocks", "symbol":"XRB", "js_name":"XRB_CAD"},
-    {"name":"siacoin", "symbol": "SC", "js_name":"SC_CAD"},
-    {"name":"iota", "symbol": "IOT", "js_name":"IOT_CAD"},
-    {"name":"cardano", "symbol": "ADA", "js_name":"ADA_CAD"},
-    {"name":"litecoin", "symbol": "LTC", "js_name":"LTC_CAD"},
-    {"name":"spankchain", "symbol": "SPANK", "js_name":"SPANK_CAD"},
-    {"name":"omisego", "symbol": "OMG", "js_name":"OMG_CAD"},
-    {"name":"burst", "symbol": "BURST", "js_name":"BURST_CAD"},
-    {"name":"deepbrain-chain", "symbol": "DBC", "js_name":"DBC_CAD"},
-    {"name":"walton", "symbol": "WTC", "js_name":"WTC_CAD"},
-    {"name":"neo", "symbol": "NEO", "js_name":"NEO_CAD"},
-    {"name":"request-network", "symbol": "REQ", "js_name":"REQ_CAD"},
-    {"name":"tron", "symbol":"TRX", "js_name":"TRX_CAD"},
-    {"name":"vechain", "symbol": "VEN", "js_name":"VEN_CAD"},
-    {"name":"substratum", "symbol":"SUB", "js_name":"SUB_CAD"},
-    {"name":"airswap", "symbol": "AST", "js_name":"AST_CAD"},
-    {"name":"nav-coin", "symbol": "NAV", "js_name":"NAV_CAD"},
-    {"name":"eos", "symbol":"EOS", "js_name":"EOS_CAD"},
-    {"name":"bitcoin-cash", "symbol":"BCH", "js_name":"BCH_CAD"},
-    {"name":"binance-coin", "symbol":"BNB", "js_name":"BNB_CAD"},
-    {"name":"storj", "symbol": "STORJ", "js_name":"STORJ_CAD"},
-    {"name":"dotcoin", "symbol": "DOT", "js_name":"DOT_CAD"},
-]
-portfolio = [
-    {"symbol":"XRB", "amount":6500.0},
-    {"symbol":"ETH", "amount":124.0},
-    {"symbol":"MIOTA", "amount":2685.0},
-    {"symbol":"SC", "amount":124609.0},
-    {"symbol":"ADA", "amount":9712.0},
-    {"symbol":"SPANK", "amount":13927.0},
-    {"symbol":"OMG", "amount":154.78},
-    {"symbol":"BURST", "amount":29498.22},
-    {"symbol":"DBC", "amount":8686.96},
-    {"symbol":"NEO", "amount":25.30},
-    {"symbol":"REQ", "amount":2529.44},
-    {"symbol":"VEN", "amount":481.00},
-    {"symbol":"SUB", "amount":828.00},
-    {"symbol":"TRX", "amount":13791.79},
-    {"symbol":"AST", "amount":1485.00},
-    {"symbol":"NAV", "amount":174.24},
-    {"symbol":"WTC", "amount":100.00},
-    {"symbol":"EOS", "amount":91.90},
-    #{"symbol":"SAFEX", "amount":17707.17},
-    {"symbol":"BNB", "amount":17.69},
-    {"symbol":"STORJ", "amount":115.88},
-    {"symbol":"DOT", "amount":8072.23},
-    {"symbol":"BTC", "amount":0.01}
-]
 
 class bcolors:
     HEADER = '\033[95m'
