@@ -5,7 +5,8 @@
     ],
     "portfolio": [
         {"symbol":"XRB", "amount":6500.0},
-        {"symbol":"ETH", "amount":126.12},
+        {"symbol":"ETH", "amount":125.0},
+        {"symbol":"NULS", "amount":200.0},
         {"symbol":"MIOTA", "amount":2685.0},
         {"symbol":"SC", "amount":124609.0},
         {"symbol":"ADA", "amount":9712.0},

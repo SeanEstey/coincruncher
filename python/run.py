@@ -184,9 +184,11 @@ def show_watchlist():
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
     print("    %sWatching (CAD)%s" %(bcolors.BOLD, bcolors.ENDC))
-    print("    " +  "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header)))) 
+    print("    " +  "".join(justify(
+        header[n], col_widths[n]+2) for n in range(0,len(header)))) 
     for row in sorted(rows, key=lambda x: int(x[0])):
-        print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
+        print("    " + "".join(justify(
+            row[n], col_widths[n]+2) for n in range(0,len(row))))
 
 #----------------------------------------------------------------------
 def show_portfolio():
@@ -203,11 +205,12 @@ def show_portfolio():
             total += hold['amount'] * float(coin['price_cad'])
 
             rows.append([
-                "", # Portion %
+                coin['rank'],
                 coin['symbol'],
                 Money(float(coin['price_cad']), 'CAD'),
                 hold['amount'],
                 Money(round(hold['amount'] * float(coin['price_cad']),2),'CAD'), # Value
+                "", # Portion %
                 colorize(float(coin["percent_change_1h"])),
                 colorize(float(coin["percent_change_24h"])),
                 colorize(float(coin["percent_change_7d"]))
@@ -217,20 +220,22 @@ def show_portfolio():
 
     rows = sorted(rows, key=lambda x: int(x[4]))[::-1]
     total = Money(total, 'CAD')
-    header = ['Portion', 'Symbol', 'Price', 'Amount', 'Value', '1h', '24h', '7d']
+    header = ['Rank', 'Symbol', 'Price', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
     col_widths = [len(n) for n in header]
 
     for row in rows:
-        row[0] = str(round((row[4] / total) * 100, 2)) + '%'
+        row[5] = str(round((row[4] / total) * 100, 2)) + '%'
         row[2] = row[2].format('en_US', '$###,###')
         row[4] = row[4].format('en_US', '$###,###')
 
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
     print("\n    %sPortfolio (CAD)%s" % (bcolors.BOLD, bcolors.ENDC))
-    print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
+    print("    " + "".join(justify(
+        header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in rows: #sorted(rows, key=lambda x: int(x[0])):
-        print("    " + "".join(justify(str(row[n]), col_widths[n]+2) for n in range(0,len(row))))
+        print("    " + "".join(justify(
+            str(row[n]), col_widths[n]+2) for n in range(0,len(row))))
     print("") #    ---------------------------------------------------------")
     print("    %s$%s%s (%s%s%s)" % (
         bcolors.BOLD, total.format('en_US', '###,###'), bcolors.ENDC,
