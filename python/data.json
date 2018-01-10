@@ -1,27 +1,7 @@
 {
     "watchlist": [
         {"name":"ripple", "symbol":"XRP"},
-        {"name":"bitcoin", "symbol":"BTC"},
-        {"name":"ethereum", "symbol":"ETH"},
-        {"name":"raiblocks", "symbol":"XRB"},
-        {"name":"siacoin", "symbol":"SC"},
-        {"name":"iota", "symbol":"IOT"},
-        {"name":"cardano", "symbol":"ADA"},
-        {"name":"litecoin", "symbol":"LTC"},
-        {"name":"spankchain", "symbol":"SPANK"},
-        {"name":"omisego", "symbol":"OMG"},
-        {"name":"burst", "symbol":"BURST"},
-        {"name":"deepbrain-chain", "symbol":"DBC"},
-        {"name":"walton", "symbol":"WTC"},
-        {"name":"neo", "symbol":"NEO"},
-        {"name":"request-network", "symbol":"REQ"},
-        {"name":"vechain", "symbol":"VEN"},
-        {"name":"substratum", "symbol":"SUB"},
-        {"name":"airswap", "symbol":"AST"},
-        {"name":"eos", "symbol":"EOS"},
-        {"name":"binance-coin", "symbol":"BNB"},
-        {"name":"storj", "symbol":"STORJ"},
-        {"name":"dotcoin", "symbol":"DOT"}
+        {"name":"bitcoin", "symbol":"BTC"}
     ],
     "portfolio": [
         {"symbol":"XRB", "amount":6500.0},

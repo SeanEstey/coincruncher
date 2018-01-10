@@ -19,7 +19,7 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 frequency = 30
 msg = ''
 currency = "CAD"
-data = []
+ticker_data = []
 watchlist = []
 portfolio = []
 
@@ -86,11 +86,20 @@ def humanize(money):
     return '$%s%s' %(amount, title)
 
 #----------------------------------------------------------------------
-def colorize(perc):
-    return "%s%s%s" %(
-        bcolors.FAIL if perc < 0 else bcolors.OKGREEN,
-        str(round(perc,1)) + '%',
-        bcolors.ENDC)
+def colorize(val):
+
+    if isinstance(val, Money):
+        return "%s%s%s%s" %(
+            bcolors.FAIL if val.amount < 0 else bcolors.OKGREEN,
+            "+" if val.amount > 0 else "",
+            val.format('en_US', '###,###'),
+            bcolors.ENDC)
+    elif type(val) == float:
+        return "%s%s%s%s" %(
+            bcolors.FAIL if val < 0 else bcolors.OKGREEN,
+            "+" if val > 0 else "",
+            str(round(val,1)) + '%',
+            bcolors.ENDC)
 
 #----------------------------------------------------------------------
 def justify(col, width):
@@ -139,34 +148,34 @@ def show_markets():
 
 #----------------------------------------------------------------------
 def show_watchlist():
-    global watchlist, data
+    global watchlist, ticker_data
 
     try:
         r = requests.get(COINCAP_TICKER_URL)
-        data = json.loads(r.text)
+        ticker_data = json.loads(r.text)
     except Exception as e:
         print("Request error: %s" % str(e))
 
     try:
         r = requests.get("%s/ticker/%s/?convert=CAD" %(COINCAP_BASE_URL, 'dotcoin'))
-        data.append(json.loads(r.text)[0])
+        ticker_data.append(json.loads(r.text)[0])
     except Exception as e:
         print("Request error for dotcoin")
 
     rows = []
-    for coin in watchlist:
-        for result in data:
-            if result['id'] != coin['name']:
+    for watch in watchlist:
+        for coin in ticker_data:
+            if coin['id'] != watch['name']:
                 continue
 
             rows.append([
-                result['rank'],
-                result['symbol'],
-                Money(float(result['price_cad']), 'CAD').format('en_US', '$###,###'),
-                colorize(float(result["percent_change_1h"])),
-                colorize(float(result["percent_change_24h"])),
-                colorize(float(result["percent_change_7d"])),
-                humanize(Money(float(result['market_cap_cad']), 'CAD'))
+                coin['rank'],
+                coin['symbol'],
+                Money(float(coin['price_cad']), 'CAD').format('en_US', '$###,###'),
+                colorize(float(coin["percent_change_1h"])),
+                colorize(float(coin["percent_change_24h"])),
+                colorize(float(coin["percent_change_7d"])),
+                humanize(Money(float(coin['market_cap_cad']), 'CAD'))
             ])
 
     header = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap"]
@@ -175,58 +184,65 @@ def show_watchlist():
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
     print("    %sWatching (CAD)%s" %(bcolors.BOLD, bcolors.ENDC))
-    print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
+    print("    " +  "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header)))) 
     for row in sorted(rows, key=lambda x: int(x[0])):
         print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
 
 #----------------------------------------------------------------------
 def show_portfolio():
     global watchlist, portfolio
-    total = 0.0 #Money(0.0, 'CAD')
+    total = 0.0
     rows = []
+    profit = Money(0.0, 'CAD')
     # Build table data
     for hold in portfolio:
-        for result in data:
-            if result['symbol'] != hold['symbol']:
+        for coin in ticker_data:
+            if coin['symbol'] != hold['symbol']:
                 continue
 
-            total += hold['amount'] * float(result['price_cad'])
+            total += hold['amount'] * float(coin['price_cad'])
 
             rows.append([
-                result['symbol'],
-                Money(float(result['price_cad']), 'CAD'),
+                "", # Portion %
+                coin['symbol'],
+                Money(float(coin['price_cad']), 'CAD'),
                 hold['amount'],
-                Money(round(hold['amount'] * float(result['price_cad']),2),'CAD'),
-                "%##.##"
+                Money(round(hold['amount'] * float(coin['price_cad']),2),'CAD'), # Value
+                colorize(float(coin["percent_change_1h"])),
+                colorize(float(coin["percent_change_24h"])),
+                colorize(float(coin["percent_change_7d"]))
             ])
 
-    rows = sorted(rows, key=lambda x: int(x[3]))[::-1]
+            profit += Decimal(float(coin['percent_change_24h'])/100) * rows[-1][4]
+
+    rows = sorted(rows, key=lambda x: int(x[4]))[::-1]
     total = Money(total, 'CAD')
-    header = ['Symbol', 'Price', 'Amount', 'Value', 'Portion']
+    header = ['Portion', 'Symbol', 'Price', 'Amount', 'Value', '1h', '24h', '7d']
     col_widths = [len(n) for n in header]
+
     for row in rows:
-        row[4] = str(round((row[3] / total) * 100, 2)) + '%'
-        row[1] = row[1].format('en_US', '$###,###')
-        row[3] = row[3].format('en_US', '$###,###')
+        row[0] = str(round((row[4] / total) * 100, 2)) + '%'
+        row[2] = row[2].format('en_US', '$###,###')
+        row[4] = row[4].format('en_US', '$###,###')
+
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
     print("\n    %sPortfolio (CAD)%s" % (bcolors.BOLD, bcolors.ENDC))
     print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in rows: #sorted(rows, key=lambda x: int(x[0])):
         print("    " + "".join(justify(str(row[n]), col_widths[n]+2) for n in range(0,len(row))))
-    print("    ---------------")
-    print("    %sTotal: %s$%s%s" %(
-        bcolors.BOLD,
-        bcolors.OKGREEN,
-        total.format('en_US', '###,###', currency_digits=True),
-        bcolors.ENDC))
+    print("") #    ---------------------------------------------------------")
+    print("    %s$%s%s (%s%s%s)" % (
+        bcolors.BOLD, total.format('en_US', '###,###'), bcolors.ENDC,
+        bcolors.BOLD, colorize(profit), bcolors.ENDC))
+    #print("    Profit (24h): %s" % colorize(profit))
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
 
-    data = json.load(open('data.json'))
-    watchlist = data['watchlist']
-    portfolio = data['portfolio']
+    user_data = json.load(open('data.json'))
+    watchlist = user_data['watchlist']
+    portfolio = user_data['portfolio']
 
     print("Updating prices in CAD every %ss...\n" % frequency)
 
