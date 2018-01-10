@@ -20,6 +20,8 @@ frequency = 30
 msg = ''
 currency = "CAD"
 data = []
+watchlist = []
+portfolio = []
 
 class bcolors:
     HEADER = '\033[95m'
@@ -137,7 +139,7 @@ def show_markets():
 
 #----------------------------------------------------------------------
 def show_watchlist():
-    global coins, data
+    global watchlist, data
 
     try:
         r = requests.get(COINCAP_TICKER_URL)
@@ -152,7 +154,7 @@ def show_watchlist():
         print("Request error for dotcoin")
 
     rows = []
-    for coin in coins:
+    for coin in watchlist:
         for result in data:
             if result['id'] != coin['name']:
                 continue
@@ -179,7 +181,7 @@ def show_watchlist():
 
 #----------------------------------------------------------------------
 def show_portfolio():
-    global coins, portfolio
+    global watchlist, portfolio
     total = 0.0 #Money(0.0, 'CAD')
     rows = []
     # Build table data
@@ -221,6 +223,11 @@ def show_portfolio():
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
+
+    data = json.load(open('data.json'))
+    watchlist = data['watchlist']
+    portfolio = data['portfolio']
+
     print("Updating prices in CAD every %ss...\n" % frequency)
 
     while True:
