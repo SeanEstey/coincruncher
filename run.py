@@ -2,38 +2,88 @@
 extension directory.
 Docs: https://coinmarketcap.com/api/
 """
-import json, getopt, sys
+import json, getopt, os, queue, signal, sys, time, threading
 from api import get_markets, get_ticker
-from display import show_watchlist, show_markets, show_portfolio, show_spinner
+from display import bcolors, show_watchlist, show_markets, show_portfolio, show_spinner
 
 freq = 30
-currency = "CAD"
+currency = "cad"
+timeout = 0.1 # seconds
+
+#----------------------------------------------------------------------
+def parse_input(linein):
+    global watchlist, portfolio
+
+    try:
+        if linein.find('q') > -1:
+            os.kill(os.getpid(), signal.SIGINT)
+            exit()
+        elif linein.find('m') > -1:
+            print("Showing markets...")
+            market_data = get_markets(currency)
+            show_markets(market_data, currency)
+        elif linein.find('w') > -1:
+            print("Showing watchlist...")
+            ticker_data = get_ticker(currency)
+            show_watchlist(watchlist, ticker_data, currency)
+        elif linein.find('p') > -1:
+            print("Showing portfolio...")
+            ticker_data = get_ticker(currency)
+            show_portfolio(portfolio, ticker_data, currency)
+    except Exception as e:
+        print("input excepton")
+        pass
+
+#----------------------------------------------------------------------
+def input_loop():
+    # work thread's loop: work on available input until main
+    # thread exits
+    while True:
+        #print("input loop")
+        try:
+            parse_input(input_queue.get(timeout=timeout))
+        except queue.Empty:
+            pass
+
+#----------------------------------------------------------------------
+def cleanup(*args):
+    # things to be done before exiting the main thread should go
+    # in here
+    exit()
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
-    try:
+    user_data = json.load(open('data.json'))
+    watchlist = user_data['watchlist']
+    portfolio = user_data['portfolio']
+
+    print("%sUpdating prices in %s every %ss...%s\n" % (bcolors.OKGREEN, currency, freq, bcolors.ENDC))
+
+    # handle sigint, which is being used by the work thread to
+    # tell the main thread to exit
+    signal.signal(signal.SIGINT, cleanup)
+    # will hold all input read, until the work thread has chance
+    # to deal with it
+    input_queue = queue.Queue()
+    work_thread = threading.Thread(target=input_loop)
+    work_thread.start()
+
+    # main loop: stuff input in the queue
+    for line in sys.stdin:
+      input_queue.put(line)
+
+    # wait for work thread to finish
+    work_thread.join()
+
+    """try:
         argv = sys.argv[1:]
         opts, args = getopt.getopt(argv,"mwp", ['markets', 'watchlist', 'portfolio'])
     except getopt.GetoptError:
         sys.exit(2)
 
-    user_data = json.load(open('data.json'))
-    watchlist = user_data['watchlist']
-    portfolio = user_data['portfolio']
-
-    print("Updating prices in CAD every %ss...\n" % freq)
-
-    while True:
-        if set(['-w','--watchlist','-p','--portfolio']).intersection(set([n[0] for n in opts])):
-            ticker_data = get_ticker()
-
-        for opt, arg in opts:
-            if opt in ('-m', '--markets'):
-                market_data = get_markets(currency)
-                show_markets(market_data)
-            elif opt in ('-w', '--watchlist'):
-                show_watchlist(watchlist, ticker_data)
-            elif opt in ('-p', '--portfolio'):
-                show_portfolio(portfolio, ticker_data)
-
-        show_spinner(freq)
+    if set(['-w','--watchlist','-p','--portfolio']).intersection(set([n[0] for n in opts])):
+    for opt, arg in opts:
+        if opt in ('-m', '--markets'):
+        elif opt in ('-w', '--watchlist'):
+        elif opt in ('-p', '--portfolio'):
+    """

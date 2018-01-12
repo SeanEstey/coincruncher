@@ -5,7 +5,6 @@ from time import sleep
 from money import Money
 from decimal import Decimal
 
-
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 class bcolors:
     HEADER = '\033[95m'
@@ -80,10 +79,10 @@ def get_width(val):
     return len(fixed_len)
 
 #----------------------------------------------------------------------
-def show_markets(data):
+def show_markets(data, currency):
     row = [
-        humanize(Money(data['total_market_cap_cad']+0.1, 'CAD')),
-        humanize(Money(data['total_24h_volume_cad']+0.1, 'CAD')),
+        humanize(Money(data['total_market_cap_%s' % currency], currency.upper())),
+        humanize(Money(data['total_24h_volume_%s' % currency], currency.upper())),
         str(round(data['bitcoin_percentage_of_market_cap'],2))+'%',
         str(data['active_currencies'])
     ]
@@ -91,14 +90,14 @@ def show_markets(data):
     col_widths = [len(n) for n in header]
     col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("\n    %s\n\n    %sGlobal (CAD)%s" % (
-        datetime.now().strftime("%h %d %H:%M:%S"), bcolors.BOLD, bcolors.ENDC))
+    print("\n    %s\n\n    %sGlobal (%s)%s" % (
+        datetime.now().strftime("%h %d %H:%M:%S"), bcolors.BOLD, currency, bcolors.ENDC))
     print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
     print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
     print("")
 
 #----------------------------------------------------------------------
-def show_watchlist(watchlist, data):
+def show_watchlist(watchlist, data, currency):
     rows = []
     for watch in watchlist:
         for coin in data:
@@ -108,11 +107,11 @@ def show_watchlist(watchlist, data):
             rows.append([
                 coin['rank'],
                 coin['symbol'],
-                Money(float(coin['price_cad']), 'CAD').format('en_US', '$###,###'),
+                Money(float(coin['price_%s' % currency]), currency.upper()).format('en_US', '$###,###'),
                 colorize(float(coin["percent_change_1h"])),
                 colorize(float(coin["percent_change_24h"])),
                 colorize(float(coin["percent_change_7d"])),
-                humanize(Money(float(coin['market_cap_cad']), 'CAD'))
+                humanize(Money(float(coin['market_cap_%s' % currency]), currency.upper()))
             ])
 
     header = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap"]
@@ -120,7 +119,7 @@ def show_watchlist(watchlist, data):
     for row in rows:
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("    %sWatching (CAD)%s" %(bcolors.BOLD, bcolors.ENDC))
+    print("    %sWatching (%s)%s" %(bcolors.BOLD, currency, bcolors.ENDC))
     print("    " +  "".join(justify(
         header[n], col_widths[n]+2) for n in range(0,len(header)))) 
     for row in sorted(rows, key=lambda x: int(x[0])):
@@ -128,25 +127,25 @@ def show_watchlist(watchlist, data):
             row[n], col_widths[n]+2) for n in range(0,len(row))))
 
 #----------------------------------------------------------------------
-def show_portfolio(portfolio, data):
+def show_portfolio(portfolio, data, currency):
     total = 0.0
     rows = []
-    profit = Money(0.0, 'CAD')
+    profit = Money(0.0, currency.upper())
     # Build table data
     for hold in portfolio:
         for coin in data:
             if coin['symbol'] != hold['symbol']:
                 continue
 
-            total += hold['amount'] * float(coin['price_cad'])
+            total += hold['amount'] * float(coin['price_%s' % currency])
 
             rows.append([
                 coin['rank'],
                 coin['symbol'],
-                Money(float(coin['price_cad']), 'CAD'),
-                humanize(Money(float(coin['market_cap_cad']), 'CAD')),
+                Money(float(coin['price_%s' % currency]), currency.upper()),
+                humanize(Money(float(coin['market_cap_%s' % currency]), currency.upper())),
                 hold['amount'],
-                Money(round(hold['amount'] * float(coin['price_cad']),2),'CAD'), # Value
+                Money(round(hold['amount'] * float(coin['price_%s' % currency]),2),currency.upper()), # Value
                 "", # Portion %
                 colorize(float(coin["percent_change_1h"])),
                 colorize(float(coin["percent_change_24h"])),
@@ -156,7 +155,7 @@ def show_portfolio(portfolio, data):
             profit += Decimal(float(coin['percent_change_24h'])/100) * rows[-1][5]
 
     rows = sorted(rows, key=lambda x: int(x[5]))[::-1]
-    total = Money(total, 'CAD')
+    total = Money(total, currency.upper())
     header = ['Rank', 'Symbol', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
     col_widths = [len(n) for n in header]
 
@@ -167,7 +166,7 @@ def show_portfolio(portfolio, data):
 
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("\n    %sPortfolio (CAD)%s" % (bcolors.BOLD, bcolors.ENDC))
+    print("\n    %sPortfolio (%s)%s" % (bcolors.BOLD, currency, bcolors.ENDC))
     print("    " + "".join(justify(
         header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in rows: #sorted(rows, key=lambda x: int(x[0])):

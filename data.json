@@ -1,7 +1,10 @@
 {
     "watchlist": [
+        {"name":"bitcoin", "symbol":"BTC"},
         {"name":"ripple", "symbol":"XRP"},
-        {"name":"bitcoin", "symbol":"BTC"}
+	{"name":"bounty0x", "symbol":"BNTY"},
+	{"name":"asch", "symbol":"XAS"},
+        {"name":"deepbrain-chain", "symbol":"DBC"}
     ],
     "portfolio": [
         {"symbol":"XRB", "amount":6500.0},
@@ -24,7 +27,13 @@
         {"symbol":"BNB", "amount":17.69},
         {"symbol":"STORJ", "amount":115.88},
         {"symbol":"LTC", "amount":8.0},
-        {"symbol":"DOT", "amount":8072.23},
         {"symbol":"BTC", "amount":0.01}
+    ],
+    "_comments": [
+	{"id":"deepbrain-chain", "name":"Deep Brain Chain", "symbol":"DBC"},
+	{"id": "bounty0x", "name":"Bounty0x", "symbol":"BNTY"},
+	{"id":"asch", "name":"Asch", "symbol":"XAS"},
+        {"id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"},
+        {"id":"dotcoin", "symbol":"DOT", "amount":8072.23}
     ]
 }
