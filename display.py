@@ -101,7 +101,7 @@ def show_watchlist(watchlist, data, currency):
     rows = []
     for watch in watchlist:
         for coin in data:
-            if coin['id'] != watch['name']:
+            if coin['id'] != watch['id']:
                 continue
 
             rows.append([

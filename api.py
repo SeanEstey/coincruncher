@@ -1,5 +1,6 @@
-import requests, json
+import requests, json, os, subprocess, sys
 from pprint import pprint
+from timer import Timer
 
 
 COINCAP_BASE_URL = "https://api.coinmarketcap.com/v1"
@@ -8,31 +9,104 @@ WCI_API_KEY = "B8BDV74aQIoF5rQYgZNdQ8VBfdgPN0";
 WCI_MARKETS_URL = "https://www.worldcoinindex.com/apiservice/getmarkets";
 wci_uri = WCI_MARKETS_URL + "?key=" + WCI_API_KEY + "&fiat=cad";
 
-#----------------------------------------------------------------------
-def get_wci_markets():
-    r = requests.get(wci_uri)
-    r = json.loads(r.text)
-    pprint(r)
 
 #----------------------------------------------------------------------
 def get_markets(currency):
+
     data=None
     try:
-        r = requests.get(COINCAP_BASE_URL + "/global?convert=%s" % currency)
+        r = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % currency)
         data = json.loads(r.text)
     except Exception as e:
         return False
     else:
         return data
 
-#----------------------------------------------------------------------
-def get_ticker(currency):
-    data=None
+def subp(cmd):
     try:
-        r = requests.get(COINCAP_TICKER_URL + "convert=%s&limit=250" % currency)
-        data = json.loads(r.text)
+        response = subprocess.check_output(cmd)
     except Exception as e:
-        print("Request error: %s" % str(e))
+        print("subprocess error: %s" % str(e))
+    else:
+        #print(response)
+        return response
+
+#----------------------------------------------------------------------
+def stream_req(cmd):
+    popen = subprocess.Popen(cmd, stdout=subprocess.PIPE, universal_newlines=True)
+    for stdout_line in iter(popen.stdout.readline, ""):
+        yield stdout_line
+    popen.stdout.close()
+    return_code = popen.wait()
+    if return_code:
+        raise subprocess.CalledProcessError(return_code, cmd)
+
+#----------------------------------------------------------------------
+def _get_ticker(ids, currency):
+    """TODO: try this module:
+    https://github.com/mrsmn/coinmarketcap
+    """
+    limit=200
+
+    uri = "https://api.coinmarketcap.com/v1/ticker/?convert=%s&limit=%s" %(currency, limit)
+    response = requests.get(uri)
+    results = json.loads(response)
+
+    for _id in ids:
+        for r in results:
+            if _id == r['id']:
+                continue
+        # not found. query manually
+            uri = "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s" %(_id, currency)
+            result = requests.get(uri)
+            results.append(json.loads(result)[0])
+
+    return results
+
+#----------------------------------------------------------------------
+def get_ticker(ids, currency):
+    limit=75
+    t1 = Timer()
+    results = []
+
+    for _id in ids:
+        cmd = [
+            "curl",
+            "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s" %(_id, currency)
+            #"--verbose"
+        ]
+
+        try:
+            sys.stdout.write('\b'*80)
+            response = json.loads(subprocess.check_output(cmd).decode('utf-8'))
+            sys.stdout.write('\b'*80)
+            #for data in stream_req(cmd):
+            #    buf += data
+            #buf = json.loads(subp(cmd))[0]
+        except Exception as e:
+            print("curl error: %s" % str(e))
+            continue
+        else:
+            results.append(response[0])
+
+    print("Received %s results in %s" %(len(results), t1.clock()))
+    return results
+
+    cmds = [
+	    "curl",
+	    "https://api.coinmarketcap.com/v1/ticker/?convert=%s&limit=%s" %(currency, limit),
+        "--verbose"
+    ]
+
+    for data in stream_req(cmds):
+        buf += data
+        sys.stdout.write(data) #, end="")
+
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+    print("\nReceived %s results in %s s" %(limit, t1.clock()))
+
+    return json.loads(buf)
 
     """try:
         r = requests.get("%s/ticker/%s/?convert=%s" %(COINCAP_BASE_URL, 'dotcoin', currency))
@@ -43,4 +117,8 @@ def get_ticker(currency):
         return data
     """
 
-    return data
+#----------------------------------------------------------------------
+def get_wci_markets():
+    r = requests.get(wci_uri)
+    r = json.loads(r.text)
+    pprint(r)

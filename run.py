@@ -3,7 +3,7 @@ extension directory.
 Docs: https://coinmarketcap.com/api/
 """
 import json, getopt, os, queue, signal, sys, time, threading
-from api import get_markets, get_ticker
+from api import get_markets, _get_ticker, get_ticker
 from display import bcolors, show_watchlist, show_markets, show_portfolio, show_spinner
 
 freq = 30
@@ -11,35 +11,45 @@ currency = "cad"
 timeout = 0.1 # seconds
 
 #----------------------------------------------------------------------
+def clear():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+#----------------------------------------------------------------------
 def parse_input(linein):
     global watchlist, portfolio
+    print("parse_input()")
 
-    try:
-        if linein.find('q') > -1:
-            os.kill(os.getpid(), signal.SIGINT)
-            exit()
-        elif linein.find('m') > -1:
-            print("Showing markets...")
-            market_data = get_markets(currency)
-            show_markets(market_data, currency)
-        elif linein.find('w') > -1:
-            print("Showing watchlist...")
-            ticker_data = get_ticker(currency)
-            show_watchlist(watchlist, ticker_data, currency)
-        elif linein.find('p') > -1:
-            print("Showing portfolio...")
-            ticker_data = get_ticker(currency)
-            show_portfolio(portfolio, ticker_data, currency)
-    except Exception as e:
-        print("input excepton")
-        pass
+    #try:
+    if linein.find('q') > -1:
+        os.kill(os.getpid(), signal.SIGINT)
+        exit()
+    elif linein.find('m') > -1:
+        print("Showing markets...")
+        market_data = get_markets(currency)
+        #clear()
+        show_markets(market_data, currency)
+    elif linein.find('w') > -1:
+        print("Showing watchlist...")
+        ids = [ n['id'] for n in watchlist ]
+        ticker_data = _get_ticker(ids, currency)
+        #clear()
+        show_watchlist(watchlist, ticker_data, currency)
+    elif linein.find('p') > -1:
+        print("Showing portfolio...")
+        ids = [ n['id'] for n in portfolio ]
+        ticker_data = get_ticker(ids, currency)
+        #clear()
+        show_portfolio(portfolio, ticker_data, currency)
+    #except Exception as e:
+    #    print("input excepton")
+    #    pass
 
 #----------------------------------------------------------------------
 def input_loop():
     # work thread's loop: work on available input until main
     # thread exits
     while True:
-        #print("input loop")
+
         try:
             parse_input(input_queue.get(timeout=timeout))
         except queue.Empty:
@@ -59,18 +69,17 @@ if __name__ == "__main__":
 
     print("%sUpdating prices in %s every %ss...%s\n" % (bcolors.OKGREEN, currency, freq, bcolors.ENDC))
 
-    # handle sigint, which is being used by the work thread to
-    # tell the main thread to exit
+    # handle sigint, which is being used by the work thread to tell the main thread to exit
     signal.signal(signal.SIGINT, cleanup)
-    # will hold all input read, until the work thread has chance
-    # to deal with it
+    # will hold all input read, until the work thread has chance to deal with it
     input_queue = queue.Queue()
     work_thread = threading.Thread(target=input_loop)
     work_thread.start()
 
     # main loop: stuff input in the queue
     for line in sys.stdin:
-      input_queue.put(line)
+        print("main loop")
+        input_queue.put(line)
 
     # wait for work thread to finish
     work_thread.join()
