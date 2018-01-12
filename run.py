@@ -3,7 +3,7 @@ extension directory.
 Docs: https://coinmarketcap.com/api/
 """
 import json, getopt, os, queue, signal, sys, time, threading
-from api import get_markets, _get_ticker, get_ticker
+from api import get_markets, _get_ticker, get_ticker, get_tickers
 from display import bcolors, show_watchlist, show_markets, show_portfolio, show_spinner
 
 freq = 30
@@ -31,13 +31,13 @@ def parse_input(linein):
     elif linein.find('w') > -1:
         print("Showing watchlist...")
         ids = [ n['id'] for n in watchlist ]
-        ticker_data = _get_ticker(ids, currency)
+        ticker_data = get_ticker(ids, currency)
         #clear()
         show_watchlist(watchlist, ticker_data, currency)
     elif linein.find('p') > -1:
         print("Showing portfolio...")
         ids = [ n['id'] for n in portfolio ]
-        ticker_data = get_ticker(ids, currency)
+        ticker_data = get_tickers(100, currency)
         #clear()
         show_portfolio(portfolio, ticker_data, currency)
     #except Exception as e:

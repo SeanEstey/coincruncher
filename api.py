@@ -1,4 +1,4 @@
-import requests, json, os, subprocess, sys
+import pycurl, requests, json, os, subprocess, sys
 from pprint import pprint
 from timer import Timer
 
@@ -42,26 +42,41 @@ def stream_req(cmd):
         raise subprocess.CalledProcessError(return_code, cmd)
 
 #----------------------------------------------------------------------
+def get_tickers(limit, currency):
+    # TODO: Divide limit into chunks of 100
+
+    t1 = Timer()
+    uri = "https://api.coinmarketcap.com/v1/ticker/?limit=%s&convert=%s" %(limit,currency)
+    c = pycurl.Curl()
+    c.setopt(c.URL, uri)
+    c.setopt(c.COOKIEFILE, '')
+    #c.setopt(c.VERBOSE, True)
+    c.perform()
+
+    print("\033[H\033[J")
+    print("Finished in %s sec" % t1.clock())
+
+#----------------------------------------------------------------------
 def _get_ticker(ids, currency):
     """TODO: try this module:
     https://github.com/mrsmn/coinmarketcap
     """
-    limit=200
-
-    uri = "https://api.coinmarketcap.com/v1/ticker/?convert=%s&limit=%s" %(currency, limit)
-    response = requests.get(uri)
-    results = json.loads(response)
+    t1 = Timer()
+    uri = "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s"
+    c = pycurl.Curl()
+    c.setopt(c.URL, uri %(ids[0],currency))
+    c.setopt(c.COOKIEFILE, '')
+    c.setopt(c.VERBOSE, True)
+    c.perform()
 
     for _id in ids:
-        for r in results:
-            if _id == r['id']:
-                continue
-        # not found. query manually
-            uri = "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s" %(_id, currency)
-            result = requests.get(uri)
-            results.append(json.loads(result)[0])
+        c.setopt(c.URL, uri %(_id,currency))
+        c.perform()
 
-    return results
+    print("\033[H\033[J")
+    print("Finished in %s sec" % t1.clock())
+
+    return True
 
 #----------------------------------------------------------------------
 def get_ticker(ids, currency):

@@ -3,7 +3,7 @@
         { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"},
         { "id":"ripple", "name":"Ripple", "symbol":"XRP"},
         { "id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"},
-	{ "id":"rchain", "name":"RChain", "symbol":"RHOC"}		
+        { "id":"rchain", "name":"RChain", "symbol":"RHOC"}		
     ],
     "portfolio": [
         { "id":"raiblocks", "symbol":"XRB", "amount":6500.0},
@@ -17,8 +17,8 @@
         { "id":"burst", "symbol":"BURST", "amount":29498.22},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
         { "id":"neo", "symbol":"NEO", "amount":25.30},
-	{ "id":"bounty0x", "symbol":"BNTY", "amount":7967.80},
-	{ "id":"asch", "symbol":"XAS", "amount":149.10},
+        { "id":"bounty0x", "symbol":"BNTY", "amount":7967.80},
+        { "id":"asch", "symbol":"XAS", "amount":149.10},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"substratum", "symbol":"SUB", "amount":828.00},
@@ -28,15 +28,14 @@
         { "id":"binance-coin", "symbol":"BNB", "amount":17.69},
         { "id":"storj", "symbol":"STORJ", "amount":115.88},
         { "id":"dotcoin", "symbol":"DOT", "amount":8072.23},
-	{ "id":"linda", "symbol":"LINDA", "amount":65003.09},
         { "id":"litecoin", "symbol":"LTC", "amount":8.0},
         { "id":"bitcoin", "symbol":"BTC", "amount":0.01}
     ],
     "_comments": [
-	{ "id":"safex", "symbol":"SAFEX", "amount":5563.00},
-	{"id":"deepbrain-chain", "name":"Deep Brain Chain", "symbol":"DBC"},
-	{"id": "bounty0x", "name":"Bounty0x", "symbol":"BNTY"},
-	{"id":"asch", "name":"Asch", "symbol":"XAS"},
-        {"id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"}
+        { "id":"safex", "symbol":"SAFEX", "amount":5563.00},
+        { "id":"deepbrain-chain", "name":"Deep Brain Chain", "symbol":"DBC"},
+        { "id": "bounty0x", "name":"Bounty0x", "symbol":"BNTY"},
+        { "id":"asch", "name":"Asch", "symbol":"XAS"},
+        { "id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"}
     ]
 }
