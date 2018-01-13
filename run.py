@@ -1,14 +1,25 @@
-"""Grabs prices from Coinmarketcap API, writes them to Default.js file in Numi
-extension directory.
-Docs: https://coinmarketcap.com/api/
+"""Grabs prices from Coinmarketcap API
+https://coinmarketcap.com/api/
 """
 import json, getopt, os, queue, signal, sys, time, threading
 from api import get_markets, _get_ticker, get_ticker, get_tickers
 from display import bcolors, show_watchlist, show_markets, show_portfolio, show_spinner
+import mongo
+from config import *
 
-freq = 30
-currency = "cad"
-timeout = 0.1 # seconds
+db=None
+
+#----------------------------------------------------------------------
+class myThread (threading.Thread):
+   def __init__(self, threadID, name, q):
+      threading.Thread.__init__(self)
+      self.threadID = threadID
+      self.name = name
+      self.q = q
+   def run(self):
+      print ("Starting " + self.name)
+      process_data(self.name, self.q)
+      print ("Exiting " + self.name)
 
 #----------------------------------------------------------------------
 def clear():
@@ -17,57 +28,52 @@ def clear():
 #----------------------------------------------------------------------
 def parse_input(linein):
     global watchlist, portfolio
-    print("parse_input()")
 
-    #try:
     if linein.find('q') > -1:
         os.kill(os.getpid(), signal.SIGINT)
         exit()
     elif linein.find('m') > -1:
-        print("Showing markets...")
         market_data = get_markets(currency)
-        #clear()
         show_markets(market_data, currency)
     elif linein.find('w') > -1:
-        print("Showing watchlist...")
         ids = [ n['id'] for n in watchlist ]
         ticker_data = get_ticker(ids, currency)
-        #clear()
         show_watchlist(watchlist, ticker_data, currency)
     elif linein.find('p') > -1:
-        print("Showing portfolio...")
         ids = [ n['id'] for n in portfolio ]
-        ticker_data = get_tickers(100, currency)
-        #clear()
-        show_portfolio(portfolio, ticker_data, currency)
-    #except Exception as e:
-    #    print("input excepton")
-    #    pass
+        get_tickers(db, 1, 450)
+        show_portfolio(db, portfolio)
 
 #----------------------------------------------------------------------
 def input_loop():
-    # work thread's loop: work on available input until main
-    # thread exits
+    """work thread's loop: work on available input until main
+    thread exits
+    """
     while True:
-
         try:
-            parse_input(input_queue.get(timeout=timeout))
+            parse_input(input_queue.get(timeout=INPUT_TIMEOUT))
         except queue.Empty:
             pass
 
 #----------------------------------------------------------------------
 def cleanup(*args):
-    # things to be done before exiting the main thread should go
-    # in here
+    """things to be done before exiting the main thread should go
+    in here
+    """
     exit()
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
+
+    client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=False)
+    db = client[DB]
+
     user_data = json.load(open('data.json'))
     watchlist = user_data['watchlist']
     portfolio = user_data['portfolio']
 
-    print("%sUpdating prices in %s every %ss...%s\n" % (bcolors.OKGREEN, currency, freq, bcolors.ENDC))
+    print("%sUpdating prices in %s every %ss...%s\n" %(
+        bcolors.OKGREEN, CURRENCY, FREQ, bcolors.ENDC))
 
     # handle sigint, which is being used by the work thread to tell the main thread to exit
     signal.signal(signal.SIGINT, cleanup)
@@ -78,7 +84,6 @@ if __name__ == "__main__":
 
     # main loop: stuff input in the queue
     for line in sys.stdin:
-        print("main loop")
         input_queue.put(line)
 
     # wait for work thread to finish

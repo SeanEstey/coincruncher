@@ -1,21 +1,14 @@
 import pycurl, requests, json, os, subprocess, sys
 from pprint import pprint
 from timer import Timer
-
-
-COINCAP_BASE_URL = "https://api.coinmarketcap.com/v1"
-COINCAP_TICKER_URL = "https://api.coinmarketcap.com/v1/ticker/?" #convert=%s&limit=200"
-WCI_API_KEY = "B8BDV74aQIoF5rQYgZNdQ8VBfdgPN0";
-WCI_MARKETS_URL = "https://www.worldcoinindex.com/apiservice/getmarkets";
-wci_uri = WCI_MARKETS_URL + "?key=" + WCI_API_KEY + "&fiat=cad";
-
+from config import *
 
 #----------------------------------------------------------------------
-def get_markets(currency):
+def get_markets():
 
     data=None
     try:
-        r = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % currency)
+        r = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % CURRENCY)
         data = json.loads(r.text)
     except Exception as e:
         return False
@@ -42,35 +35,53 @@ def stream_req(cmd):
         raise subprocess.CalledProcessError(return_code, cmd)
 
 #----------------------------------------------------------------------
-def get_tickers(limit, currency):
-    # TODO: Divide limit into chunks of 100
+def get_tickers(db, start, limit):
+    from io import BytesIO
+    chunk_size = 100
+    idx = start
+    results = []
+    t = Timer()
 
-    t1 = Timer()
-    uri = "https://api.coinmarketcap.com/v1/ticker/?limit=%s&convert=%s" %(limit,currency)
     c = pycurl.Curl()
-    c.setopt(c.URL, uri)
     c.setopt(c.COOKIEFILE, '')
-    #c.setopt(c.VERBOSE, True)
-    c.perform()
+    c.setopt(c.VERBOSE, True)
 
-    print("\033[H\033[J")
-    print("Finished in %s sec" % t1.clock())
+    while idx < limit:
+        uri = "https://api.coinmarketcap.com/v1/ticker/?start=%s&limit=%s&convert=%s" %(idx, chunk_size, CURRENCY)
+        data=BytesIO()
+        c.setopt(c.WRITEFUNCTION, data.write)
+        c.setopt(c.URL, uri)
+        c.perform()
+        results += json.loads(data.getvalue().decode('utf-8'))
+        idx += chunk_size
+
+    print("Total time: %s sec" % t.clock())
+
+    for ticker in results:
+        result =db['tickers'].replace_one(
+            {'symbol':ticker['symbol']},
+            ticker,
+            upsert=True
+        )
+
+    #print("\033[H\033[J")
+    #print("Retrieved and stored %s items in %s sec" %(len(dictionary), t1.clock()))
 
 #----------------------------------------------------------------------
-def _get_ticker(ids, currency):
+def _get_ticker(ids, CURRENCY):
     """TODO: try this module:
     https://github.com/mrsmn/coinmarketcap
     """
     t1 = Timer()
     uri = "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s"
     c = pycurl.Curl()
-    c.setopt(c.URL, uri %(ids[0],currency))
+    c.setopt(c.URL, uri %(ids[0],CURRENCY))
     c.setopt(c.COOKIEFILE, '')
     c.setopt(c.VERBOSE, True)
     c.perform()
 
     for _id in ids:
-        c.setopt(c.URL, uri %(_id,currency))
+        c.setopt(c.URL, uri %(_id,CURRENCY))
         c.perform()
 
     print("\033[H\033[J")
@@ -79,7 +90,7 @@ def _get_ticker(ids, currency):
     return True
 
 #----------------------------------------------------------------------
-def get_ticker(ids, currency):
+def get_ticker(ids, CURRENCY):
     limit=75
     t1 = Timer()
     results = []
@@ -87,7 +98,7 @@ def get_ticker(ids, currency):
     for _id in ids:
         cmd = [
             "curl",
-            "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s" %(_id, currency)
+            "https://api.coinmarketcap.com/v1/ticker/%s/?convert=%s" %(_id, CURRENCY)
             #"--verbose"
         ]
 
@@ -109,7 +120,7 @@ def get_ticker(ids, currency):
 
     cmds = [
 	    "curl",
-	    "https://api.coinmarketcap.com/v1/ticker/?convert=%s&limit=%s" %(currency, limit),
+	    "https://api.coinmarketcap.com/v1/ticker/?convert=%s&limit=%s" %(CURRENCY, limit),
         "--verbose"
     ]
 
@@ -124,16 +135,10 @@ def get_ticker(ids, currency):
     return json.loads(buf)
 
     """try:
-        r = requests.get("%s/ticker/%s/?convert=%s" %(COINCAP_BASE_URL, 'dotcoin', currency))
+        r = requests.get("%s/ticker/%s/?convert=%s" %(COINCAP_BASE_URL, 'dotcoin', CURRENCY))
         data.append(json.loads(r.text)[0])
     except Exception as e:
         print("Request error for dotcoin")
     else:
         return data
     """
-
-#----------------------------------------------------------------------
-def get_wci_markets():
-    r = requests.get(wci_uri)
-    r = json.loads(r.text)
-    pprint(r)
