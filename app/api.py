@@ -8,7 +8,26 @@ from app import db
 log = logging.getLogger(__name__)
 
 #----------------------------------------------------------------------
-def get_markets():
+def setup_db(collection, data):
+    # Initialize if collection empty
+    if db[collection].find().count() == 0:
+        for item in data:
+            db[collection].insert_one(item)
+            log.info('Initialized %s symbol %s', collection, doc['symbol'])
+    # Update collection
+    else:
+        for item in data:
+            db[collection].replace_one({'symbol':item['symbol']}, item, upsert=True)
+            log.debug('Updated %s symbol %s', collection, item['symbol'])
+
+        symbols = [ n['symbol'] for n in data ]
+        for doc in db[collection].find():
+            if doc['symbol'] not in symbols:
+                log.debug('Deleted %s symbol %s', collection, doc['symbol'])
+                db[collection].delete_one({'_id':doc['_id']})
+
+#----------------------------------------------------------------------
+def update_markets():
     t1 = Timer()
     data=None
     try:
@@ -27,7 +46,7 @@ def get_markets():
         log.info("Retrieved market data in %s sec" % t1.clock())
 
 #----------------------------------------------------------------------
-def get_tickers(start, limit):
+def update_tickers(start, limit):
     chunk_size = 100
     idx = start
     results = []

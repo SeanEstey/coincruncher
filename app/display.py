@@ -33,6 +33,9 @@ def show_markets():
     col_widths = [len(n) for n in header]
     col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
+    print(chr(27) + "[2J")
+    print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+
     print("\n    %s\n\n    %sGlobal (%s)%s" % (
         datetime.now().strftime("%h %d %H:%M:%S"), bcolors.BOLD, CURRENCY, bcolors.ENDC))
     print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
@@ -40,7 +43,8 @@ def show_markets():
     print("")
 
 #----------------------------------------------------------------------
-def show_watchlist(watchlist):
+def show_watchlist():
+    watchlist = db.watchlist.find()
     rows = []
     for watch in watchlist:
         for coin in db.tickers.find():
@@ -62,7 +66,10 @@ def show_watchlist(watchlist):
     for row in rows:
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("    %sWatching (%s)%s" %(bcolors.BOLD, CURRENCY, bcolors.ENDC))
+    print(chr(27) + "[2J")
+    print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+
+    print("    %sWatching (%s)%s\n" %(bcolors.BOLD, CURRENCY.upper(), bcolors.ENDC))
     print("    " +  "".join(justify(
         header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in sorted(rows, key=lambda x: int(x[0])):
@@ -70,7 +77,8 @@ def show_watchlist(watchlist):
             row[n], col_widths[n]+2) for n in range(0,len(row))))
 
 #----------------------------------------------------------------------
-def show_portfolio(portfolio):
+def show_portfolio():
+    portfolio = db.portfolio.find()
     total = 0.0
     rows = []
     profit = Money(0.0, CURRENCY.upper())
@@ -109,7 +117,10 @@ def show_portfolio(portfolio):
 
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print("\n    %sPortfolio (%s)%s" % (bcolors.BOLD, CURRENCY, bcolors.ENDC))
+    print(chr(27) + "[2J")
+    print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+
+    print("\n    %sPortfolio (%s)%s\n" % (bcolors.BOLD, CURRENCY.upper(), bcolors.ENDC))
     print("    " + "".join(justify(
         header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in rows: #sorted(rows, key=lambda x: int(x[0])):
