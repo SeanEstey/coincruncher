@@ -1,3 +1,4 @@
+LOGFILE = "logs/info.log"
 MONGO_URL = 'localhost'
 MONGO_PORT = 27017
 LOCAL_PORT = 8000

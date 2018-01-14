@@ -1,13 +1,12 @@
 """Grabs prices from Coinmarketcap API
 https://coinmarketcap.com/api/
 """
-import json, getopt, os, queue, signal, sys, time, threading
-from api import get_markets, _get_ticker, get_ticker, get_tickers
-from display import bcolors, show_watchlist, show_markets, show_portfolio, show_spinner
-import mongo
+import json, getopt, logging, os, queue, signal, sys, time, threading
+from app import display, mongo
+from app.api import get_markets, get_tickers
+from app.display import bcolors, show_watchlist, show_markets, show_portfolio, show_spinner
 from config import *
-
-db=None
+log = logging.getLogger(__name__)
 
 #----------------------------------------------------------------------
 class myThread (threading.Thread):
@@ -33,16 +32,25 @@ def parse_input(linein):
         os.kill(os.getpid(), signal.SIGINT)
         exit()
     elif linein.find('m') > -1:
-        market_data = get_markets(currency)
-        show_markets(market_data, currency)
+        clear()
+        show_markets()
+        get_markets()
+        clear()
+        show_markets()
     elif linein.find('w') > -1:
+        clear()
+        show_watchlist(watchlist)
         ids = [ n['id'] for n in watchlist ]
-        ticker_data = get_ticker(ids, currency)
-        show_watchlist(watchlist, ticker_data, currency)
+        get_tickers(1, 450)
+        clear()
+        show_watchlist(watchlist)
     elif linein.find('p') > -1:
+        clear()
+        show_portfolio(portfolio)
         ids = [ n['id'] for n in portfolio ]
-        get_tickers(db, 1, 450)
-        show_portfolio(db, portfolio)
+        get_tickers(1, 200)
+        clear()
+        show_portfolio(portfolio)
 
 #----------------------------------------------------------------------
 def input_loop():
@@ -64,10 +72,6 @@ def cleanup(*args):
 
 #----------------------------------------------------------------------
 if __name__ == "__main__":
-
-    client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=False)
-    db = client[DB]
-
     user_data = json.load(open('data.json'))
     watchlist = user_data['watchlist']
     portfolio = user_data['portfolio']

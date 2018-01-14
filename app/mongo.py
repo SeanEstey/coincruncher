@@ -1,12 +1,11 @@
 '''app.lib.mongo'''
-import os
-import pymongo
+import logging, os, pymongo
 import config
+log = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
 def create_client(host=None, port=None, connect=True, auth=True):
-
-    print('CREATING MONGOCLIENT. PID %s', os.getpid())
+    log.info('Creating MongoClient, PID=%s', os.getpid())
 
     client = pymongo.MongoClient(
         host = host or config.MONGO_URL,
