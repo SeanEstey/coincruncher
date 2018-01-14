@@ -6,6 +6,8 @@ from .timer import Timer
 from config import *
 from app import db
 log = logging.getLogger(__name__)
+# Silence annoying requests module logger
+logging.getLogger("urllib3").setLevel(logging.WARNING)
 
 #----------------------------------------------------------------------
 def setup_db(collection, data):

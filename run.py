@@ -22,10 +22,6 @@ class myThread (threading.Thread):
       print ("Exiting " + self.name)
 
 #----------------------------------------------------------------------
-def clear():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-#----------------------------------------------------------------------
 def parse_input(linein):
     if linein.find('q') > -1:
         os.kill(os.getpid(), signal.SIGINT)
@@ -64,7 +60,7 @@ def input_loop():
 def update_data():
     while True:
         log.info('Updating tickers...')
-        update_tickers(1,700)
+        update_tickers(0,700)
         log.info('Updating markets...')
         update_markets()
         log.info('Sleeping 60s...')
