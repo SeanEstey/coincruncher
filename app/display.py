@@ -1,5 +1,6 @@
 # Display formatted text to stdout in table form
-import itertools, logging, re, sys, time
+import curses, itertools, logging, re, sys, time
+from curses import init_pair, color_pair
 from datetime import datetime
 from time import sleep
 from money import Money
@@ -9,7 +10,7 @@ from app import db
 log = logging.getLogger(__name__)
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
-class bcolors:
+"""class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
@@ -18,6 +19,15 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+"""
+
+
+
+class bcolors:
+    WHITE = curses.COLOR_WHITE
+    GREEN = curses.COLOR_GREEN
+    RED = curses.COLOR_RED
+    BOLD = curses.COLOR_WHITE
 
 #----------------------------------------------------------------------
 def show_markets():
@@ -37,7 +47,7 @@ def show_markets():
     print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
 
     print("\n    %s\n\n    %sGlobal (%s)%s" % (
-        datetime.now().strftime("%h %d %H:%M:%S"), bcolors.BOLD, CURRENCY, bcolors.ENDC))
+        datetime.now().strftime("%h %d %H:%M:%S"), bcolors.WHITE, CURRENCY, bcolors.WHITE))
     print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
     print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
     print("")
@@ -58,10 +68,11 @@ def show_watchlist():
                 colorize(float(coin["percent_change_1h"])),
                 colorize(float(coin["percent_change_24h"])),
                 colorize(float(coin["percent_change_7d"])),
-                humanize(Money(float(coin['market_cap_%s' % CURRENCY]), CURRENCY.upper()))
+                humanize(Money(float(coin['market_cap_%s' % CURRENCY]), CURRENCY.upper())),
+                humanize(Money(float(coin['24h_volume_%s' % CURRENCY]), CURRENCY.upper()))
             ])
 
-    header = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap"]
+    header = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap", "24h Vol"]
     col_widths = [len(n) for n in header]
     for row in rows:
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
@@ -69,7 +80,7 @@ def show_watchlist():
     print(chr(27) + "[2J")
     print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
 
-    print("    %sWatching (%s)%s\n" %(bcolors.BOLD, CURRENCY.upper(), bcolors.ENDC))
+    print("    %sWatching (%s)%s\n" %(bcolors.WHITE, CURRENCY.upper(), bcolors.WHITE))
     print("    " +  "".join(justify(
         header[n], col_widths[n]+2) for n in range(0,len(header))))
     for row in sorted(rows, key=lambda x: int(x[0])):
@@ -77,7 +88,9 @@ def show_watchlist():
             row[n], col_widths[n]+2) for n in range(0,len(row))))
 
 #----------------------------------------------------------------------
-def show_portfolio():
+def show_portfolio(stdscr):
+    stdscr.clear()
+
     portfolio = db.portfolio.find()
     total = 0.0
     rows = []
@@ -117,19 +130,18 @@ def show_portfolio():
 
         col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print(chr(27) + "[2J")
-    print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
-
-    print("\n    %sPortfolio (%s)%s\n" % (bcolors.BOLD, CURRENCY.upper(), bcolors.ENDC))
-    print("    " + "".join(justify(
+    stdscr.addstr(1,1, 'Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+    stdscr.addstr(3,1, "\n    %sPortfolio (%s)%s\n" % (bcolors.WHITE, CURRENCY.upper(), bcolors.WHITE))
+    stdscr.addstr(5,1, "    " + "".join(justify(
         header[n], col_widths[n]+2) for n in range(0,len(header))))
-    for row in rows: #sorted(rows, key=lambda x: int(x[0])):
-        print("    " + "".join(justify(
+    line = 6
+    for row in rows:
+        stdscr.addstr(line, 1, "    " + "".join(justify(
             str(row[n]), col_widths[n]+2) for n in range(0,len(row))))
-    print("") #    ---------------------------------------------------------")
-    print("    %s$%s%s (%s%s%s)" % (
-        bcolors.BOLD, total.format('en_US', '###,###'), bcolors.ENDC,
-        bcolors.BOLD, colorize(profit), bcolors.ENDC))
+        line += 1
+    stdscr.addstr(line, 1, "    %s$%s%s (%s%s%s)" % (
+        bcolors.WHITE, total.format('en_US', '###,###'), bcolors.WHITE,
+        bcolors.WHITE, colorize(profit), bcolors.WHITE))
 
 #----------------------------------------------------------------------
 def show_spinner(freq):
@@ -167,16 +179,16 @@ def humanize(money):
 def colorize(val):
     if isinstance(val, Money):
         return "%s%s%s%s" %(
-            bcolors.FAIL if val.amount < 0 else bcolors.OKGREEN,
+            bcolors.RED if val.amount < 0 else bcolors.GREEN,
             "+" if val.amount > 0 else "",
             val.format('en_US', '###,###'),
-            bcolors.ENDC)
+            bcolors.WHITE)
     elif type(val) == float:
         return "%s%s%s%s" %(
-            bcolors.FAIL if val < 0 else bcolors.OKGREEN,
+            bcolors.RED if val < 0 else bcolors.GREEN,
             "+" if val > 0 else "",
             str(round(val,1)) + '%',
-            bcolors.ENDC)
+            bcolors.WHITE)
 
 #----------------------------------------------------------------------
 def justify(col, width):

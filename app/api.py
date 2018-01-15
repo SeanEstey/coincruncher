@@ -28,6 +28,8 @@ def setup_db(collection, data):
                 log.debug('Deleted %s symbol %s', collection, doc['symbol'])
                 db[collection].delete_one({'_id':doc['_id']})
 
+    log.info("DB updated w/ user data")
+
 #----------------------------------------------------------------------
 def update_markets():
     t1 = Timer()
@@ -45,7 +47,7 @@ def update_markets():
             data,
             upsert=True
         )
-        log.info("Retrieved market data in %s sec" % t1.clock())
+        log.info("Received in %ss" % t1.clock())
 
 #----------------------------------------------------------------------
 def update_tickers(start, limit):
@@ -66,9 +68,9 @@ def update_tickers(start, limit):
         c.perform()
         results += json.loads(data.getvalue().decode('utf-8'))
         idx += chunk_size
-        log.info("Retrieved ticker data %s-%s in %s sec",  idx, idx+chunk_size, t1.clock())
+        log.debug("Retrieved ticker data %s-%s in %s sec",  idx, idx+chunk_size, t1.clock())
 
-    #print("Total time: %s sec" % t.clock())
+    log.info("Received %s items in %ss", len(results), t.clock())
 
     for ticker in results:
         result =db['tickers'].replace_one(
@@ -76,6 +78,3 @@ def update_tickers(start, limit):
             ticker,
             upsert=True
         )
-
-    #print("\033[H\033[J")
-    #print("Retrieved and stored %s items in %s sec" %(len(dictionary), t1.clock()))

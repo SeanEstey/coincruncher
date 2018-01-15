@@ -2,8 +2,7 @@
     "watchlist": [
         { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"},
         { "id":"ripple", "name":"Ripple", "symbol":"XRP"},
-        { "id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"},
-        { "id":"rchain", "name":"RChain", "symbol":"RHOC"}		
+        { "id":"tether", "name":"Tether", "symbol":"USDT"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},
@@ -11,26 +10,27 @@
         { "id":"binance-coin", "symbol":"BNB", "amount":17.69},
         { "id":"bounty0x", "symbol":"BNTY", "amount":7967.80},
         { "id":"burst", "symbol":"BURST", "amount":29498.22},
-        { "id":"cardano", "symbol":"ADA", "amount":6012.03},
+        { "id":"cardano", "symbol":"ADA", "amount":5012.03},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
-        { "id":"dotcoin", "symbol":"DOT", "amount":8072.23},
         { "id":"eos", "symbol":"EOS", "amount":159.0},
         { "id":"ethereum", "symbol":"ETH", "amount":123.9},
-        { "id":"iota", "symbol":"MIOTA", "amount":2014.71},
         { "id":"litecoin", "symbol":"LTC", "amount":8.0},
-        { "id":"neo", "symbol":"NEO", "amount":25.30},
+        { "id":"neo", "symbol":"NEO", "amount":73.00},
         { "id":"nuls", "symbol":"NULS", "amount":200.0},
         { "id":"omisego", "symbol":"OMG", "amount":154.78},
         { "id":"raiblocks", "symbol":"XRB", "amount":6500.0},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
+        { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
         { "id":"siacoin", "symbol":"SC", "amount":124609.0},
-        { "id":"spankchain", "symbol":"SPANK", "amount":14958.46},
+        { "id":"spankchain", "symbol":"SPANK", "amount":15667.34},
         { "id":"storj", "symbol":"STORJ", "amount":115.88},
         { "id":"substratum", "symbol":"SUB", "amount":828.00},
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"walton", "symbol":"WTC", "amount":100.00}
     ],
     "_comments": [
-        { "id":"safex", "symbol":"SAFEX", "amount":5563.00}
+        { "id":"iota", "symbol":"MIOTA", "amount":1007.71},
+        { "id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"},
+        { "id":"rchain", "name":"RChain", "symbol":"RHOC"}		
     ]
 }

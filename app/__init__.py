@@ -2,6 +2,7 @@
 import logging
 from . import mongo
 from config import *
+log = logging.getLogger(__name__)
 
 class colors:
     BLUE = '\033[94m'
@@ -37,7 +38,7 @@ def file_handler(level, file_path,
     """
 
     formatter = logging.Formatter(
-        colors.BLUE + (fmt or '[%(asctime)s %(name)s]: ' + colors.ENDC + color + '%(message)s') + colors.ENDC,
+        colors.BLUE + (fmt or '[%(asctime)s %(name)s %(threadName)s]: ' + colors.ENDC + color + '%(message)s') + colors.ENDC,
         #(datefmt or '%m-%d %H:%M'))
         (datefmt or '%H:%M:%S'))
 
@@ -50,6 +51,11 @@ logging.basicConfig(
     handlers=[
         file_handler(
             logging.DEBUG,
+            DEBUGFILE,
+            color=colors.WHITE
+        ),
+        file_handler(
+            logging.INFO,
             LOGFILE,
             color=colors.WHITE
         )

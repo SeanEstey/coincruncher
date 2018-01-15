@@ -1,7 +1,8 @@
 """Grabs prices from Coinmarketcap API
 https://coinmarketcap.com/api/
 """
-import json, getopt, logging, os, queue, signal, sys, time, threading
+import curses, json, getopt, logging, multiprocessing, os, queue, signal, sys, time, threading
+from curses import wrapper, init_pair, color_pair
 from app import display, mongo
 from app.timer import Timer
 from app.api import setup_db, update_markets, update_tickers
@@ -10,29 +11,17 @@ from config import *
 log = logging.getLogger(__name__)
 
 #----------------------------------------------------------------------
-class myThread (threading.Thread):
-   def __init__(self, threadID, name, q):
-      threading.Thread.__init__(self)
-      self.threadID = threadID
-      self.name = name
-      self.q = q
-   def run(self):
-      print ("Starting " + self.name)
-      process_data(self.name, self.q)
-      print ("Exiting " + self.name)
-
-#----------------------------------------------------------------------
-def parse_input(linein):
-    if linein.find('q') > -1:
+def parse_input(ch):
+    if ch.find('q') > -1:
         os.kill(os.getpid(), signal.SIGINT)
         exit()
-    elif linein.find('m') > -1:
+    elif ch == 'm': #.find('m') > -1:
         show_markets()
         return show_markets
-    elif linein.find('w') > -1:
+    elif ch == 'w': #linein.find('w') > -1:
         show_watchlist()
         return show_watchlist
-    elif linein.find('p') > -1:
+    elif ch == 'p': #linein.find('p') > -1:
         show_portfolio()
         return show_portfolio
 
@@ -43,18 +32,24 @@ def input_loop():
     """
     refresh_timer = Timer()
     last_ptr = None
+    log.info("input_loop")
 
+    """
     while True:
+        log.info("inside input loop")
         try:
-            ptr = parse_input(input_queue.get(timeout=INPUT_TIMEOUT))
+            ptr = parse_input(getch.getch())
+            #ptr = parse_input(input_queue.get(timeout=INPUT_TIMEOUT))
             if ptr and ptr != last_ptr:
                 last_ptr = ptr
         except queue.Empty:
             pass
 
         if last_ptr and refresh_timer.clock(stop=False) >= 5:
+            log.info("Refreshing screen")
             last_ptr()
             refresh_timer.restart()
+    """
 
 #----------------------------------------------------------------------
 def update_data():
@@ -67,47 +62,102 @@ def update_data():
         time.sleep(60)
 
 #----------------------------------------------------------------------
-def cleanup(*args):
-    """things to be done before exiting the main thread should go
-    in here
+def setup(stdscr):
+    """Setup curses window.
     """
+    # create a window object that represents the terminal window
+    #stdscr = curses.initscr()
+    # enable terminal colors
+    curses.start_color()
+    init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
+    init_pair(2, curses.COLOR_GREEN, curses.COLOR_BLACK)
+    init_pair(3, curses.COLOR_RED, curses.COLOR_BLACK)
+    #curses.use_default_colors()
+    # Don't print what I type on the terminal
+    curses.noecho()
+    # React to every key press, not just when pressing "enter"
+    curses.cbreak()
+    # Make getch() non-blocking
+    stdscr.nodelay(True)
+    stdscr.keypad(True)
+    # hide cursor
+    curses.curs_set(0)
+    #return stdscr
+
+#----------------------------------------------------------------------
+def teardown(stdscr):
+    # Reverse changes made to terminal by cbreak()
+    curses.nocbreak()
+    stdscr.keypad(False)
+    curses.echo()
+    # restore the terminal to its original state
+    curses.endwin()
     exit()
 
 #----------------------------------------------------------------------
-if __name__ == "__main__":
+def main(stdscr):
+    setup(stdscr)
+
+    log.info("")
+    log.info("Crypfolio running!")
     user_data = json.load(open('data.json'))
     setup_db('watchlist', user_data['watchlist'])
     setup_db('portfolio', user_data['portfolio'])
 
-    print("%sUpdating prices in %s every %ss...%s\n" %(
-        bcolors.OKGREEN, CURRENCY, FREQ, bcolors.ENDC))
+    while True:
+        ch = stdscr.getch()
+        curses.flushinp()
+
+        if ch == -1:
+            pass
+        elif ch == ord('p'):
+            stdscr.addstr(12,1, "'p' pressed, showing portfolio")
+            show_portfolio(stdscr)
+        elif ch == ord('m'):
+            stdscr.addstr(12,1, "'m' pressed. showing markets")
+            show_markets()
+        elif ch == ord('w'):
+            stdscr.addstr(12,1, "'w' pressed. showing watchlist")
+            show_watchlist()
+        elif ch == ord('q'):
+            stdscr.addstr(12,1 , "'q' pressed. last_ch='%s'. Terminating" % last_ch)
+            break
+        else:
+            stdscr.addstr(12, 1, "'%s' pressed" % str(ch))
+
+        time.sleep(0.5)
+
+    teardown(stdscr)
 
     # handle sigint, which is being used by the work thread to tell the main thread to exit
-    signal.signal(signal.SIGINT, cleanup)
+    #signal.signal(signal.SIGINT, cleanup)
     # will hold all input read, until the work thread has chance to deal with it
-    input_queue = queue.Queue()
-    work_thread = threading.Thread(target=input_loop)
-    work_thread.start()
+    #input_queue = queue.Queue()
 
-    data_thread = threading.Thread(target=update_data)
-    data_thread.start()
+    #data_thread = threading.Thread(name="DataThread", target=update_data)
+    #data_thread.start()
+
+    """input_thread = myThread(1, "InputThread", cont)
+    input_thread.start()
+
+    while True:
+        if cont != []:
+            #parse_input(
+            log.info("We got it: %s", cont)
+            #cont = []
+        else:
+            log.info("Cont: %s, input_thread.cont=%s", cont, input_thread.cont)
+        time.sleep(0.5)
+    """
+    #input_thread = threading.Thread(target=new_input)
+    #input_thread.start()
+    #input_thread.join(timeout=0.1)
 
     # main loop: stuff input in the queue
-    for line in sys.stdin:
-        input_queue.put(line)
+    #for line in sys.stdin:
+    #    log.info("Adding input to queue")
+    #    input_queue.put(line)
 
-    # wait for work thread to finish
-    work_thread.join()
+    #input_thread.join()
 
-    """try:
-        argv = sys.argv[1:]
-        opts, args = getopt.getopt(argv,"mwp", ['markets', 'watchlist', 'portfolio'])
-    except getopt.GetoptError:
-        sys.exit(2)
-
-    if set(['-w','--watchlist','-p','--portfolio']).intersection(set([n[0] for n in opts])):
-    for opt, arg in opts:
-        if opt in ('-m', '--markets'):
-        elif opt in ('-w', '--watchlist'):
-        elif opt in ('-p', '--portfolio'):
-    """
+wrapper(main)
