@@ -1,11 +1,12 @@
 # app.display
-import logging, pycurl, requests, json, os, subprocess, sys
+import logging, pycurl, requests, json
 from pprint import pprint
 from io import BytesIO
 from .timer import Timer
 from config import *
 from app import db
 log = logging.getLogger(__name__)
+
 # Silence annoying requests module logger
 logging.getLogger("urllib3").setLevel(logging.WARNING)
 

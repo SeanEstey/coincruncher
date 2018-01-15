@@ -1,24 +1,12 @@
 # Display formatted text to stdout in table form
-import curses, itertools, logging, re, sys, time
+import curses, logging, re
 from curses import init_pair, color_pair
 from datetime import datetime
-from time import sleep
 from money import Money
 from decimal import Decimal
 from config import *
 from app import db
 log = logging.getLogger(__name__)
-
-spinner = itertools.cycle(['-', '/', '|', '\\'])
-class bcolors:
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
 
 class c:
     BOLD = curses.A_BOLD
@@ -189,17 +177,6 @@ def printscr(msg, *args):
     # Split up args tuple by color args (ints)
     # Call stdscr.addstr() for each color
     pass
-
-#----------------------------------------------------------------------
-def show_spinner(freq):
-    i=0
-    while i < freq:
-        msg = '%s' % next(spinner)
-        sys.stdout.write(msg)
-        sys.stdout.flush()
-        sys.stdout.write('\b'*len(msg))
-        i+=1
-        sleep(1)
 
 #----------------------------------------------------------------------
 def humanize(money):
