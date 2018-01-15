@@ -2,7 +2,9 @@
     "watchlist": [
         { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"},
         { "id":"ripple", "name":"Ripple", "symbol":"XRP"},
-        { "id":"tether", "name":"Tether", "symbol":"USDT"}
+        { "id":"tether", "name":"Tether", "symbol":"USDT"},
+        { "id":"aelf", "name":"Aelf", "symbol":"ELF"},
+        { "id":"achain", "name":"Achain", "symbol":"ACT"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},

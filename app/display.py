@@ -10,7 +10,7 @@ from app import db
 log = logging.getLogger(__name__)
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
-"""class bcolors:
+class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
     OKGREEN = '\033[92m'
@@ -19,18 +19,39 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-"""
 
-
-
-class bcolors:
-    WHITE = curses.COLOR_WHITE
-    GREEN = curses.COLOR_GREEN
-    RED = curses.COLOR_RED
-    BOLD = curses.COLOR_WHITE
+class c:
+    BOLD = curses.A_BOLD
 
 #----------------------------------------------------------------------
-def show_markets():
+def _print_color_palette(stdscr):
+    try:
+        for i in range(0, 255):
+            stdscr.addstr(str(i), color_pair(i))
+    except curses.ERR:
+        pass
+
+#----------------------------------------------------------------------
+def set_colors(stdscr):
+    """ init_pair args: [pair_number, foreground, background]
+    pair_number 0 = WHITE
+    """
+    curses.start_color()
+    curses.use_default_colors()
+
+    for i in range(0, curses.COLORS):
+        init_pair(i + 1, i, -1)
+
+    c.WHITE = color_pair(0)
+    c.ORANGE = color_pair(2)
+    c.GREEN = color_pair(4)
+    c.BLUE = color_pair(5)
+    c.RED = color_pair(10)
+
+#----------------------------------------------------------------------
+def show_markets(stdscr):
+    stdscr.clear()
+    indent=2
     markets = list(db.markets.find().limit(1).sort('_id',-1))[0]
 
     row = [
@@ -39,21 +60,23 @@ def show_markets():
         str(round(markets['bitcoin_percentage_of_market_cap'],2))+'%',
         str(markets['active_currencies'])
     ]
-    header = ['Market Cap', '24h Volume', 'BTC Dominance', 'Currencies']
-    col_widths = [len(n) for n in header]
-    col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
+    hdr = ['Market Cap', '24h Volume', 'BTC Dominance', 'Currencies']
+    widths = [len(n) for n in hdr]
+    widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print(chr(27) + "[2J")
-    print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+    #stdscr.addstr('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+    #stdscr.addstr(y, x, "Global (%s)%s" % (
+    #    datetime.now().strftime("%h %d %H:%M:%S"), c.WHITE, CURRENCY, c.WHITE))
 
-    print("\n    %s\n\n    %sGlobal (%s)%s" % (
-        datetime.now().strftime("%h %d %H:%M:%S"), bcolors.WHITE, CURRENCY, bcolors.WHITE))
-    print("    " + "".join(justify(header[n], col_widths[n]+2) for n in range(0,len(header))))
-    print("    " + "".join(justify(row[n], col_widths[n]+2) for n in range(0,len(row))))
-    print("")
+    y=1
+    stdscr.addstr(1, indent, "Global (%s)" % CURRENCY.upper(), c.BOLD)
+    stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
+    stdscr.addstr(4, indent, "".join(justify(row[n], widths[n]+2) for n in range(0,len(row))))
 
 #----------------------------------------------------------------------
-def show_watchlist():
+def show_watchlist(stdscr):
+    stdscr.clear()
+    indent=2
     watchlist = db.watchlist.find()
     rows = []
     for watch in watchlist:
@@ -65,36 +88,43 @@ def show_watchlist():
                 coin['rank'],
                 coin['symbol'],
                 Money(float(coin['price_%s' % CURRENCY]), CURRENCY.upper()).format('en_US', '$###,###'),
-                colorize(float(coin["percent_change_1h"])),
-                colorize(float(coin["percent_change_24h"])),
-                colorize(float(coin["percent_change_7d"])),
+                float(coin["percent_change_1h"]),
+                float(coin["percent_change_24h"]),
+                float(coin["percent_change_7d"]),
                 humanize(Money(float(coin['market_cap_%s' % CURRENCY]), CURRENCY.upper())),
                 humanize(Money(float(coin['24h_volume_%s' % CURRENCY]), CURRENCY.upper()))
             ])
 
-    header = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap", "24h Vol"]
-    col_widths = [len(n) for n in header]
+    hdr = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap", "24h Vol"]
+    widths = [len(n) for n in hdr]
     for row in rows:
-        col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
+        widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    print(chr(27) + "[2J")
-    print('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
+    stdscr.addstr(1, indent, "Watchlist (%s)" % CURRENCY.upper(), c.BOLD)
+    stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
 
-    print("    %sWatching (%s)%s\n" %(bcolors.WHITE, CURRENCY.upper(), bcolors.WHITE))
-    print("    " +  "".join(justify(
-        header[n], col_widths[n]+2) for n in range(0,len(header))))
+    y=4
     for row in sorted(rows, key=lambda x: int(x[0])):
-        print("    " + "".join(justify(
-            row[n], col_widths[n]+2) for n in range(0,len(row))))
+        x = 2
+        for col_idx in range(0, len(row)):
+            val = row[col_idx]
+            if col_idx in [3,4,5]:
+                stdscr.addstr(y, x, "%s%s" %("+" if val > 0 else "", str(val)+"%"), c.GREEN if val>0 else c.RED)
+                x += 1
+            else:
+                stdscr.addstr(y, x, str(val))
+            x += widths[col_idx] +2
+        y += 1
 
 #----------------------------------------------------------------------
 def show_portfolio(stdscr):
     stdscr.clear()
-
-    portfolio = db.portfolio.find()
+    indent = 2
     total = 0.0
+    portfolio = db.portfolio.find()
     rows = []
     profit = Money(0.0, CURRENCY.upper())
+
     # Build table data
     for hold in portfolio:
         for coin in db.tickers.find():
@@ -102,7 +132,6 @@ def show_portfolio(stdscr):
                 continue
 
             total += hold['amount'] * float(coin['price_%s' % CURRENCY])
-
             rows.append([
                 coin['rank'],
                 coin['symbol'],
@@ -111,37 +140,55 @@ def show_portfolio(stdscr):
                 hold['amount'],
                 Money(round(hold['amount'] * float(coin['price_%s' % CURRENCY]),2),CURRENCY.upper()), # Value
                 "", # Portion %
-                colorize(float(coin["percent_change_1h"])),
-                colorize(float(coin["percent_change_24h"])),
-                colorize(float(coin["percent_change_7d"]))
+                float(coin["percent_change_1h"]),
+                float(coin["percent_change_24h"]),
+                float(coin["percent_change_7d"])
             ])
-
             profit += Decimal(float(coin['percent_change_24h'])/100) * rows[-1][5]
 
     rows = sorted(rows, key=lambda x: int(x[5]))[::-1]
     total = Money(total, CURRENCY.upper())
-    header = ['Rank', 'Symbol', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
-    col_widths = [len(n) for n in header]
+    hdr = ['Rank', 'Symbol', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
+    widths = [len(n) for n in hdr]
 
     for row in rows:
         row[6] = str(round((row[5] / total) * 100, 2)) + '%'
         row[2] = row[2].format('en_US', '$###,###')
         row[5] = row[5].format('en_US', '$###,###')
+        widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-        col_widths = [max(col_widths[n], get_width(row[n])) for n in range(0,len(row))]
-
-    stdscr.addstr(1,1, 'Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
-    stdscr.addstr(3,1, "\n    %sPortfolio (%s)%s\n" % (bcolors.WHITE, CURRENCY.upper(), bcolors.WHITE))
-    stdscr.addstr(5,1, "    " + "".join(justify(
-        header[n], col_widths[n]+2) for n in range(0,len(header))))
-    line = 6
+    stdscr.addstr(1, indent, "Portfolio (%s)" % CURRENCY.upper(), c.BOLD)
+    stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
+    y = 4
     for row in rows:
-        stdscr.addstr(line, 1, "    " + "".join(justify(
-            str(row[n]), col_widths[n]+2) for n in range(0,len(row))))
-        line += 1
-    stdscr.addstr(line, 1, "    %s$%s%s (%s%s%s)" % (
-        bcolors.WHITE, total.format('en_US', '###,###'), bcolors.WHITE,
-        bcolors.WHITE, colorize(profit), bcolors.WHITE))
+        x = 2
+        for col_idx in range(0, len(row)): #width in widths:
+            val = row[col_idx]
+            if col_idx in [7,8,9]:
+                stdscr.addstr(y, x, "%s%s" %("+" if val > 0 else "", str(val)+"%"), c.GREEN if val>0 else c.RED)
+                x += 1
+            else:
+                stdscr.addstr(y, x, str(val))
+            x += widths[col_idx] +2
+        y += 1
+    # Total portfolio value
+    stdscr.addstr(y+1, indent, "$%s" % total.format('en_US', '###,###'), c.BOLD)
+    # 24h profit/loss
+    curs = stdscr.getyx()
+    stdscr.addstr(curs[0], curs[1]+1, "(")
+    curs = stdscr.getyx()
+    stdscr.addstr(curs[0], curs[1], "%s%s" %(
+        "+" if profit.amount > 0 else "",
+        profit.format('en_US', '$###,###')),
+        c.GREEN if profit.amount > 0 else c.RED)
+    curs = stdscr.getyx()
+    stdscr.addstr(curs[0], curs[1], ")")
+
+#----------------------------------------------------------------------
+def printscr(msg, *args):
+    # Split up args tuple by color args (ints)
+    # Call stdscr.addstr() for each color
+    pass
 
 #----------------------------------------------------------------------
 def show_spinner(freq):
@@ -179,16 +226,16 @@ def humanize(money):
 def colorize(val):
     if isinstance(val, Money):
         return "%s%s%s%s" %(
-            bcolors.RED if val.amount < 0 else bcolors.GREEN,
+            c.RED if val.amount < 0 else c.GREEN,
             "+" if val.amount > 0 else "",
             val.format('en_US', '###,###'),
-            bcolors.WHITE)
+            c.WHITE)
     elif type(val) == float:
         return "%s%s%s%s" %(
-            bcolors.RED if val < 0 else bcolors.GREEN,
+            c.RED if val < 0 else c.GREEN,
             "+" if val > 0 else "",
             str(round(val,1)) + '%',
-            bcolors.WHITE)
+            c.WHITE)
 
 #----------------------------------------------------------------------
 def justify(col, width):
