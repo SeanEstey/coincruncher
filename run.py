@@ -52,27 +52,36 @@ def main(stdscr):
     setup_db('portfolio', user_data['portfolio'])
     data_thread = threading.Thread(name="DataThread", target=update_data)
     data_thread.start()
-
+    fn_show = None
+    refresh_delay = 5
+    timer = Timer()
     while True:
-        refresh_timer = Timer()
         ch = stdscr.getch()
         curses.flushinp()
 
-        if ch == -1:
-            pass
-        elif ch == ord('p'):
-            show_portfolio(stdscr)
+        if ch == ord('p'):
+            timer.restart()
+            fn_show = show_portfolio
+            fn_show(stdscr)
         elif ch == ord('m'):
-            show_markets(stdscr)
+            timer.restart()
+            fn_show = show_markets
+            fn_show(stdscr)
         elif ch == ord('w'):
-            show_watchlist(stdscr)
+            timer.restart()
+            fn_show = show_watchlist
+            fn_show(stdscr)
         elif ch == ord('q'):
             log.info('Terminating')
             break
-        else:
-            log.info('Invalid input key %s' % str(ch))
 
-        time.sleep(0.5)
+        if timer.clock(stop=False) >= refresh_delay:
+            if fn_show:
+                log.info('Refreshing view')
+                timer.restart()
+                fn_show(stdscr)
+
+        time.sleep(0.1)
 
     teardown(stdscr)
 
