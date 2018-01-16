@@ -46,20 +46,22 @@ def show_markets(stdscr):
         humanize(Money(markets['total_market_cap_%s' % CURRENCY], CURRENCY.upper())),
         humanize(Money(markets['total_24h_volume_%s' % CURRENCY], CURRENCY.upper())),
         str(round(markets['bitcoin_percentage_of_market_cap'],2))+'%',
-        str(markets['active_currencies'])
+        str(markets['active_markets']),
+        str(markets['active_currencies']),
+        str(markets['active_assets'])
     ]
-    hdr = ['Market Cap', '24h Volume', 'BTC Dominance', 'Currencies']
+    hdr = ['MCap', '24h Volume', 'BTC Score', 'Markets', 'Currencies', 'Assets']
     widths = [len(n) for n in hdr]
     widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    #stdscr.addstr('Refreshed %s' % datetime.now().strftime("%H:%M:%S"))
-    #stdscr.addstr(y, x, "Global (%s)%s" % (
-    #    datetime.now().strftime("%h %d %H:%M:%S"), c.WHITE, CURRENCY, c.WHITE))
-
     y=1
-    stdscr.addstr(1, indent, "Global (%s)" % CURRENCY.upper(), c.BOLD)
+    stdscr.addstr(1, indent, "Markets (%s)" % CURRENCY.upper())
+    height,width = stdscr.getmaxyx()
+    updated = "Updated %s" % datetime.fromtimestamp(markets['last_updated']).strftime("%I:%M %p")
+    stdscr.addstr(1, width - len(updated) -2, updated)
     stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
-    stdscr.addstr(4, indent, "".join(justify(row[n], widths[n]+2) for n in range(0,len(row))))
+    stdscr.addstr(4, indent, "".join(justify(row[n], widths[n]+2) for n in range(0,len(row))), c.BOLD)
+    stdscr.addstr(6, indent, "keys: markets (m), watchlist (w), portfolio (p)")
 
 #----------------------------------------------------------------------
 def show_watchlist(stdscr):
@@ -88,7 +90,11 @@ def show_watchlist(stdscr):
     for row in rows:
         widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    stdscr.addstr(1, indent, "Watchlist (%s)" % CURRENCY.upper(), c.BOLD)
+    stdscr.addstr(1, indent, "Watchlist (%s)" % CURRENCY.upper())
+    height,width = stdscr.getmaxyx()
+    markets = list(db.markets.find().limit(1).sort('_id',-1))[0]
+    updated = "Updated %s" % datetime.fromtimestamp(markets['last_updated']).strftime("%I:%M %p")
+    stdscr.addstr(1, width - len(updated) -2, updated)
     stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
 
     y=4
@@ -100,9 +106,10 @@ def show_watchlist(stdscr):
                 stdscr.addstr(y, x, "%s%s" %("+" if val > 0 else "", str(val)+"%"), c.GREEN if val>0 else c.RED)
                 x += 1
             else:
-                stdscr.addstr(y, x, str(val))
+                stdscr.addstr(y, x, str(val), c.BOLD)
             x += widths[col_idx] +2
         y += 1
+    stdscr.addstr(y+1, indent, "keys: markets (m), watchlist (w), portfolio (p)")
 
 #----------------------------------------------------------------------
 def show_portfolio(stdscr):
@@ -145,7 +152,11 @@ def show_portfolio(stdscr):
         row[5] = row[5].format('en_US', '$###,###')
         widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
 
-    stdscr.addstr(1, indent, "Portfolio (%s)" % CURRENCY.upper(), c.BOLD)
+    stdscr.addstr(1, indent, "Portfolio (%s)" % CURRENCY.upper())
+    scr_height,scr_width = stdscr.getmaxyx()
+    markets = list(db.markets.find().limit(1).sort('_id',-1))[0]
+    updated = "Updated %s" % datetime.fromtimestamp(markets['last_updated']).strftime("%I:%M %p")
+    stdscr.addstr(1, scr_width - len(updated) -2, updated)
     stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
     y = 4
     for row in rows:
@@ -156,7 +167,7 @@ def show_portfolio(stdscr):
                 stdscr.addstr(y, x, "%s%s" %("+" if val > 0 else "", str(val)+"%"), c.GREEN if val>0 else c.RED)
                 x += 1
             else:
-                stdscr.addstr(y, x, str(val))
+                stdscr.addstr(y, x, str(val), c.BOLD)
             x += widths[col_idx] +2
         y += 1
     # Total portfolio value
@@ -171,6 +182,8 @@ def show_portfolio(stdscr):
         c.GREEN if profit.amount > 0 else c.RED)
     curs = stdscr.getyx()
     stdscr.addstr(curs[0], curs[1], ")")
+    curs = stdscr.getyx()
+    stdscr.addstr(curs[0]+2, indent, "'m' (markets), 'w' (watchlist), 'p' (portfolio)")
 
 #----------------------------------------------------------------------
 def printscr(msg, *args):

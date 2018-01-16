@@ -1,4 +1,4 @@
-import curses, json, logging, time, threading
+import curses, json, logging, signal, time, threading
 from curses import wrapper
 from app.timer import Timer
 from app.api import setup_db, update_markets, update_tickers
@@ -47,14 +47,21 @@ def main(stdscr):
     setup(stdscr)
     log.info("--------------------------")
     log.info("Crypfolio running!")
+
     user_data = json.load(open('data.json'))
     setup_db('watchlist', user_data['watchlist'])
     setup_db('portfolio', user_data['portfolio'])
+
     data_thread = threading.Thread(name="DataThread", target=update_data)
+    data_thread.setDaemon(True)
     data_thread.start()
-    fn_show = None
+
     refresh_delay = 5
     timer = Timer()
+
+    fn_show = show_markets
+    fn_show(stdscr)
+
     while True:
         ch = stdscr.getch()
         curses.flushinp()
@@ -77,15 +84,13 @@ def main(stdscr):
 
         if timer.clock(stop=False) >= refresh_delay:
             if fn_show:
-                log.info('Refreshing view')
+                #log.info('Refreshing view')
                 timer.restart()
                 fn_show(stdscr)
-
         time.sleep(0.1)
 
     teardown(stdscr)
-
-    exit()
     data_thread.join()
 
+# Curses wrapper to take care of setup/teardown
 wrapper(main)

@@ -8,8 +8,8 @@ DB = 'crypto'
 FREQ = 30
 CURRENCY = "cad"
 INPUT_TIMEOUT = 0.1 # seconds
-COINCAP_BASE_URL = "https://api.coinmarketcap.com/v1"
-COINCAP_TICKER_URL = "https://api.coinmarketcap.com/v1/ticker/?"
+#CMC_BASE_URL = "https://api.coinmarketcap.com/v1"
+#CMC_TICKER_URL = "https://api.coinmarketcap.com/v1/ticker/?"
 WCI_API_KEY = "B8BDV74aQIoF5rQYgZNdQ8VBfdgPN0";
 WCI_MARKETS_URL = "https://www.worldcoinindex.com/apiservice/getmarkets";
 WCI_URI = WCI_MARKETS_URL + "?key=" + WCI_API_KEY + "&fiat=cad";

@@ -1,5 +1,5 @@
 # app.display
-import logging, pycurl, requests, json
+import logging, pycurl, requests, json, time
 from pprint import pprint
 from io import BytesIO
 from .timer import Timer
@@ -34,21 +34,65 @@ def setup_db(collection, data):
 #----------------------------------------------------------------------
 def update_markets():
     t1 = Timer()
-    data=None
+
+    # Get CoinMarketCap market data
+    cmc_data=None
     try:
         r = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % CURRENCY)
-        data = json.loads(r.text)
+        cmc_data = json.loads(r.text)
     except Exception as e:
         print("Error getting market data: %s" % str(e))
-        return False
+        pass
     else:
-        data['currency'] = CURRENCY
+        cmc_data['currency'] = CURRENCY
         db['markets'].replace_one(
-            {'last_updated':data['last_updated']},
-            data,
+            {'last_updated':cmc_data['last_updated']},
+            cmc_data,
             upsert=True
         )
-        log.info("Received in %ss" % t1.clock())
+
+    """{
+        base: "USD",
+        date: "2018-01-15",
+        rates: {
+            CAD: 1.2432
+        }
+    }
+    """
+    try:
+        r = requests.get("https://api.fixer.io/latest?base=USD&symbols=CAD")
+        usd_cad = json.loads(r.text)["rates"]["CAD"]
+    except Exception as e:
+        log.warning("Error getting USD/CAD rate")
+        pass
+
+    # Get Coincap.io market data
+    """{
+        altCap: 504531918898.49554,
+        bitnodesCount: 11680,
+        btcCap: 241967814774,
+        btcPrice: 14402,
+        dom: 65.6,
+        totalCap: 746499733672.4971,
+        volumeAlt: 1651343165.0478735,
+        volumeBtc: 3148874332.6655655,
+        volumeTotal: 4800217497.713445
+    }
+    """
+    cc_data=None
+    try:
+        r = requests.get("http://coincap.io/global", headers={'Cache-Control': 'no-cache'})
+        cc_data = json.loads(r.text)
+    except Exception as e:
+        log.warning("Error getting Coincap.io market data")
+        pass
+    else:
+        cc_data['timestamp'] = int(time.time())
+        #for n in ['altCap','btcCap','totalCap']:
+        #    cc_data[n] *= usd_cad
+        db.coincap_global.insert_one(cc_data)
+
+    log.info("Received in %ss" % t1.clock())
 
 #----------------------------------------------------------------------
 def update_tickers(start, limit):
