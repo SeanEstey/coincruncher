@@ -98,11 +98,11 @@ def watchlist(stdscr):
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
-    return True
-
-    stdscr.clear()
+    hdr = ['Rank', 'Symbol', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
     indent = 2
     total = 0.0
+
+    stdscr.clear()
     portfolio = db.portfolio.find()
     rows = []
     profit = Money(0.0, cur.upper())
@@ -126,16 +126,30 @@ def portfolio(stdscr):
                 pretty(coin["pct_24h"], t="pct", f="sign"),
                 pretty(coin["pct_7d"], t="pct", f="sign")
             ])
+    colwidths = _colsizes(hdr, rows)
 
     rows = sorted(rows, key=lambda x: int(x[5]))[::-1]
     total = Money(total, cur.upper())
-    hdr = ['Rank', 'Symbol', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
-    widths = [len(n) for n in hdr]
 
-    """for row in rows:
+    """-------------code snippet-----------------------
+    # Print Top row
+    mktdata = list(db.markets.find().limit(1).sort('_id',-1))[0]
+    updated = "Updated %s" % datetime.fromtimestamp(mktdata['timestamp']).strftime("%I:%M %p")
+    stdscr.addstr(1, indent, "Watchlist (%s)" % cur.upper())
+    stdscr.addstr(1, stdscr.getmaxyx()[1] - len(updated) -2, updated)
 
-        printrow(stdscr, line, data, colors):
-    """
+    # Print Header row
+    printrow(stdscr, 3, hdr, colwidths, [c.WHITE for n in hdr])
+
+    # Print Data rows
+    for n in range(0, len(rows)):
+        row = rows[n]
+        colors = [c.BOLD, c.BOLD, c.BOLD, pnlcolor(row[3]), pnlcolor(row[4]), pnlcolor(row[5]), c.BOLD, c.BOLD]
+        printrow(stdscr, n+4, row, colwidths, colors)
+
+    # Print footer
+    footer(stdscr)
+    ---------------------------------------------"""
 
     for row in rows:
         row[6] = str(round((row[5] / total) * 100, 2)) + '%'
@@ -191,11 +205,7 @@ def footer(stdscr):
 
 #----------------------------------------------------------------------
 def printrow(stdscr, y, datarow, colsizes, colors):
-    #log.info("colsizes: %s", colsizes)
-    #log.info("colors: %s", colors)
-    #log.info("data: %s", datarow)
     stdscr.move(y,2)
-
     for idx in range(0, len(datarow)):
         stdscr.addstr(
             y,
@@ -211,6 +221,8 @@ def pretty(number, t=None, f=None):
     """
     head = ""
     tail = ""
+
+    # TODO: Add comma's every 3 chars for large numbers
 
     if isinstance(number, Decimal):
         number = float(number)

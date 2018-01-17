@@ -45,15 +45,7 @@ def update_markets():
     else:
         data = json.loads(r.text)
         store = {}
-        for m in [
-            {"from":"last_updated", "to":"timestamp", "type":int},
-            {"from":"total_market_cap_cad", "to":"mktcap_cad", "type":float},
-            {"from":"total_24h_volume_cad", "to":"vol_24h_cad", "type":float},
-            {"from":"bitcoin_percentage_of_market_cap", "to":"pct_mktcap_btc", "type":float},
-            {"from":"active_assets", "to":"n_assets", "type":int},
-            {"from":"active_currencies", "to":"n_currencies", "type":int},
-            {"from":"active_markets", "to":"n_markets", "type":int}
-        ]:
+        for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
         db.markets.replace_one({'timestamp':store['timestamp']}, store, upsert=True)
 
@@ -69,18 +61,6 @@ def update_markets():
         usd_cad = json.loads(r.text)["rates"]["CAD"]
 
     # Get Coincap.io market data
-    """{
-        altCap: 504531918898.49554,
-        bitnodesCount: 11680,
-        btcCap: 241967814774,
-        btcPrice: 14402,
-        dom: 65.6,
-        totalCap: 746499733672.4971,
-        volumeAlt: 1651343165.0478735,
-        volumeBtc: 3148874332.6655655,
-        volumeTotal: 4800217497.713445
-    }
-    """
     cc_data=None
     try:
         r = requests.get("http://coincap.io/global", headers={'Cache-Control': 'no-cache'})
@@ -119,26 +99,9 @@ def update_tickers(start, limit):
 
     log.info("Received %s items in %ss", len(results), t.clock())
 
-    fields = [
-        {"from":"id", "to":"id", "type":str},
-        {"from":"symbol", "to":"symbol", "type":str},
-        {"from":"name", "to":"name", "type":str},
-        {"from":"last_updated", "to":"timestamp", "type":int},
-        {"from":"rank", "to":"rank", "type":int},
-        {"from":"market_cap_cad", "to":"mktcap_cad", "type":float},
-        {"from":"24h_volume_cad", "to":"vol_24h_cad", "type":float},
-        {"from":"price_cad", "to":"price_cad", "type":float},
-        {"from":"percent_change_1h", "to":"pct_1h", "type":float},
-        {"from":"percent_change_24h", "to":"pct_24h", "type":float},
-        {"from":"percent_change_7d", "to":"pct_7d", "type":float},
-        {"from":"available_supply", "to":"avail_supply", "type":float},
-        {"from":"total_supply", "to":"total_supply", "type":float},
-        {"from":"max_supply", "to":"max_supply", "type":float}
-    ]
-
     for ticker in results:
         store={}
-        for f in fields:
+        for f in CMC_TICKERS:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None

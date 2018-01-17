@@ -20,7 +20,7 @@
         { "id":"neo", "symbol":"NEO", "amount":73.00},
         { "id":"nuls", "symbol":"NULS", "amount":200.0},
         { "id":"omisego", "symbol":"OMG", "amount":154.78},
-        { "id":"raiblocks", "symbol":"XRB", "amount":6500.0},
+        { "id":"raiblocks", "symbol":"XRB", "amount":67500.0},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
         { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
         { "id":"siacoin", "symbol":"SC", "amount":124609.0},
