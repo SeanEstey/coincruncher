@@ -1,6 +1,0 @@
-websocket
-babel
-getch
-money
-pycurl
-pymongo
