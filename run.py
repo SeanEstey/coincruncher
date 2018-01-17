@@ -2,7 +2,7 @@ import curses, json, logging, signal, time, threading
 from curses import wrapper
 from app.timer import Timer
 from app.api import setup_db, update_markets, update_tickers
-from app.display import set_colors, show_watchlist, show_markets, show_portfolio
+from app.display import set_colors, watchlist, markets, portfolio
 from config import *
 log = logging.getLogger(__name__)
 
@@ -59,24 +59,32 @@ def main(stdscr):
     refresh_delay = 5
     timer = Timer()
 
-    fn_show = show_markets
+    fn_show = markets
     fn_show(stdscr)
 
     while True:
+        # Check if thread still alive
+        if not data_thread.is_alive():
+            log.info("data_thread hung!")
+            # TODO: restart it
+            data_thread = threading.Thread(name="DataThread", target=update_data)
+            data_thread.setDaemon(True)
+            data_thread.start()
+
         ch = stdscr.getch()
         curses.flushinp()
 
         if ch == ord('p'):
             timer.restart()
-            fn_show = show_portfolio
+            fn_show = portfolio
             fn_show(stdscr)
         elif ch == ord('m'):
             timer.restart()
-            fn_show = show_markets
+            fn_show = markets
             fn_show(stdscr)
         elif ch == ord('w'):
             timer.restart()
-            fn_show = show_watchlist
+            fn_show = watchlist
             fn_show(stdscr)
         elif ch == ord('q'):
             log.info('Terminating')
