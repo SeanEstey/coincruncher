@@ -9,9 +9,10 @@ from btfxwss import BtfxWss
 log = logging.getLogger(__name__)
 
 wss = None
+ticker_q = None
 
 #-------------------------------------------------------------------------------
-def init():
+def wss_init():
     global wss
     wss = BtfxWss()
     wss.start()
@@ -20,21 +21,13 @@ def init():
         time.sleep(1)
 
     log.info("wss initialized")
-
-#-------------------------------------------------------------------------------
-def sub():
-    global wss
     # Subscribe to some channels
     wss.subscribe_to_ticker('BTCUSD')
-    #wss.subscribe_to_order_book('BTCUSD')
-
-    log.info("wss sleeping 10s")
-    time.sleep(10)
-    log.info("wss subbed")
+    time.sleep(8)
 
 #-------------------------------------------------------------------------------
-def listen():
-    global wss
+def wss_listen():
+    global wss, ticker_q
     usd_to_cad = 1.2444
 
     while True:
@@ -43,14 +36,18 @@ def listen():
             ticker_q = wss.tickers('BTCUSD')  # returns a Queue object for the pair.
         except Exception as e:
             log.exception("Error getting wss ticker")
-            pass
+            break
 
         while not ticker_q.empty():
             try:
                 tick = ticker_q.get()
             except Exception as e:
                 log.exception("Error getting queue item")
-                pass
+                return False
+            else:
+                if tick is None:
+                    log.info("None found in queue. Exiting")
+                    return False
 
             btcusd = tick[0][0]
             db.bitfinex_tickers.insert_one({
@@ -61,25 +58,20 @@ def listen():
             })
             log.info("Wss ticker saved")
 
-        time.sleep(1)
+        time.sleep(0.1)
 
 #-------------------------------------------------------------------------------
-def unsub_all():
-    # Unsubscribing from channels:
+def wss_unsub():
     global wss
     wss.unsubscribe_from_ticker('BTCUSD')
-    wss.unsubscribe_from_order_book('BTCUSD')
-
     # Shutting down the client:
-    log.info("wss unsubbed")
     wss.stop()
 
 #----------------------------------------------------------------------
 def wss_app():
-    init()
-    sub()
-    listen()
-    unsub_all()
+    wss_init()
+    wss_listen()
+    wss_unsub()
 
 #----------------------------------------------------------------------
 def setup_db(collection, data):
@@ -136,10 +128,12 @@ def teardown(stdscr):
     curses.echo()
     # restore the terminal to its original state
     curses.endwin()
-    exit()
+    #exit()
 
 #----------------------------------------------------------------------
 def main(stdscr):
+    global ticker_q
+
     setup(stdscr)
     log.info("--------------------------")
     log.info("Crypfolio running!")
@@ -169,7 +163,7 @@ def main(stdscr):
             break
         if not wss_thread.is_alive():
             log.critical("wss_thread is dead!")
-            pass
+            break
 
         ch = stdscr.getch()
         curses.flushinp()
@@ -187,7 +181,7 @@ def main(stdscr):
             fn_show = display.watchlist
             fn_show(stdscr)
         elif ch == ord('q'):
-            log.info('Terminating')
+            log.info('Shutting down queue')
             break
 
         if timer.clock(stop=False) >= refresh_delay:
@@ -197,8 +191,10 @@ def main(stdscr):
         time.sleep(0.1)
 
     teardown(stdscr)
-    data_thread.join()
+    ticker_q.put(None)
     wss_thread.join()
+    exit()
+
 
 # Curses wrapper to take care of setup/teardown
 wrapper(main)
