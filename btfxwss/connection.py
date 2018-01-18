@@ -54,13 +54,13 @@ class WebSocketConnection(Thread):
         self.socket = None
         self.url = url if url else 'wss://api.bitfinex.com/ws/2'
         self.sslopt = sslopt if sslopt else {}
-        
+
         # Proxy Settings
         self.http_proxy_host = http_proxy_host
         self.http_proxy_port = http_proxy_port
         self.http_proxy_auth = http_proxy_auth
         self.http_no_proxy = http_no_proxy
-        
+
         # Dict to store all subscribe commands for reconnects
         self.channel_configs = OrderedDict()
 

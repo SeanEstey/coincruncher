@@ -32,7 +32,7 @@ def markets(stdscr):
     y=1
     stdscr.addstr(1, indent, "Markets (%s)" % cur.upper())
     height,width = stdscr.getmaxyx()
-    updated = "Updated %s" % datetime.fromtimestamp(mktdata[0]['timestamp']).strftime("%I:%M %p")
+    updated = "Updated %s" % mktdata[0]['datetime'].strftime("%I:%M %p")
     stdscr.addstr(1, width - len(updated) -2, updated)
     #stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
 
@@ -76,11 +76,20 @@ def watchlist(stdscr):
                 pretty(coin['mktcap_cad'], t="money"),
                 pretty(coin['vol_24h_cad'], t="money")
             ])
+
+    # Temp
+    btcfinex = list(db.bitfinex_tickers.find().limit(1).sort('_id',-1))[0]
+    rows.append([
+        1, "BTC_BITFNX",
+        Money(btcfinex["price_cad"],'CAD').format('en_US','$###,###'), 0.0,
+        btcfinex["pct_24h"], 0.0, "", pretty(btcfinex["vol_24h_cad"],t="money")
+    ])
+
     colwidths = _colsizes(hdr, rows)
 
     # Print Top row
     mktdata = list(db.markets.find().limit(1).sort('_id',-1))[0]
-    updated = "Updated %s" % datetime.fromtimestamp(mktdata['timestamp']).strftime("%I:%M %p")
+    updated = "Updated %s" % mktdata['datetime'].strftime("%I:%M %p")
     stdscr.addstr(1, indent, "Watchlist (%s)" % cur.upper())
     stdscr.addstr(1, stdscr.getmaxyx()[1] - len(updated) -2, updated)
 
@@ -160,7 +169,7 @@ def portfolio(stdscr):
     stdscr.addstr(1, indent, "Portfolio (%s)" % cur.upper())
     scr_height,scr_width = stdscr.getmaxyx()
     mktdata = list(db.markets.find().limit(1).sort('_id',-1))[0]
-    updated = "Updated %s" % datetime.fromtimestamp(mktdata['last_updated']).strftime("%I:%M %p")
+    updated = "Updated %s" % mktdata['datetime'].strftime("%I:%M %p")
     stdscr.addstr(1, scr_width - len(updated) -2, updated)
     #stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
     y = 4

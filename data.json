@@ -1,10 +1,6 @@
 {
     "watchlist": [
-        { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"},
-        { "id":"ripple", "name":"Ripple", "symbol":"XRP"},
-        { "id":"tether", "name":"Tether", "symbol":"USDT"},
-        { "id":"aelf", "name":"Aelf", "symbol":"ELF"},
-        { "id":"achain", "name":"Achain", "symbol":"ACT"}
+        { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},
@@ -33,6 +29,10 @@
     "_comments": [
         { "id":"iota", "symbol":"MIOTA", "amount":1007.71},
         { "id":"bitcoin-cash", "name":"Bitcoin Cash", "symbol":"BCH"},
-        { "id":"rchain", "name":"RChain", "symbol":"RHOC"}		
+        { "id":"rchain", "name":"RChain", "symbol":"RHOC"},
+        { "id":"ripple", "name":"Ripple", "symbol":"XRP"},
+        { "id":"tether", "name":"Tether", "symbol":"USDT"},
+        { "id":"aelf", "name":"Aelf", "symbol":"ELF"},
+        { "id":"achain", "name":"Achain", "symbol":"ACT"}
     ]
 }

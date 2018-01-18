@@ -15,8 +15,9 @@ WCI_MARKETS_URL = "https://www.worldcoinindex.com/apiservice/getmarkets";
 WCI_URI = WCI_MARKETS_URL + "?key=" + WCI_API_KEY + "&fiat=cad";
 
 # Coinmarketcap.com API
+from datetime import datetime
 CMC_MARKETS = [
-    {"from":"last_updated", "to":"timestamp", "type":int},
+    {"from":"last_updated", "to":"datetime", "type":datetime.fromtimestamp},
     {"from":"total_market_cap_cad", "to":"mktcap_cad", "type":float},
     {"from":"total_24h_volume_cad", "to":"vol_24h_cad", "type":float},
     {"from":"bitcoin_percentage_of_market_cap", "to":"pct_mktcap_btc", "type":float},
@@ -28,7 +29,7 @@ CMC_TICKERS = [
     {"from":"id", "to":"id", "type":str},
     {"from":"symbol", "to":"symbol", "type":str},
     {"from":"name", "to":"name", "type":str},
-    {"from":"last_updated", "to":"timestamp", "type":int},
+    {"from":"last_updated", "to":"datetime", "type":datetime.fromtimestamp},
     {"from":"rank", "to":"rank", "type":int},
     {"from":"market_cap_cad", "to":"mktcap_cad", "type":float},
     {"from":"24h_volume_cad", "to":"vol_24h_cad", "type":float},

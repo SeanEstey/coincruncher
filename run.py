@@ -1,18 +1,114 @@
-import curses, json, logging, signal, time, threading
+import curses, json, logging, requests, signal, time, threading
 from curses import wrapper
+from datetime import datetime
 from app.timer import Timer
-from app.api import setup_db, update_markets, update_tickers
-from app.display import set_colors, watchlist, markets, portfolio
+from app import display, db
+from app.coinmktcap import get_markets, get_tickers
 from config import *
+from btfxwss import BtfxWss
 log = logging.getLogger(__name__)
+
+wss = None
+
+#-------------------------------------------------------------------------------
+def init():
+    global wss
+    wss = BtfxWss()
+    wss.start()
+
+    while not wss.conn.connected.is_set():
+        time.sleep(1)
+
+    log.info("wss initialized")
+
+#-------------------------------------------------------------------------------
+def sub():
+    global wss
+    # Subscribe to some channels
+    wss.subscribe_to_ticker('BTCUSD')
+    #wss.subscribe_to_order_book('BTCUSD')
+
+    log.info("wss sleeping 10s")
+    time.sleep(10)
+    log.info("wss subbed")
+
+#-------------------------------------------------------------------------------
+def listen():
+    global wss
+    usd_to_cad = 1.2444
+
+    while True:
+        # Accessing data stored in BtfxWss:
+        try:
+            ticker_q = wss.tickers('BTCUSD')  # returns a Queue object for the pair.
+        except Exception as e:
+            log.exception("Error getting wss ticker")
+            pass
+
+        while not ticker_q.empty():
+            try:
+                tick = ticker_q.get()
+            except Exception as e:
+                log.exception("Error getting queue item")
+                pass
+
+            btcusd = tick[0][0]
+            db.bitfinex_tickers.insert_one({
+                "price_cad": round(btcusd[6] * usd_to_cad, 2),
+                "vol_24h_cad": round(btcusd[7] * btcusd[6] * usd_to_cad, 2),
+                "pct_24h": round(btcusd[5] * 100, 2),
+                "datetime": datetime.fromtimestamp(tick[1])
+            })
+            log.info("Wss ticker saved")
+
+        time.sleep(1)
+
+#-------------------------------------------------------------------------------
+def unsub_all():
+    # Unsubscribing from channels:
+    global wss
+    wss.unsubscribe_from_ticker('BTCUSD')
+    wss.unsubscribe_from_order_book('BTCUSD')
+
+    # Shutting down the client:
+    log.info("wss unsubbed")
+    wss.stop()
+
+#----------------------------------------------------------------------
+def wss_app():
+    init()
+    sub()
+    listen()
+    unsub_all()
+
+#----------------------------------------------------------------------
+def setup_db(collection, data):
+    # Initialize if collection empty
+    if db[collection].find().count() == 0:
+        for item in data:
+            db[collection].insert_one(item)
+            log.info('Initialized %s symbol %s', collection, item['symbol'])
+    # Update collection
+    else:
+        for item in data:
+            db[collection].replace_one({'symbol':item['symbol']}, item, upsert=True)
+            log.debug('Updated %s symbol %s', collection, item['symbol'])
+
+        symbols = [ n['symbol'] for n in data ]
+        for doc in db[collection].find():
+            if doc['symbol'] not in symbols:
+                log.debug('Deleted %s symbol %s', collection, item['symbol'])
+                db[collection].delete_one({'_id':doc['_id']})
+
+    log.info("DB updated w/ user data")
 
 #----------------------------------------------------------------------
 def update_data():
     while True:
         log.info('Updating tickers...')
-        update_tickers(0,700)
+        get_tickers(0,700)
         log.info('Updating markets...')
-        update_markets()
+        get_markets()
         log.info('Sleeping 60s...')
         time.sleep(60)
 
@@ -20,7 +116,7 @@ def update_data():
 def setup(stdscr):
     """Setup curses window.
     """
-    set_colors(stdscr)
+    display.set_colors(stdscr)
     # Don't print what I type on the terminal
     curses.noecho()
     # React to every key press, not just when pressing "enter"
@@ -52,39 +148,43 @@ def main(stdscr):
     setup_db('watchlist', user_data['watchlist'])
     setup_db('portfolio', user_data['portfolio'])
 
+    wss_thread = threading.Thread(name="WssThread", target=wss_app)
+    wss_thread.setDaemon(True)
+    wss_thread.start()
+
     data_thread = threading.Thread(name="DataThread", target=update_data)
     data_thread.setDaemon(True)
     data_thread.start()
 
-    refresh_delay = 5
+    refresh_delay = 1
     timer = Timer()
 
-    fn_show = markets
+    fn_show = display.watchlist
     fn_show(stdscr)
 
     while True:
         # Check if thread still alive
         if not data_thread.is_alive():
-            log.info("data_thread hung!")
-            # TODO: restart it
-            data_thread = threading.Thread(name="DataThread", target=update_data)
-            data_thread.setDaemon(True)
-            data_thread.start()
+            log.critical("data_thread is dead!")
+            break
+        if not wss_thread.is_alive():
+            log.critical("wss_thread is dead!")
+            pass
 
         ch = stdscr.getch()
         curses.flushinp()
 
         if ch == ord('p'):
             timer.restart()
-            fn_show = portfolio
+            fn_show = display.portfolio
             fn_show(stdscr)
         elif ch == ord('m'):
             timer.restart()
-            fn_show = markets
+            fn_show = display.markets
             fn_show(stdscr)
         elif ch == ord('w'):
             timer.restart()
-            fn_show = watchlist
+            fn_show = display.watchlist
             fn_show(stdscr)
         elif ch == ord('q'):
             log.info('Terminating')
@@ -92,13 +192,13 @@ def main(stdscr):
 
         if timer.clock(stop=False) >= refresh_delay:
             if fn_show:
-                #log.info('Refreshing view')
                 timer.restart()
                 fn_show(stdscr)
         time.sleep(0.1)
 
     teardown(stdscr)
     data_thread.join()
+    wss_thread.join()
 
 # Curses wrapper to take care of setup/teardown
 wrapper(main)
