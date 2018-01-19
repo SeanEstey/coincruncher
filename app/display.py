@@ -165,10 +165,11 @@ def portfolio(stdscr):
 
     # Print datatable
     printrow(stdscr, 3, hdr, colwidths, [c.WHITE for n in hdr])
+    stdscr.hline(4, 2, '-', curses.COLS-4)
     for y in range(0,len(strrows)):
         strrow = strrows[y]
         colors = [c.BOLD for x in range(0,7)] + [pnlcolor(strrow[n]) for n in range(7,10)]
-        printrow(stdscr, y+4, strrow, colwidths, colors)
+        printrow(stdscr, y+5, strrow, colwidths, colors)
 
     # Portfolio value ($)
     printrow(
