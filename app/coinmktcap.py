@@ -25,7 +25,7 @@ def get_markets():
         store = {}
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
-        db.markets.replace_one({'datetime':store['datetime']}, store, upsert=True)
+        db.coinmktcap_markets.replace_one({'datetime':store['datetime']}, store, upsert=True)
 
     log.info("Received in %ss" % t1.clock())
 
@@ -62,4 +62,4 @@ def get_tickers(start, limit):
             except Exception as e:
                 log.exception("Error in field=%s, val=%s", f["from"], ticker[f["from"]])
                 continue
-        db.tickers.replace_one({'symbol':store['symbol']}, store, upsert=True)
+        db.coinmktcap_tickers.replace_one({'symbol':store['symbol']}, store, upsert=True)

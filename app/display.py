@@ -18,7 +18,7 @@ def markets(stdscr):
 
     stdscr.clear()
     indent=2
-    mktdata = list(db.markets.find().sort('_id',-1))
+    mktdata = list(db.coinmktcap_markets.find().sort('_id',-1))
     if len(mktdata) == 0:
         log.info("db.markets empty. Waiting on thread...")
         return False
@@ -59,36 +59,40 @@ def watchlist(stdscr):
     hdr = ["Rank", "Symbol", "Price", "1h", "24h", "7d", "Mcap", "24h Vol"]
     rows = []
     indent=2
-
-    stdscr.clear()
-    watchlist = db.watchlist.find()
+    watchlist = db.user_watchlist.find()
+    tickers = list(db.coinmktcap_tickers.find())
 
     for watch in watchlist:
-        for coin in db.tickers.find():
-            if coin['id'] != watch['id']: continue
+        for tckr in tickers:
+            if tckr['id'] != watch['id']: continue
             rows.append([
-                coin['rank'],
-                coin['symbol'],
-                Money(coin['price_cad'],'CAD').format('en_US', '$###,###'),
-                coin["pct_1h"],
-                coin["pct_24h"],
-                coin["pct_7d"],
-                pretty(coin['mktcap_cad'], t="money"),
-                pretty(coin['vol_24h_cad'], t="money")
+                tckr['rank'],
+                tckr['symbol'],
+                Money(tckr['price_cad'],'CAD').format('en_US', '$###,###'),
+                tckr["pct_1h"],
+                tckr["pct_24h"],
+                tckr["pct_7d"],
+                pretty(tckr['mktcap_cad'], t="money", abbr=True),
+                pretty(tckr['vol_24h_cad'], t="money", abbr=True)
             ])
 
     # Temp
-    btcfinex = list(db.bitfinex_tickers.find().limit(1).sort('_id',-1))[0]
-    rows.append([
-        1, "BTC_BITFNX",
-        Money(btcfinex["price_cad"],'CAD').format('en_US','$###,###'), 0.0,
-        btcfinex["pct_24h"], 0.0, "", pretty(btcfinex["vol_24h_cad"],t="money")
-    ])
+    btcfinex = list(db.bitfinex_tickers.find().sort('_id',-1).limit(1))
+    if len(btcfinex) > 0:
+        btcfinex = btcfinex[0]
+        rows.append([
+            1, "BTC_BITFNX",
+            Money(btcfinex["price_cad"],'CAD').format('en_US','$###,###'), 0.0,
+            btcfinex["pct_24h"], 0.0, "",
+            pretty(btcfinex["vol_24h_cad"],t="money", abbr=True)
+        ])
 
     colwidths = _colsizes(hdr, rows)
 
+    stdscr.clear()
+
     # Print Top row
-    mktdata = list(db.markets.find().limit(1).sort('_id',-1))[0]
+    mktdata = list(db.coinmktcap_markets.find().limit(1).sort('_id',-1))[0]
     updated = "Updated %s" % mktdata['datetime'].strftime("%I:%M %p")
     stdscr.addstr(1, indent, "Watchlist (%s)" % cur.upper())
     stdscr.addstr(1, stdscr.getmaxyx()[1] - len(updated) -2, updated)
@@ -110,92 +114,71 @@ def portfolio(stdscr):
     hdr = ['Rank', 'Symbol', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
     indent = 2
     total = 0.0
-
-    stdscr.clear()
-    portfolio = db.portfolio.find()
-    rows = []
-    profit = Money(0.0, cur.upper())
+    portfolio = db.user_portfolio.find()
+    datarows = []
+    profit = 0
 
     # Build table data
+    tickers = list(db.coinmktcap_tickers.find())
     for hold in portfolio:
-        for coin in db.tickers.find():
-            if coin['symbol'] != hold['symbol']: continue
-            value = round(hold['amount'] * coin['price_cad'], 2)
+        for tckr in tickers:
+            if tckr['symbol'] != hold['symbol']:
+                continue
+
+            value = round(hold['amount'] * tckr['price_cad'], 2)
+            profit += (tckr['pct_24h'] / 100) * value
             total += value
-            profit += Decimal((coin['pct_24h']/100) * value)
-            rows.append([
-                coin['rank'],
-                coin['symbol'],
-                pretty(coin['price_cad'], t="money"),
-                pretty(coin['mktcap_cad'], t="money"),
-                hold['amount'],
-                pretty(Money(value,'CAD'), t="money"),
-                "",
-                pretty(coin["pct_1h"], t="pct", f="sign"),
-                pretty(coin["pct_24h"], t="pct", f="sign"),
-                pretty(coin["pct_7d"], t="pct", f="sign")
+
+            datarows.append([
+                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), round(tckr['mktcap_cad'],2),
+                hold['amount'], value, None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"]
             ])
-    colwidths = _colsizes(hdr, rows)
 
-    rows = sorted(rows, key=lambda x: int(x[5]))[::-1]
-    total = Money(total, cur.upper())
+    # Calculate porfolio %
+    for datarow in datarows:
+        datarow[6] = round((float(datarow[5]) / total)*100, 2)
+    # Sort by holding %
+    datarows = sorted(datarows, key=lambda x: int(x[5]))[::-1]
 
-    """-------------code snippet-----------------------
-    # Print Top row
-    mktdata = list(db.markets.find().limit(1).sort('_id',-1))[0]
-    updated = "Updated %s" % datetime.fromtimestamp(mktdata['timestamp']).strftime("%I:%M %p")
-    stdscr.addstr(1, indent, "Watchlist (%s)" % cur.upper())
-    stdscr.addstr(1, stdscr.getmaxyx()[1] - len(updated) -2, updated)
+    strrows = []
+    for datarow in datarows:
+        strrows.append([
+            datarow[0],
+            datarow[1],
+            pretty(datarow[2], t='money'),
+            pretty(datarow[3], t='money', abbr=True),
+            pretty(datarow[4], abbr=True),
+            pretty(datarow[5], t='money'),
+            pretty(datarow[6], t='pct'),
+            pretty(datarow[7], t='pct', f='sign'),
+            pretty(datarow[8], t='pct', f='sign'),
+            pretty(datarow[9], t='pct', f='sign')
+        ])
+    colwidths = _colsizes(hdr, strrows)
 
-    # Print Header row
+    stdscr.clear()
+
+    # Print title Row
+    stdscr.addstr(1, indent, "Portfolio (%s)" % cur.upper())
+    dt = tickers[0]["datetime"].strftime("%I:%M %p")
+    stdscr.addstr(1, stdscr.getmaxyx()[1] - len(dt) -2, dt)
+
+    # Print datatable
     printrow(stdscr, 3, hdr, colwidths, [c.WHITE for n in hdr])
+    for y in range(0,len(strrows)):
+        strrow = strrows[y]
+        colors = [c.BOLD for x in range(0,7)] + [pnlcolor(strrow[n]) for n in range(7,10)]
+        printrow(stdscr, y+4, strrow, colwidths, colors)
 
-    # Print Data rows
-    for n in range(0, len(rows)):
-        row = rows[n]
-        colors = [c.BOLD, c.BOLD, c.BOLD, pnlcolor(row[3]), pnlcolor(row[4]), pnlcolor(row[5]), c.BOLD, c.BOLD]
-        printrow(stdscr, n+4, row, colwidths, colors)
+    # Portfolio value ($)
+    printrow(
+        stdscr,
+        stdscr.getyx()[0]+2,
+        [ "Total: ", pretty(total, t='money'), ' (', pretty(int(profit), t="money", f='sign', d=0), ')' ],
+        [ 0,0,0,0,0 ],
+        [ c.WHITE, c.BOLD, c.WHITE, pnlcolor(profit), c.WHITE ])
 
     # Print footer
-    footer(stdscr)
-    ---------------------------------------------"""
-
-    for row in rows:
-        row[6] = str(round((row[5] / total) * 100, 2)) + '%'
-        row[2] = row[2].format('en_US', '$###,###')
-        row[5] = row[5].format('en_US', '$###,###')
-        widths = [max(widths[n], get_width(row[n])) for n in range(0,len(row))]
-
-    stdscr.addstr(1, indent, "Portfolio (%s)" % cur.upper())
-    scr_height,scr_width = stdscr.getmaxyx()
-    mktdata = list(db.markets.find().limit(1).sort('_id',-1))[0]
-    updated = "Updated %s" % mktdata['datetime'].strftime("%I:%M %p")
-    stdscr.addstr(1, scr_width - len(updated) -2, updated)
-    #stdscr.addstr(3, indent, "".join(justify(hdr[n], widths[n]+2) for n in range(0,len(hdr))))
-    y = 4
-    for row in rows:
-        x = 2
-        for col_idx in range(0, len(row)): #width in widths:
-            val = row[col_idx]
-            if col_idx in [7,8,9]:
-                stdscr.addstr(y, x, "%s%s" %("+" if val > 0 else "", str(val)+"%"), c.GREEN if val>0 else c.RED)
-                x += 1
-            else:
-                stdscr.addstr(y, x, str(val), c.BOLD)
-            x += widths[col_idx] +2
-        y += 1
-    # Total portfolio value
-    stdscr.addstr(y+1, indent, "$%s" % total.format('en_US', '###,###'), c.BOLD)
-    # 24h profit/loss
-    curs = stdscr.getyx()
-    stdscr.addstr(curs[0], curs[1]+1, "(")
-    curs = stdscr.getyx()
-    stdscr.addstr(curs[0], curs[1], "%s%s" %(
-        "+" if profit.amount > 0 else "",
-        profit.format('en_US', '$###,###')),
-        c.GREEN if profit.amount > 0 else c.RED)
-    curs = stdscr.getyx()
-    stdscr.addstr(curs[0], curs[1], ")")
     footer(stdscr)
 
 #----------------------------------------------------------------------
@@ -218,47 +201,47 @@ def printrow(stdscr, y, datarow, colsizes, colors):
     for idx in range(0, len(datarow)):
         stdscr.addstr(
             y,
-            stdscr.getyx()[1]+1,
-            str(datarow[idx]).ljust(colsizes[idx]+2),
+            stdscr.getyx()[1],#+1,
+            str(datarow[idx]).ljust(colsizes[idx]),
             colors[idx])
 
 #----------------------------------------------------------------------
-def pretty(number, t=None, f=None):
+def pretty(number, t=None, f=None, abbr=None, d=None):
     """Convert Decimal and floats to human readable strings
     @t: "pct", "money"
-    @f: "signed"
+    @f: "sign"
     """
     head = ""
     tail = ""
+    decimal = d if d else 2
 
-    # TODO: Add comma's every 3 chars for large numbers
+    if abbr == True:
+        if isinstance(number, Decimal):
+            exp = number.adjusted()
+        else:
+            number = round(number, 2)
+            exp = len(str(int(number))) - 1
 
-    if isinstance(number, Decimal):
-        number = float(number)
-        exp = number.adjusted()
-    elif type(number) == float or type(number) == int:
-        number = round(number, 2)
-        exp = len(str(int(number))) - 1
+        if exp in range(0,3):
+            strval = str(number)
+        elif exp in range(3,6):
+            strval = "%s%s" %(round(number/pow(10,3), 2), 'K')
+        elif exp in range(6,9):
+            strval = "%s%s" %(round(number/pow(10,6), 2), 'M')
+        elif exp in range(9,12):
+            strval = "%s%s" %(round(number/pow(10,9), 2), 'B')
+        elif exp in range(12,15):
+            strval = "%s%s" %(round(number/pow(10,12), 2), 'T')
+    # Full length number w/ comma separators
+    else:
+        strval = "{:,}".format(round(number,decimal))
 
-    if f == 'signed':
+    if f == 'sign':
         head += "+" if number > 0 else ""
 
     if t == "money":
         head += "$"
-
-    if exp in range(0,3):
-        strval = str(number)
-    elif exp in range(3,6):
-        strval = "%s%s" %(round(number/pow(10,3),2), 'thousand')
-        tail += " thousand"
-    elif exp in range(6,9):
-        strval = "%s%s" %(round(number/pow(10,6),2), 'M')
-    elif exp in range(9,12):
-        strval = "%s%s" %(round(number/pow(10,9),2), 'B')
-    elif exp in range(12,15):
-        strval = "%s%s" %(round(number/pow(10,12),2), 'T')
-
-    if t == "pct":
+    elif t == "pct":
         tail += "%"
 
     return "%s%s%s" %(head, strval, tail)
@@ -300,7 +283,8 @@ def set_colors(stdscr):
 
 #-----------------------------------------------------------------------------
 def _colsizes(hdr, rows):
-    widths = [len(n) for n in hdr]
+    colspace = 3
+    widths = [len(str(n)) for n in hdr]
     for row in rows:
-        widths = [max(widths[n], len(str(row[n]))) for n in range(0,len(row))]
+        widths = [max(widths[n], len(str(row[n]))+colspace) for n in range(0,len(row))]
     return widths

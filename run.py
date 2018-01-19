@@ -74,7 +74,7 @@ def wss_app():
     wss_unsub()
 
 #----------------------------------------------------------------------
-def setup_db(collection, data):
+def update_db(collection, data):
     # Initialize if collection empty
     if db[collection].find().count() == 0:
         for item in data:
@@ -139,8 +139,8 @@ def main(stdscr):
     log.info("Crypfolio running!")
 
     user_data = json.load(open('data.json'))
-    setup_db('watchlist', user_data['watchlist'])
-    setup_db('portfolio', user_data['portfolio'])
+    update_db('user_watchlist', user_data['watchlist'])
+    update_db('user_portfolio', user_data['portfolio'])
 
     wss_thread = threading.Thread(name="WssThread", target=wss_app)
     wss_thread.setDaemon(True)
