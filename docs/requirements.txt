@@ -10,3 +10,4 @@ getch
 money
 pycurl
 pymongo
+pandas

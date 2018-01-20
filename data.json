@@ -1,6 +1,7 @@
 {
     "watchlist": [
-        { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"}
+        { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"},
+        { "id":"singularitynet", "name":"SingularityNET", "symbol":"AGI"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},

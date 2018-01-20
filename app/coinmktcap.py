@@ -30,12 +30,13 @@ def get_markets():
     log.info("Received in %ss" % t1.clock())
 
 #---------------------------------------------------------------------------
-def get_tickers(start, limit):
+def get_tickers(start, limit=None):
     chunk_size = 100
     idx = start
-    results = []
+    #results = []
     t = Timer()
-    c = pycurl.Curl()
+
+    """c = pycurl.Curl()
     c.setopt(c.COOKIEFILE, '')
     #c.setopt(c.VERBOSE, True)
 
@@ -49,17 +50,26 @@ def get_tickers(start, limit):
         c.perform()
         results += json.loads(data.getvalue().decode('utf-8'))
         idx += chunk_size
+    """
 
-    log.info("%s ticker symbols rec'd in %ss", len(results), t.clock())
+    try:
+        uri = "https://api.coinmarketcap.com/v1/ticker/?start=%s&limit=%s&convert=%s" %(
+            idx, limit or 1500, 'cad')
+        results = json.loads(requests.get(uri).text)
+    except Exception as e:
+        log.exception("Failed to get cmc ticker: %s", str(e))
+        return False
 
     for ticker in results:
         store={}
-        ticker['last_updated'] = float(ticker['last_updated'])
+        ticker['last_updated'] = float(ticker['last_updated']) if ticker.get('last_updated') else None
         for f in CMC_TICKERS:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None
             except Exception as e:
-                log.exception("Error in field=%s, val=%s", f["from"], ticker[f["from"]])
+                log.exception("%s error in '%s' field: %s", ticker['symbol'], f["from"], str(e))
                 continue
         db.coinmktcap_tickers.replace_one({'symbol':store['symbol']}, store, upsert=True)
+
+    log.info("%s ticker symbols rec'd in %ss", len(results), t.clock())

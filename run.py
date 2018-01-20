@@ -2,7 +2,7 @@ import curses, json, logging, requests, signal, time, threading
 from curses import wrapper
 from datetime import datetime
 from app.timer import Timer
-from app import display, db
+from app import analyze, display, db
 from app.coinmktcap import get_markets, get_tickers
 from config import *
 
@@ -33,7 +33,7 @@ def update_db(collection, data):
 def update_data():
     while True:
         log.info('Updating tickers...')
-        get_tickers(0,700)
+        get_tickers(0,1500)
         log.info('Updating markets...')
         get_markets()
         log.info('Sleeping 60s...')
@@ -106,6 +106,8 @@ def main(stdscr):
             timer.restart()
             fn_show = display.watchlist
             fn_show(stdscr)
+        elif ch == ord('d'):
+            analyze.mktcap()
         elif ch == ord('q'):
             log.info('Shutting down queue')
             break
