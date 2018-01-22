@@ -16,7 +16,7 @@ class c:
 def markets(stdscr):
     colspace=3
     indent=2
-    hdr = ['Market Cap', '24h Volume', 'BTC Dominance', 'Markets', 'Currencies', 'Assets', '1h']
+    hdr = ['Market Cap', '24h Volume', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h']
 
     mktdata = list(db.coinmktcap_markets.find().limit(1).sort('_id',-1))
     if len(mktdata) == 0:
@@ -32,25 +32,25 @@ def markets(stdscr):
             pretty(mkt['n_markets']),
             pretty(mkt['n_currencies']),
             pretty(mkt['n_assets']),
-            pretty(analyze.mktcap(), t="pct")
+            pretty(analyze.mktcap_diff('1H'), t="pct", f="sign"),
+            pretty(analyze.mktcap_diff('1D'), t="pct", f="sign")
         ])
     colwidths = _colsizes(hdr, strrows)
 
     stdscr.clear()
     # Print Title row
-    stdscr.addstr(1, indent, "Global (%s)" % cur.upper())
+    stdscr.addstr(0, indent, "Global (%s)" % cur.upper())
     dt = mktdata[0]["datetime"].strftime("%I:%M %p")
-    stdscr.addstr(1, stdscr.getmaxyx()[1] - len(dt) -2, dt)
+    stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
     # Print Datatable
-    printrow(stdscr, 3, hdr, colwidths, [c.WHITE for n in hdr], colspace)
-    divider(stdscr, 4, colwidths, colspace)
+    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
+    divider(stdscr, 3, colwidths, colspace)
     for i in range(0, len(strrows)):
-        printrow(
-            stdscr, i+5, strrows[i], colwidths,
-            [c.BOLD for col in range(0,len(strrows[i])-1)] + [pnlcolor(strrows[i][6])],
-            colspace)
+        row = strrows[i]
+        colors = [c.WHITE for n in range(0,6)] + [pnlcolor(row[n]) for n in range(6,8)]
+        printrow(stdscr, i+4, row, colwidths, colors, colspace)
     # Print footer
-    footer(stdscr)
+    #footer(stdscr)
 
 #----------------------------------------------------------------------
 def watchlist(stdscr):
@@ -83,20 +83,20 @@ def watchlist(stdscr):
     stdscr.clear()
 
     # Print Title row
-    stdscr.addstr(1, indent, "Watchlist (%s)" % cur.upper())
+    stdscr.addstr(0, indent, "Watchlist (%s)" % cur.upper())
     dt = tickers[0]["datetime"].strftime("%I:%M %p")
-    stdscr.addstr(1, stdscr.getmaxyx()[1] - len(dt) -2, dt)
+    stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
     # Print Datatable
-    printrow(stdscr, 3, hdr, colwidths, [c.WHITE for n in hdr], colspace)
-    divider(stdscr, 4, colwidths, colspace)
+    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
+    divider(stdscr, 3, colwidths, colspace)
     for n in range(0, len(strrows)):
         row = strrows[n]
-        colors = [c.BOLD, c.BOLD, c.BOLD, c.BOLD, c.BOLD, pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7])]
-        printrow(stdscr, n+5, row, colwidths, colors, colspace)
+        colors = [c.WHITE, c.WHITE, c.WHITE, c.WHITE, c.WHITE, pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7])]
+        printrow(stdscr, n+4, row, colwidths, colors, colspace)
 
     # Print footer
-    footer(stdscr)
+    #footer(stdscr)
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
@@ -119,7 +119,7 @@ def portfolio(stdscr):
             total += value
 
             datarows.append([
-                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), round(tckr['mktcap_cad'],2),
+                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), tckr['mktcap_cad'],
                 hold['amount'], value, None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"]
             ])
 
@@ -148,18 +148,18 @@ def portfolio(stdscr):
     stdscr.clear()
 
     # Print title Row
-    stdscr.addstr(1, indent, "Portfolio (%s)" % cur.upper())
+    stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
     dt = tickers[0]["datetime"].strftime("%I:%M %p")
-    stdscr.addstr(1, stdscr.getmaxyx()[1] - len(dt) -2, dt)
+    stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
     # Print Datatable
     colspace=3
-    printrow(stdscr, 3, hdr, colwidths, [c.WHITE for n in hdr], colspace=3)
-    divider(stdscr, 4, colwidths, colspace)
+    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace=3)
+    divider(stdscr, 3, colwidths, colspace)
     for y in range(0,len(strrows)):
         strrow = strrows[y]
-        colors = [c.BOLD for x in range(0,7)] + [pnlcolor(strrow[n]) for n in range(7,10)]
-        printrow(stdscr, y+5, strrow, colwidths, colors, colspace=3)
+        colors = [c.WHITE for x in range(0,7)] + [pnlcolor(strrow[n]) for n in range(7,10)]
+        printrow(stdscr, y+4, strrow, colwidths, colors, colspace=3)
 
     # Portfolio value ($)
     printrow(
@@ -170,7 +170,7 @@ def portfolio(stdscr):
         [ c.WHITE, c.BOLD, c.WHITE, pnlcolor(profit), c.WHITE ])
 
     # Print footer
-    footer(stdscr)
+    #footer(stdscr)
 
 #----------------------------------------------------------------------
 def printrow(stdscr, y, datarow, colsizes, colors, colspace=2):

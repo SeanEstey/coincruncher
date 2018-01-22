@@ -1,25 +1,34 @@
 import logging
+from datetime import datetime, timedelta
 import pandas as pd
 from app import db
 log = logging.getLogger(__name__)
 
+#------------------------------------------------------------------------------
+def mktcap_resample(freq):
+    """@freq: '1H', '1D', '7D'
+    """
+    if freq == '1H':
+        from_dt = datetime.now() - timedelta(hours=1)
+    elif freq == '1D':
+        from_dt = datetime.now() - timedelta(hours=24)
+    else:
+        print("unknown freq %s" % freq)
 
-def mktcap():
-     mktcaps = db.coinmktcap_markets.find()#.sort('_id',-1)
-     df = pd.DataFrame(list(mktcaps))
-     del df['_id']
-     # TODO: Filter results from past 24 hrs only
-     df.index = df['datetime']
-     df['hour'] = [ts.hour for ts in df.index]
-     df.groupby('hour').mean()
+    mktcaps = db.coinmktcap_markets.find(
+        {'datetime':{'$gte':from_dt}},
+        {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
 
-     mkt_hourly = list(df['mktcap_cad'])
+    df = pd.DataFrame(list(mktcaps))
+    df.index = df['datetime']
+    del df['datetime']
+    df = df.resample(freq).mean()
+    return df
 
-     log.info("mkt_hourly=%s", mkt_hourly)
-
-     mkt_1h_diff = (mkt_hourly[-1] - mkt_hourly[-2])/mkt_hourly[-2] * 100
-     mkt_1h_diff = round(mkt_1h_diff, 2)
-
-     log.info("mkt_1h=%s", mkt_1h_diff)
-
-     return mkt_1h_diff
+#------------------------------------------------------------------------------
+def mktcap_diff(freq):
+    """@freq: '1H', '1D', '7D'
+    """
+    caps = list(mktcap_resample(freq)['mktcap_cad'])
+    diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
+    return diff
