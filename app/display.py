@@ -116,7 +116,7 @@ def portfolio(stdscr):
                 continue
 
             value = round(hold['amount'] * tckr['price_cad'], 2)
-            profit += (tckr['pct_24h'] / 100) * value
+            profit += (tckr['pct_24h']/ 100) * value if tckr['pct_24h'] else 0.0
             total += value
 
             datarows.append([
