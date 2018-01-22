@@ -16,7 +16,7 @@ class c:
 def markets(stdscr):
     colspace=3
     indent=2
-    hdr = ['Market Cap', '24h Volume', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h']
+    hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h']
 
     mktdata = list(db.coinmktcap_markets.find().limit(1).sort('_id',-1))
     if len(mktdata) == 0:
@@ -70,7 +70,7 @@ def watchlist(stdscr):
             if tckr['id'] != watch['id']:
                 continue
             strrows.append([
-                str(tckr["rank"]),
+                tckr["rank"],
                 tckr["symbol"],
                 pretty(tckr["price_cad"], t='money'),
                 pretty(tckr["mktcap_cad"], t='money', abbr=True),
@@ -80,6 +80,7 @@ def watchlist(stdscr):
                 pretty(tckr["pct_7d"], t='pct', f='sign')
             ])
     colwidths = _colsizes(hdr, strrows)
+    strrows = sorted(strrows, key=lambda x: int(x[0])) #[::-1]
     stdscr.clear()
 
     # Print Title row
@@ -100,7 +101,7 @@ def watchlist(stdscr):
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
-    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Amount', 'Value', 'Portion', '1h', '24h', '7d']
+    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
     indent = 2
     total = 0.0
     portfolio = db.user_portfolio.find()

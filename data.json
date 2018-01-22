@@ -1,13 +1,17 @@
 {
     "watchlist": [
-        { "id":"bitcoin", "name":"Bitcoin", "symbol":"BTC"},
-        { "id":"chainlink", "name":"Chainlink", "symbol":"LINK"},
-        { "id":"eidoo", "symbol":"EDO", "amount":209.17},
-        { "id":"nuls", "symbol":"NULS", "amount":200.0}
+        { "id":"bitcoin", "symbol":"BTC"},
+        { "id":"ripple", "symbol":"XRP"},
+        { "id":"tether", "symbol":"USDT"},
+        { "id":"bitcoin-cash", "symbol":"BCH"},
+        { "id":"cardano", "symbol":"ADA"},
+        { "id":"iota", "symbol":"MIOTA"},
+        { "id":"eidoo", "symbol":"EDO"},
+	{ "id":"interstellar-holdings", "symbol":"HOLD"},
+        { "id":"nuls", "symbol":"NULS"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},
-        { "id":"binance-coin", "symbol":"BNB", "amount":17.69},
         { "id":"bounty0x", "symbol":"BNTY", "amount":6143.42},
         { "id":"burst", "symbol":"BURST", "amount":29498.22},
         { "id":"chainlink", "symbol":"LINK", "amount":1742.0},
