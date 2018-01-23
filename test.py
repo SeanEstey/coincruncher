@@ -1,5 +1,5 @@
 # https://github.com/Crypto-toolbox/bitex
-
+import time
 from json import loads
 from pprint import pprint
 from bitex import QuadrigaCX, Bitfinex, Binance
@@ -14,9 +14,15 @@ def get_binance_tickers():
     print(json.loads(ticker.text))
 
 def get_quadcx_tickers():
+    from bitex import QuadrigaCX
     quadcx = QuadrigaCX()
     pprint(quadcx._get_supported_pairs())
     pprint(loads(quadcx.ticker('btc_cad').text))
+
+def get_quadcx_wss_tickers():
+    quadcx = QuadrigaCX()
+    #pprint(quadcx._get_supported_pairs())
+    #pprint(loads(quadcx.ticker('btc_cad').text))
 
 def get_bitfinex_tickers():
     bitfinex = Bitfinex()

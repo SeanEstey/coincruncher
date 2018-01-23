@@ -62,5 +62,5 @@ logging.basicConfig(
     ]
 )
 
-client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=False)
+client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=True)
 db = client[DB]

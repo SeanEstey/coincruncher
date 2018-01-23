@@ -1,6 +1,6 @@
-'''app.lib.mongo'''
 import logging, os, pymongo
 import config
+import db_auth
 log = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------

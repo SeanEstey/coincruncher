@@ -10,12 +10,11 @@
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},
         { "id":"bounty0x", "symbol":"BNTY", "amount":6143.42},
-        { "id":"burst", "symbol":"BURST", "amount":29498.22},
-        { "id":"chainlink", "symbol":"LINK", "amount":1742.0},
+        { "id":"chainlink", "symbol":"LINK", "amount":4605.0},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
         { "id":"ethereum", "symbol":"ETH", "amount":120.59},
-        { "id":"neo", "symbol":"NEO", "amount":90.00},
+        { "id":"neo", "symbol":"NEO", "amount":100.00},
         { "id":"omisego", "symbol":"OMG", "amount":77.2},
         { "id":"raiblocks", "symbol":"XRB", "amount":6700.0},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
@@ -23,7 +22,7 @@
         { "id":"siacoin", "symbol":"SC", "amount":124609.0},
         { "id":"singularitynet", "symbol":"AGI", "amount":4735.75},
         { "id":"spankchain", "symbol":"SPANK", "amount":15667.34},
-	{ "id":"trinity-network-credit", "symbol":"TNC", "amount":2927.59},
+        { "id":"trinity-network-credit", "symbol":"TNC", "amount":2927.59},
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"walton", "symbol":"WTC", "amount":100.00}
     ],

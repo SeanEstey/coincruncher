@@ -1,5 +1,5 @@
 import curses, json, logging, requests, signal, time, threading
-from curses import wrapper
+from curses import wrapper, KEY_UP, KEY_DOWN, KEY_ENTER
 from datetime import datetime
 from app.timer import Timer
 from app import analyze, display, db
@@ -108,6 +108,8 @@ def main(stdscr):
             fn_show(stdscr)
         elif ch == ord('d'):
             analyze.mktcap()
+        elif ch == KEY_UP or ch == KEY_DOWN or ch == KEY_ENTER:
+            log.info("Key up/down/enter")
         elif ch == ord('q'):
             log.info('Shutting down queue')
             break

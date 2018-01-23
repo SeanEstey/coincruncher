@@ -30,5 +30,7 @@ def mktcap_diff(freq):
     """@freq: '1H', '1D', '7D'
     """
     caps = list(mktcap_resample(freq)['mktcap_cad'])
+    if len(caps) < 2:
+        return 0.0
     diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
     return diff
