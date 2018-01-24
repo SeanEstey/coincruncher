@@ -27,7 +27,7 @@ def update_db(collection, data):
                 log.debug('Deleted %s symbol %s', collection, item['symbol'])
                 db[collection].delete_one({'_id':doc['_id']})
 
-    log.info("DB updated w/ user data")
+    log.info("Updated %s", collection)
 
 #----------------------------------------------------------------------
 def update_data():
@@ -67,11 +67,11 @@ def main(stdscr):
 
     setup(stdscr)
     log.info("--------------------------")
-    log.info("Crypfolio running!")
+    log.debug("Restarted")
 
     user_data = json.load(open('data.json'))
-    update_db('user_watchlist', user_data['watchlist'])
-    update_db('user_portfolio', user_data['portfolio'])
+    update_db('watchlist', user_data['watchlist'])
+    update_db('portfolio', user_data['portfolio'])
 
     data_thread = threading.Thread(name="DataThread", target=update_data)
     data_thread.setDaemon(True)

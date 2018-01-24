@@ -1,6 +1,6 @@
 # app.coinmktcap
-import logging, pycurl, requests, json, time
-from io import BytesIO
+import logging, requests, json, time
+from pymongo import ReplaceOne
 from .timer import Timer
 from config import CMC_MARKETS, CMC_TICKERS, CURRENCY as cur
 from app import db
@@ -12,7 +12,7 @@ log = logging.getLogger(__name__)
 
 #---------------------------------------------------------------------------
 def get_markets():
-    log.info('Requesting CMC markets')
+    #log.info('Requesting CMC markets')
     t1 = Timer()
 
     # Get CoinMarketCap market data
@@ -27,14 +27,12 @@ def get_markets():
         store = {}
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
-        db.coinmktcap_markets.replace_one({'datetime':store['datetime']}, store, upsert=True)
+        db.globaldata.replace_one({'date':store['date']}, store, upsert=True)
 
-    log.info("Received in %ss" % t1.clock())
+    log.info("Updated market data in %ss" % t1.clock())
 
 #------------------------------------------------------------------------------
 def get_tickers(start, limit=None):
-    log.info('Requesting CMC tickers')
-    chunk_size = 100
     idx = start
     t = Timer()
 
@@ -47,6 +45,7 @@ def get_tickers(start, limit=None):
         log.exception("Failed to get cmc ticker: %s", str(e))
         return False
 
+    ops = []
     for ticker in results:
         store={}
         ticker['last_updated'] = float(ticker['last_updated']) if ticker.get('last_updated') else None
@@ -57,6 +56,9 @@ def get_tickers(start, limit=None):
             except Exception as e:
                 log.exception("%s error in '%s' field: %s", ticker['symbol'], f["from"], str(e))
                 continue
-        db.coinmktcap_tickers.replace_one({'symbol':store['symbol']}, store, upsert=True)
+        #db.tickerdata.replace_one({'symbol':store['symbol']}, store, upsert=True)
+        ops.append(ReplaceOne({'symbol':store['symbol']}, store, upsert=True))
 
-    log.info("%s ticker symbols rec'd in %ss", len(results), t.clock())
+    result = db.tickerdata.bulk_write(ops)
+
+    log.info("Updated %s tickers in %ss", len(results), t.clock())

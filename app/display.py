@@ -18,9 +18,9 @@ def markets(stdscr):
     indent=2
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h', '7d']
 
-    mktdata = list(db.coinmktcap_markets.find().limit(1).sort('datetime',-1))
+    mktdata = list(db.globaldata.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
-        log.info("db.coinmktcap_markets empty")
+        log.info("db.globaldata empty")
         return False
 
     strrows=[]
@@ -41,7 +41,7 @@ def markets(stdscr):
     stdscr.clear()
     # Print Title row
     stdscr.addstr(0, indent, "Global (%s)" % cur.upper())
-    dt = mktdata[0]["datetime"].strftime("%I:%M %p")
+    dt = mktdata[0]["date"].strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
     # Print Datatable
     printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
@@ -58,8 +58,8 @@ def watchlist(stdscr):
     hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1h", "24h", "7d"]
     indent=2
     colspace=3
-    watchlist = db.user_watchlist.find()
-    tickers = list(db.coinmktcap_tickers.find())
+    watchlist = db.watchlist.find()
+    tickers = list(db.tickerdata.find())
 
     if len(tickers) == 0:
         log.error("coinmktcap collection empty")
@@ -86,7 +86,7 @@ def watchlist(stdscr):
 
     # Print Title row
     stdscr.addstr(0, indent, "Watchlist (%s)" % cur.upper())
-    dt = tickers[0]["datetime"].strftime("%I:%M %p")
+    dt = tickers[0]["date"].strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
     # Print Datatable
@@ -105,12 +105,12 @@ def portfolio(stdscr):
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
     indent = 2
     total = 0.0
-    portfolio = db.user_portfolio.find()
+    portfolio = db.portfolio.find()
     datarows = []
     profit = 0
 
     # Build table data
-    tickers = list(db.coinmktcap_tickers.find())
+    tickers = list(db.tickerdata.find())
     for hold in portfolio:
         for tckr in tickers:
             if tckr['symbol'] != hold['symbol']:
@@ -151,7 +151,7 @@ def portfolio(stdscr):
 
     # Print title Row
     stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
-    dt = tickers[0]["datetime"].strftime("%I:%M %p")
+    dt = tickers[0]["date"].strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
     # Print Datatable

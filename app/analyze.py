@@ -1,8 +1,30 @@
 import logging, pytz
 from datetime import datetime, timedelta
+from pprint import pprint
 import pandas as pd
 from app import db
 log = logging.getLogger(__name__)
+
+def append_globaldata_hist():
+
+    # Group by date, get closing mktcap/volume
+    results = db.globaldata.aggregate([
+        {"$match":{}},
+        {"$group": {
+            # Compound key
+            "_id": {
+                "day": { "$dayOfYear": "$date" }
+                #"hour": { "$hour": "$date" }
+            },
+            "volume": { "$avg": "$vol_24h_cad"}
+        }}
+        #"date": { "$max":"$date" },
+        # "mktcap": {"$last":"$mktcap_cad"},
+        # "vol_24h": {"$last":"$vol_24h_cad"}
+    ])
+
+    return results
+    # Append
 
 #------------------------------------------------------------------------------
 def mcap_diff(period, convert=None):
@@ -24,8 +46,8 @@ def mcap_diff(period, convert=None):
         dt = now - timedelta(days=365*n)
 
     mkts = [
-        list(db.coinmktcap_markets.find({"datetime":{"$gte":dt}}).sort("datetime",1).limit(1)),
-        list(db.coinmktcap_markets.find({}).sort("datetime", -1).limit(1))
+        list(db.globaldata.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
+        list(db.globaldata.find({}).sort("date", -1).limit(1))
     ]
 
     for m in  mkts:
@@ -35,17 +57,17 @@ def mcap_diff(period, convert=None):
     mkts[0] = mkts[0][0]
     mkts[1] = mkts[1][0]
 
-    dt_diff = round((mkts[0]['datetime'] - dt).total_seconds() / 3600, 2)
+    dt_diff = round((mkts[0]['date'] - dt).total_seconds() / 3600, 2)
     if dt_diff > 1:
-        log.debug("No match found for period=\"%s\". Closest record: dt=%s, tdelta=%s hrs",
-            period, mkts[0]['datetime'], dt_diff)
+        log.debug("No match found for period=\"%s\". Closest: dt=%s, tdelta=%s hrs",
+            period, mkts[0]['date'], dt_diff)
         return "--" #0.0
 
     diff = mkts[1]['mktcap_cad'] - mkts[0]['mktcap_cad']
     pct = round((diff / mkts[0]['mktcap_cad']) * 100, 2)
 
     log.debug("mcap_diff=${:,} ({}%) for period={} (dt={})".format(
-        diff, pct, period, mkts[0]['datetime']))
+        diff, pct, period, mkts[0]['date']))
 
     return pct if convert == 'pct' else diff
 
@@ -66,13 +88,13 @@ def mktcap_resample(freq):
     elif unit == 'Y':
         from_dt = now - timedelta(days=365*n)
 
-    results = db.coinmktcap_markets.find(
-        {'datetime':{'$gte':from_dt}},
+    results = db.globaldata.find(
+        {'date':{'$gte':from_dt}},
         {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
 
     df = pd.DataFrame(list(results))
-    df.index = df['datetime']
-    del df['datetime']
+    df.index = df['date']
+    del df['date']
     df = df.resample(freq).mean()
     return df
 
