@@ -2,7 +2,7 @@ import curses, json, logging, requests, signal, time, threading
 from curses import wrapper, KEY_UP, KEY_DOWN, KEY_ENTER
 from datetime import datetime
 from app.timer import Timer
-from app import analyze, display, db
+from app import analyze, display, db, views
 from app.coinmktcap import get_markets, get_tickers
 from config import *
 
@@ -80,7 +80,7 @@ def main(stdscr):
     refresh_delay = 5
     timer = Timer()
 
-    fn_show = display.watchlist
+    fn_show = views.watchlist
     fn_show(stdscr)
 
     while True:
@@ -93,18 +93,20 @@ def main(stdscr):
 
         if ch == ord('p'):
             timer.restart()
-            fn_show = display.portfolio
+            fn_show = views.portfolio
             fn_show(stdscr)
         elif ch == ord('m'):
             timer.restart()
-            fn_show = display.markets
+            fn_show = views.markets
             fn_show(stdscr)
         elif ch == ord('w'):
             timer.restart()
-            fn_show = display.watchlist
+            fn_show = views.watchlist
             fn_show(stdscr)
         elif ch == ord('d'):
-            analyze.mktcap()
+            timer.restart()
+            fn_show = views.history
+            fn_show(stdscr)
         elif ch == KEY_UP or ch == KEY_DOWN or ch == KEY_ENTER:
             log.info("Key up/down/enter")
         elif ch == ord('q'):

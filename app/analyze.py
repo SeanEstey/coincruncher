@@ -5,8 +5,8 @@ import pandas as pd
 from app import db
 log = logging.getLogger(__name__)
 
+#------------------------------------------------------------------------------
 def append_globaldata_hist():
-
     # Group by date, get closing mktcap/volume
     results = db.globaldata.aggregate([
         {"$match":{}},
@@ -22,9 +22,7 @@ def append_globaldata_hist():
         # "mktcap": {"$last":"$mktcap_cad"},
         # "vol_24h": {"$last":"$vol_24h_cad"}
     ])
-
     return results
-    # Append
 
 #------------------------------------------------------------------------------
 def mcap_diff(period, convert=None):
