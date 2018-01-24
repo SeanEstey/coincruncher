@@ -1,84 +1,68 @@
 # For deprecated btfxwss websocket package
-
-from btfxwss import BtfxWss
-wss = None
+import threading, logging, time, requests
+from queue import Queue
+from app.timer import Timer
+logging.getLogger("requests").setLevel(logging.ERROR)
 ticker_q = None
+log = logging.getLogger(__name__)
 
+class DataFetcher(object):
+    """ Threading example class
+    The run() method will be started and it will run in the background
+    until the application exits.
+    """
 
-#-------------------------------------------------------------------------------
-def wss_init():
-    global wss
-    wss = BtfxWss()
-    wss.start()
+    def __init__(self, name, interval=1):
+        """ Constructor
+        :type interval: int
+        :param interval: Check interval, in seconds
+        """
+        self.interval = interval
+        self.name = name
 
-    while not wss.conn.connected.is_set():
-        time.sleep(1)
+        self.thread = threading.Thread(target=self.run, name=name, args=())
+        self.thread.daemon = True                            # Daemonize thread
+        self.thread.start()                                  # Start the execution
 
-    log.info("wss initialized")
-    # Subscribe to some channels
-    wss.subscribe_to_ticker('BTCUSD')
-    time.sleep(8)
+    def run(self):
+        """ Method that runs forever """
+        while True:
 
-#-------------------------------------------------------------------------------
-def wss_listen():
-    global wss, ticker_q
-    usd_to_cad = 1.2444
+            response = requests.get("https://www.google.ca")
+            log.info("Adding data to queue")
+            ticker_q.put("From %s" % self.name) #response.text)
 
-    while True:
-        # Accessing data stored in BtfxWss:
-        try:
-            ticker_q = wss.tickers('BTCUSD')  # returns a Queue object for the pair.
-        except Exception as e:
-            log.exception("Error getting wss ticker")
-            break
-
-        while not ticker_q.empty():
-            try:
-                tick = ticker_q.get()
-            except Exception as e:
-                log.exception("Error getting queue item")
-                return False
-            else:
-                if tick is None:
-                    log.info("None found in queue. Exiting")
-                    return False
-
-            btcusd = tick[0][0]
-            db.bitfinex_tickers.insert_one({
-                "price_cad": round(btcusd[6] * usd_to_cad, 2),
-                "vol_24h_cad": round(btcusd[7] * btcusd[6] * usd_to_cad, 2),
-                "pct_24h": round(btcusd[5] * 100, 2),
-                "datetime": datetime.fromtimestamp(tick[1])
-            })
-            log.info("Wss ticker saved")
-
-        time.sleep(0.1)
-
-#-------------------------------------------------------------------------------
-def wss_unsub():
-    global wss
-    wss.unsubscribe_from_ticker('BTCUSD')
-    # Shutting down the client:
-    wss.stop()
+            time.sleep(self.interval)
 
 #----------------------------------------------------------------------
-def wss_app():
-    wss_init()
-    wss_listen()
-    wss_unsub()
+if __name__ == "__main__":
+    ticker_q = Queue()
+    datadaemon = DataFetcher("datadaemon")
+    restdaemon = DataFetcher("RESTdaemon")
 
-
-wss_thread = threading.Thread(name="WssThread", target=wss_app)
-wss_thread.setDaemon(True)
-wss_thread.start()
     while True:
-        # Check if thread still alive
-        if not data_thread.is_alive():
-            log.critical("data_thread is dead!")
+        if not datadaemon.thread.is_alive():
+            log.error("datadaemon is dead!")
             break
-        if not wss_thread.is_alive():
-            log.critical("wss_thread is dead!")
+        if not restdaemon.thread.is_alive():
+            log.error("RESTdaemon is dead!")
             break
-ticker_q.put(None)
-wss_thread.join()
-exit()
+
+        if ticker_q.empty():
+            time.sleep(1)
+            continue
+
+        n=1
+        while not ticker_q.empty():
+            try:
+                item = ticker_q.get(block=False)
+            except queue.Empty as e:
+                log.info("None value found in queue. Quitting")
+                break
+            else:
+                log.info("Queue item #%s received: %s", n, item)
+                n+=1
+
+    datadaemon.join()
+    restdaemon.join()
+    exit()

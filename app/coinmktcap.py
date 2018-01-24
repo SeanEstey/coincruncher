@@ -4,24 +4,26 @@ from io import BytesIO
 from .timer import Timer
 from config import CMC_MARKETS, CMC_TICKERS, CURRENCY as cur
 from app import db
-log = logging.getLogger(__name__)
 
-# Silence annoying requests module logger
-logging.getLogger("urllib3").setLevel(logging.WARNING)
+# Silence annoying log msgs
+logging.getLogger("requests").setLevel(logging.ERROR)
+
+log = logging.getLogger(__name__)
 
 #---------------------------------------------------------------------------
 def get_markets():
+    log.info('Requesting CMC markets')
     t1 = Timer()
 
     # Get CoinMarketCap market data
     cmc_data=None
     try:
         r = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % cur)
-    except Exception as e:
-        log.warning("Error getting CMC market data: %S", str(e))
-        pass
-    else:
         data = json.loads(r.text)
+    except Exception as e:
+        log.warning("Error getting CMC market data: %s", str(e))
+        return False
+    else:
         store = {}
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
@@ -31,31 +33,16 @@ def get_markets():
 
 #------------------------------------------------------------------------------
 def get_tickers(start, limit=None):
+    log.info('Requesting CMC tickers')
     chunk_size = 100
     idx = start
-    #results = []
     t = Timer()
-
-    """c = pycurl.Curl()
-    c.setopt(c.COOKIEFILE, '')
-    #c.setopt(c.VERBOSE, True)
-
-    while idx < limit:
-        t1 = Timer()
-        uri = "https://api.coinmarketcap.com/v1/ticker/?start=%s&limit=%s&convert=%s" %(
-            idx, chunk_size, 'cad')
-        data=BytesIO()
-        c.setopt(c.WRITEFUNCTION, data.write)
-        c.setopt(c.URL, uri)
-        c.perform()
-        results += json.loads(data.getvalue().decode('utf-8'))
-        idx += chunk_size
-    """
 
     try:
         uri = "https://api.coinmarketcap.com/v1/ticker/?start=%s&limit=%s&convert=%s" %(
             idx, limit or 1500, 'cad')
-        results = json.loads(requests.get(uri).text)
+        response = requests.get(uri)
+        results = json.loads(response.text)
     except Exception as e:
         log.exception("Failed to get cmc ticker: %s", str(e))
         return False

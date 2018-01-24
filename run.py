@@ -32,11 +32,8 @@ def update_db(collection, data):
 #----------------------------------------------------------------------
 def update_data():
     while True:
-        log.info('Updating tickers...')
         get_tickers(0,1500)
-        log.info('Updating markets...')
         get_markets()
-        log.info('Sleeping 60s...')
         time.sleep(60)
 
 #----------------------------------------------------------------------
@@ -80,7 +77,7 @@ def main(stdscr):
     data_thread.setDaemon(True)
     data_thread.start()
 
-    refresh_delay = 1
+    refresh_delay = 5
     timer = Timer()
 
     fn_show = display.watchlist

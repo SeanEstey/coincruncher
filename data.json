@@ -5,12 +5,14 @@
         { "id":"tether", "symbol":"USDT"},
         { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"cardano", "symbol":"ADA"},
+        { "id":"monero", "symbol":"XMR"},
         { "id":"iota", "symbol":"MIOTA"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},
         { "id":"bounty0x", "symbol":"BNTY", "amount":6143.42},
         { "id":"chainlink", "symbol":"LINK", "amount":4605.0},
+        { "id":"covesting", "symbol":"COV", "amount":640.0},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
         { "id":"ethereum", "symbol":"ETH", "amount":120.59},

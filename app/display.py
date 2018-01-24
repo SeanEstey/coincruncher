@@ -16,9 +16,9 @@ class c:
 def markets(stdscr):
     colspace=3
     indent=2
-    hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h']
+    hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h', '7d']
 
-    mktdata = list(db.coinmktcap_markets.find().limit(1).sort('_id',-1))
+    mktdata = list(db.coinmktcap_markets.find().limit(1).sort('datetime',-1))
     if len(mktdata) == 0:
         log.info("db.coinmktcap_markets empty")
         return False
@@ -32,8 +32,9 @@ def markets(stdscr):
             pretty(mkt['n_markets']),
             pretty(mkt['n_currencies']),
             pretty(mkt['n_assets']),
-            pretty(analyze.mktcap_diff('1H'), t="pct", f="sign"),
-            pretty(analyze.mktcap_diff('1D'), t="pct", f="sign")
+            pretty(analyze.mcap_diff('1H', convert='pct'), t="pct", f="sign"),
+            pretty(analyze.mcap_diff('24H', convert='pct'), t="pct", f="sign"),
+            pretty(analyze.mcap_diff('7D', convert='pct'), t="pct", f="sign")
         ])
     colwidths = _colsizes(hdr, strrows)
 
@@ -47,7 +48,7 @@ def markets(stdscr):
     divider(stdscr, 3, colwidths, colspace)
     for i in range(0, len(strrows)):
         row = strrows[i]
-        colors = [c.WHITE for n in range(0,6)] + [pnlcolor(row[n]) for n in range(6,8)]
+        colors = [c.WHITE for n in range(0,6)] + [pnlcolor(row[n]) for n in range(6,9)]
         printrow(stdscr, i+4, row, colwidths, colors, colspace)
     # Print footer
     #footer(stdscr)
@@ -189,8 +190,11 @@ def pretty(number, t=None, f=None, abbr=None, d=None):
     @t: "pct", "money"
     @f: "sign"
     """
-    if number is None:
+    try:
+        number = float(number)
+    except (ValueError, TypeError) as e:
         return "--"
+
     head = ""
     tail = ""
     decimal = d if d else 2
