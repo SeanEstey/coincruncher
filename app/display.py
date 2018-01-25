@@ -11,8 +11,9 @@ class c:
     BOLD = curses.A_BOLD
 
 #----------------------------------------------------------------------
-def printrow(stdscr, y, datarow, colsizes, colors, colspace=2):
-    stdscr.move(y,2)
+def printrow(stdscr, y, datarow, colsizes, colors, colspace=2, usecurspos=True):
+    if usecurspos:
+        stdscr.move(y,2)
     for idx in range(0, len(datarow)):
         stdscr.addstr(
             y,
@@ -114,9 +115,16 @@ def divider(stdscr, y, colwidths, colspace):
     stdscr.hline(y, 2, '-', sum(colwidths) + (len(colwidths)-1)*colspace)
 
 #----------------------------------------------------------------------
-def footer(stdscr):
-    printrow(stdscr, stdscr.getyx()[0]+3,
-        ["M", "arkets ", "P", "ortfolio ", "W", "atchlist ", "D", "evmode"],
+def navmenu(stdscr):
+    stdscr.move(0,30)
+    printrow(
+        stdscr,
+        0, #stdscr.getyx()[0]+3,
+        ["M", "=markets ",
+        "P", "=portfolio ",
+        "W", "=watchlist ",
+        "H", "=history"],
         [0,0,0,0,0,0,0,0],
         [c.BOLD, c.WHITE, c.BOLD, c.WHITE, c.BOLD, c.WHITE, c.BOLD, c.WHITE],
-        0)
+        0,
+        usecurspos=False)

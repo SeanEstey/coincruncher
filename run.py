@@ -139,14 +139,14 @@ def main(stdscr):
                 continue
             scrollremain += min(scrollspeed, scrollpos)
             scrollpos -= min(scrollspeed, scrollpos)
-            log.debug('UP key, scrollpos=%s, scrollremain=%s', scrollpos, scrollremain)
+            log.debug('UP scroll, pos=%s, remain=%s', scrollpos, scrollremain)
             scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
         elif ch == KEY_DOWN:
             if fn_show != views.history:
                 continue
             scrollpos += min(scrollspeed, scrollremain)
             scrollremain -= min(scrollspeed, scrollremain)
-            log.debug('DOWN key, scrollpos=%s, scrollremain=%s', scrollpos, scrollremain)
+            log.debug('DOWN scroll, pos=%s, remain=%s', scrollpos, scrollremain)
             scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
         elif ch == ord('q'):
             break

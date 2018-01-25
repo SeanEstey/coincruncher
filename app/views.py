@@ -1,12 +1,14 @@
 # views.py
 import logging, curses
 from datetime import datetime
+from dateutil import tz
 from app import db, analyze
 from app.timer import Timer
 from config import *
 from config import CURRENCY as cur
-from app.display import c, printrow, pretty, pnlcolor, _colsizes, divider, footer
+from app.display import c, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
 from app.analyze import mcap_diff
+localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
 
 #----------------------------------------------------------------------
@@ -43,12 +45,12 @@ def history(stdscr, symbol):
 
     stdscr.clear()
     stdscr.addstr(0, indent, "%s History" % symbol)
+    navmenu(stdscr)
     printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
     divider(stdscr, 3, colwidths, colspace)
     for i in range(0, len(strrows)):
         colors = [c.WHITE for n in range(0,7)]
         printrow(stdscr, i+4, strrows[i], colwidths, colors, colspace)
-    footer(stdscr)
 
     n_rem_scroll = n_datarows - (curses.LINES - 4)
     log.info("n_datarows=%s, n_rem_scroll=%s", n_datarows, n_rem_scroll)
@@ -83,7 +85,8 @@ def markets(stdscr):
     stdscr.clear()
     # Print Title row
     stdscr.addstr(0, indent, "Global (%s)" % cur.upper())
-    dt = mktdata[0]["date"].strftime("%I:%M %p")
+    navmenu(stdscr)
+    dt = mktdata[0]["date"].astimezone(localtz).strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
     # Print Datatable
     printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
@@ -92,7 +95,6 @@ def markets(stdscr):
         row = strrows[i]
         colors = [c.WHITE for n in range(0,6)] + [pnlcolor(row[n]) for n in range(6,9)]
         printrow(stdscr, i+4, row, colwidths, colors, colspace)
-    footer(stdscr)
 
 #----------------------------------------------------------------------
 def watchlist(stdscr):
@@ -127,7 +129,8 @@ def watchlist(stdscr):
 
     # Print Title row
     stdscr.addstr(0, indent, "Watchlist (%s)" % cur.upper())
-    dt = tickers[0]["date"].strftime("%I:%M %p")
+    navmenu(stdscr)
+    dt = tickers[0]["date"].astimezone(localtz).strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
     # Print Datatable
@@ -137,8 +140,6 @@ def watchlist(stdscr):
         row = strrows[n]
         colors = [c.WHITE, c.WHITE, c.WHITE, c.WHITE, c.WHITE, pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7])]
         printrow(stdscr, n+4, row, colwidths, colors, colspace)
-
-    footer(stdscr)
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
@@ -191,24 +192,23 @@ def portfolio(stdscr):
 
     # Print title Row
     stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
-    dt = tickers[0]["date"].strftime("%I:%M %p")
+    navmenu(stdscr)
+    dt = tickers[0]["date"].astimezone(localtz).strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
     # Print Datatable
-    colspace=3
-    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace=3)
+    colspace=2
+    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace=colspace)
     divider(stdscr, 3, colwidths, colspace)
     for y in range(0,len(strrows)):
         strrow = strrows[y]
         colors = [c.WHITE for x in range(0,7)] + [pnlcolor(strrow[n]) for n in range(7,10)]
-        printrow(stdscr, y+4, strrow, colwidths, colors, colspace=3)
+        printrow(stdscr, y+4, strrow, colwidths, colors, colspace=colspace)
 
     # Portfolio value ($)
     printrow(
         stdscr,
-        stdscr.getyx()[0]+2,
+        stdscr.getyx()[0]+1,
         [ "Total: ", pretty(total, t='money'), ' (', pretty(int(profit), t="money", f='sign', d=0), ')' ],
         [ 0,0,0,0,0 ],
         [ c.WHITE, c.BOLD, c.WHITE, pnlcolor(profit), c.WHITE ])
-
-    footer(stdscr)
