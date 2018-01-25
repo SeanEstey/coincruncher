@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 from pprint import pprint
 import pandas as pd
 from app import db
+from app.display import pretty
 log = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
@@ -57,15 +58,14 @@ def mcap_diff(period, convert=None):
 
     dt_diff = round((mkts[0]['date'] - dt).total_seconds() / 3600, 2)
     if dt_diff > 1:
-        log.debug("No match found for period=\"%s\". Closest: dt=%s, tdelta=%s hrs",
-            period, mkts[0]['date'], dt_diff)
-        return "--" #0.0
+        log.debug("Mcap lookup fail, period=%s, closest=%s, tdelta=%shrs",
+        period, mkts[0]['date'].strftime("%m-%d-%Y %H:%M"), dt_diff)
+        return "--"
 
     diff = mkts[1]['mktcap_cad'] - mkts[0]['mktcap_cad']
     pct = round((diff / mkts[0]['mktcap_cad']) * 100, 2)
 
-    log.debug("mcap_diff=${:,} ({}%) for period={} (dt={})".format(
-        diff, pct, period, mkts[0]['date']))
+    #log.debug("Mcap %s=%s%s", period, pct, "%")
 
     return pct if convert == 'pct' else diff
 

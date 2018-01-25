@@ -1,4 +1,5 @@
-import curses, json, logging, requests, signal, time, threading
+import curses, json, logging, time, threading, inspect
+from pprint import pprint, pformat
 from curses import wrapper, KEY_UP, KEY_DOWN, KEY_ENTER
 from datetime import datetime
 from app.timer import Timer
@@ -7,6 +8,14 @@ from app.coinmktcap import get_markets, get_tickers
 from config import *
 
 log = logging.getLogger(__name__)
+
+def getAttributes(obj):
+    result = ''
+    for name, value in inspect.getmembers(obj):
+        if callable(value) or name.startswith('__'):
+            continue
+        result += pformat("%s: %s" %(name, value)) + "\n"
+    return result
 
 #----------------------------------------------------------------------
 def update_db(collection, data):
@@ -62,24 +71,39 @@ def teardown(stdscr):
     curses.endwin()
 
 #----------------------------------------------------------------------
+def my_raw_input(stdscr, y, x, prompt_string):
+    stdscr.nodelay(False)
+    curses.echo()
+    stdscr.addstr(y, x, prompt_string)
+    stdscr.refresh()
+    input = stdscr.getstr(y+1, x, 20)
+
+    stdscr.nodelay(True)
+    curses.noecho()
+
+    return input
+
+#----------------------------------------------------------------------
 def main(stdscr):
     global ticker_q
+    scrollscr = None
+    refresh_delay = 5
+    scrollspeed = 5
+    scrollpos = 0
+    scrollremain = 0
+    padheight = 200
 
     setup(stdscr)
     log.info("--------------------------")
     log.debug("Restarted")
-
     user_data = json.load(open('data.json'))
     update_db('watchlist', user_data['watchlist'])
     update_db('portfolio', user_data['portfolio'])
-
     data_thread = threading.Thread(name="DataThread", target=update_data)
     data_thread.setDaemon(True)
     data_thread.start()
 
-    refresh_delay = 5
     timer = Timer()
-
     fn_show = views.watchlist
     fn_show(stdscr)
 
@@ -88,35 +112,57 @@ def main(stdscr):
             log.critical("data_thread is dead!")
             break
 
+        # Poll input
         ch = stdscr.getch()
         curses.flushinp()
 
         if ch == ord('p'):
-            timer.restart()
             fn_show = views.portfolio
             fn_show(stdscr)
         elif ch == ord('m'):
-            timer.restart()
             fn_show = views.markets
             fn_show(stdscr)
         elif ch == ord('w'):
-            timer.restart()
             fn_show = views.watchlist
             fn_show(stdscr)
-        elif ch == ord('d'):
-            timer.restart()
+        elif ch == ord('h'):
+            stdscr.clear()
+            byte_input = my_raw_input(stdscr, 10, int(curses.COLS/2), "Enter Symbol")
+            symbol = byte_input.decode('utf-8').upper()
+            scrollscr = curses.newpad(padheight, curses.COLS-1)
+            scrollpos = 0
+            scrollremain = views.history(scrollscr, symbol)
+            scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
             fn_show = views.history
-            fn_show(stdscr)
-        elif ch == KEY_UP or ch == KEY_DOWN or ch == KEY_ENTER:
-            log.info("Key up/down/enter")
+        elif ch == KEY_UP:
+            if fn_show != views.history:
+                continue
+            scrollremain += min(scrollspeed, scrollpos)
+            scrollpos -= min(scrollspeed, scrollpos)
+            log.debug('UP key, scrollpos=%s, scrollremain=%s', scrollpos, scrollremain)
+            scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
+        elif ch == KEY_DOWN:
+            if fn_show != views.history:
+                continue
+            scrollpos += min(scrollspeed, scrollremain)
+            scrollremain -= min(scrollspeed, scrollremain)
+            log.debug('DOWN key, scrollpos=%s, scrollremain=%s', scrollpos, scrollremain)
+            scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
         elif ch == ord('q'):
-            log.info('Shutting down queue')
             break
+
+        if ch:
+            timer.restart()
 
         if timer.clock(stop=False) >= refresh_delay:
             if fn_show:
                 timer.restart()
-                fn_show(stdscr)
+
+                if fn_show == views.history:
+                    log.debug("Not redrawing history buf")
+                    continue
+                #else:
+                #    fn_show(stdscr)
         time.sleep(0.1)
 
     teardown(stdscr)

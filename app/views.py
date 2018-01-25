@@ -1,5 +1,5 @@
 # views.py
-import logging
+import logging, curses
 from datetime import datetime
 from app import db, analyze
 from app.timer import Timer
@@ -10,14 +10,17 @@ from app.analyze import mcap_diff
 log = logging.getLogger(__name__)
 
 #----------------------------------------------------------------------
-def history(stdscr, symbol="XRB"):
-    n_display = 30
+def history(stdscr, symbol):
+    log.info("Querying %s ticker history", symbol)
+
+    n_display = 95
     colspace=3
     indent=2
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
 
     t1 = Timer()
     tickerdata = db.tickerdata_hist.find({"symbol":symbol}).sort('date',-1).limit(n_display)
+    n_datarows = tickerdata.count()
     log.debug("%s tickers queried in %sms", tickerdata.count(), t1.clock(t='ms'))
 
     if tickerdata.count() == 0:
@@ -36,6 +39,8 @@ def history(stdscr, symbol="XRB"):
         ])
     colwidths = _colsizes(hdr, strrows)
 
+    log.debug("history() clearing screen")
+
     stdscr.clear()
     stdscr.addstr(0, indent, "%s History" % symbol)
     printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
@@ -44,6 +49,10 @@ def history(stdscr, symbol="XRB"):
         colors = [c.WHITE for n in range(0,7)]
         printrow(stdscr, i+4, strrows[i], colwidths, colors, colspace)
     footer(stdscr)
+
+    n_rem_scroll = n_datarows - (curses.LINES - 4)
+    log.info("n_datarows=%s, n_rem_scroll=%s", n_datarows, n_rem_scroll)
+    return n_rem_scroll
 
 #----------------------------------------------------------------------
 def markets(stdscr):

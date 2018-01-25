@@ -29,7 +29,7 @@ def get_markets():
             store[m["to"]] = m["type"]( data[m["from"]] )
         db.globaldata.replace_one({'date':store['date']}, store, upsert=True)
 
-    log.info("Updated market data in %ss" % t1.clock())
+    log.info("Updated market data in %s ms" % t1.clock(t='ms'))
 
 #------------------------------------------------------------------------------
 def get_tickers(start, limit=None):
@@ -61,4 +61,4 @@ def get_tickers(start, limit=None):
 
     result = db.tickerdata.bulk_write(ops)
 
-    log.info("Updated %s tickers in %ss", len(results), t.clock())
+    log.info("Updated %s tickers in %s ms", len(results), t.clock(t='ms'))
