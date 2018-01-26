@@ -6,10 +6,12 @@ from app import db
 from app.display import pretty
 log = logging.getLogger(__name__)
 
+
+
 #------------------------------------------------------------------------------
 def append_globaldata_hist():
     # Group by date, get closing mktcap/volume
-    results = db.globaldata.aggregate([
+    results = db.market.aggregate([
         {"$match":{}},
         {"$group": {
             # Compound key
@@ -45,8 +47,8 @@ def mcap_diff(period, convert=None):
         dt = now - timedelta(days=365*n)
 
     mkts = [
-        list(db.globaldata.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
-        list(db.globaldata.find({}).sort("date", -1).limit(1))
+        list(db.market.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
+        list(db.market.find({}).sort("date", -1).limit(1))
     ]
 
     for m in  mkts:
@@ -86,7 +88,7 @@ def mktcap_resample(freq):
     elif unit == 'Y':
         from_dt = now - timedelta(days=365*n)
 
-    results = db.globaldata.find(
+    results = db.market.find(
         {'date':{'$gte':from_dt}},
         {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
 

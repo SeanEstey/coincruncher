@@ -2,6 +2,7 @@
     "watchlist": [
         { "id":"bitcoin", "symbol":"BTC"},
         { "id":"ripple", "symbol":"XRP"},
+        { "id":"gas", "symbol":"GAS"},
         { "id":"tether", "symbol":"USDT"},
         { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"cardano", "symbol":"ADA"},

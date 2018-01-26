@@ -27,7 +27,7 @@ def get_markets():
         store = {}
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
-        db.globaldata.replace_one({'date':store['date']}, store, upsert=True)
+        db.market.replace_one({'date':store['date']}, store, upsert=True)
 
     log.info("Updated market data in %s ms" % t1.clock(t='ms'))
 
@@ -56,9 +56,9 @@ def get_tickers(start, limit=None):
             except Exception as e:
                 log.exception("%s error in '%s' field: %s", ticker['symbol'], f["from"], str(e))
                 continue
-        #db.tickerdata.replace_one({'symbol':store['symbol']}, store, upsert=True)
+        #db.tickers.replace_one({'symbol':store['symbol']}, store, upsert=True)
         ops.append(ReplaceOne({'symbol':store['symbol']}, store, upsert=True))
 
-    result = db.tickerdata.bulk_write(ops)
+    result = db.tickers.bulk_write(ops)
 
     log.info("Updated %s tickers in %s ms", len(results), t.clock(t='ms'))

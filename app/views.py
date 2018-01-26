@@ -21,7 +21,7 @@ def history(stdscr, symbol):
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
 
     t1 = Timer()
-    tickerdata = db.tickerdata_hist.find({"symbol":symbol}).sort('date',-1).limit(n_display)
+    tickerdata = db.tickers.historical.find({"symbol":symbol}).sort('date',-1).limit(n_display)
     n_datarows = tickerdata.count()
     log.debug("%s tickers queried in %sms", tickerdata.count(), t1.clock(t='ms'))
 
@@ -62,9 +62,9 @@ def markets(stdscr):
     indent=2
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h', '7d']
 
-    mktdata = list(db.globaldata.find().limit(1).sort('date',-1))
+    mktdata = list(db.market.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
-        log.info("db.globaldata empty")
+        log.info("db.market empty")
         return False
 
     strrows=[]
@@ -102,7 +102,7 @@ def watchlist(stdscr):
     indent=2
     colspace=3
     watchlist = db.watchlist.find()
-    tickers = list(db.tickerdata.find())
+    tickers = list(db.tickers.find())
 
     if len(tickers) == 0:
         log.error("coinmktcap collection empty")
@@ -143,7 +143,7 @@ def watchlist(stdscr):
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
-    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
+    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
     indent = 2
     total = 0.0
     portfolio = db.portfolio.find()
@@ -151,7 +151,7 @@ def portfolio(stdscr):
     profit = 0
 
     # Build table data
-    tickers = list(db.tickerdata.find())
+    tickers = list(db.tickers.find())
     for hold in portfolio:
         for tckr in tickers:
             if tckr['symbol'] != hold['symbol']:
@@ -162,15 +162,16 @@ def portfolio(stdscr):
             total += value
 
             datarows.append([
-                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), tckr['mktcap_cad'],
+                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), tckr['mktcap_cad'], tckr["vol_24h_cad"],
                 hold['amount'], value, None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"]
+
             ])
 
     # Calculate porfolio %
     for datarow in datarows:
-        datarow[6] = round((float(datarow[5]) / total)*100, 2)
+        datarow[7] = round((float(datarow[6]) / total)*100, 2)
     # Sort by holding %
-    datarows = sorted(datarows, key=lambda x: int(x[5]))[::-1]
+    datarows = sorted(datarows, key=lambda x: int(x[6]))[::-1]
 
     strrows = []
     for datarow in datarows:
@@ -179,12 +180,13 @@ def portfolio(stdscr):
             datarow[1],
             pretty(datarow[2], t='money'),
             pretty(datarow[3], t='money', abbr=True),
-            pretty(datarow[4], abbr=True),
-            pretty(datarow[5], t='money'),
-            pretty(datarow[6], t='pct'),
-            pretty(datarow[7], t='pct', f='sign'),
+            pretty(datarow[4], t='money', abbr=True),
+            pretty(datarow[5], abbr=True),
+            pretty(datarow[6], t='money'),
+            pretty(datarow[7], t='pct'),
             pretty(datarow[8], t='pct', f='sign'),
-            pretty(datarow[9], t='pct', f='sign')
+            pretty(datarow[9], t='pct', f='sign'),
+            pretty(datarow[10], t='pct', f='sign')
         ])
     colwidths = _colsizes(hdr, strrows)
 
@@ -202,13 +204,13 @@ def portfolio(stdscr):
     divider(stdscr, 3, colwidths, colspace)
     for y in range(0,len(strrows)):
         strrow = strrows[y]
-        colors = [c.WHITE for x in range(0,7)] + [pnlcolor(strrow[n]) for n in range(7,10)]
+        colors = [c.WHITE for x in range(0,8)] + [pnlcolor(strrow[n]) for n in range(8,11)]
         printrow(stdscr, y+4, strrow, colwidths, colors, colspace=colspace)
 
     # Portfolio value ($)
     printrow(
         stdscr,
-        stdscr.getyx()[0]+1,
+        stdscr.getyx()[0]+2,
         [ "Total: ", pretty(total, t='money'), ' (', pretty(int(profit), t="money", f='sign', d=0), ')' ],
         [ 0,0,0,0,0 ],
         [ c.WHITE, c.BOLD, c.WHITE, pnlcolor(profit), c.WHITE ])

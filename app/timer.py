@@ -43,7 +43,7 @@ class Timer():
         if t == 's':
             return float("%s.%s" %(diff.seconds, int(diff.microseconds/100000)))
         elif t == 'ms':
-            return diff.seconds*1000 + diff.microseconds/1000
+            return int(diff.seconds*1000 + diff.microseconds/1000)
             #return int(diff.microseconds/100)
 
     def __init__(self, start=True):

@@ -151,9 +151,6 @@ def main(stdscr):
         elif ch == ord('q'):
             break
 
-        if ch:
-            timer.restart()
-
         if timer.clock(stop=False) >= refresh_delay:
             if fn_show:
                 timer.restart()
@@ -161,8 +158,8 @@ def main(stdscr):
                 if fn_show == views.history:
                     log.debug("Not redrawing history buf")
                     continue
-                #else:
-                #    fn_show(stdscr)
+                else:
+                    fn_show(stdscr)
         time.sleep(0.1)
 
     teardown(stdscr)
