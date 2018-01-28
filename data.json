@@ -7,6 +7,7 @@
         { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"cardano", "symbol":"ADA"},
         { "id":"monero", "symbol":"XMR"},
+        { "id":"zilliqa", "symbol":"ZIL"},
         { "id":"iota", "symbol":"MIOTA"}
     ],
     "portfolio": [

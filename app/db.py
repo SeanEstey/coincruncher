@@ -1,13 +1,11 @@
-import logging
+import logging, pytz
 from datetime import datetime, timedelta
 from dateutil import tz
 from dateutil.parser import parse
-import pytz
 from pprint import pprint
 from app import db
+from app.coinmktcap import download_data, extract_data, processDataFrame, parse_options, render_csv_data
 log = logging.getLogger(__name__)
-
-from app.history import download_data, extract_data, processDataFrame, parse_options, render_csv_data
 
 #------------------------------------------------------------------------------
 def get_ticker_historical():
@@ -60,8 +58,6 @@ def generate_historical_markets():
 def fill_mkt_historical():
     # Fill in missing historical market data w/ recent data
     pass
-
-
 
 #-------------------------------------------------------------------------------
 def fill_forex(symbol, start, end):

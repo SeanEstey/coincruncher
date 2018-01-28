@@ -43,7 +43,7 @@ def update_data():
     while True:
         get_tickers(0,1500)
         get_markets()
-        time.sleep(60)
+        time.sleep(90)
 
 #----------------------------------------------------------------------
 def setup(stdscr):
