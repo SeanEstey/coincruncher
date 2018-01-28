@@ -6,7 +6,7 @@ from app import db, analyze
 from app.timer import Timer
 from config import *
 from config import CURRENCY as cur
-from app.display import c, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
+from app.screen import c, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
 from app.analyze import mcap_diff
 localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
@@ -40,8 +40,6 @@ def history(stdscr, symbol):
             pretty(tck['vol_24h_usd'], t="money", abbr=True)
         ])
     colwidths = _colsizes(hdr, strrows)
-
-    log.debug("history() clearing screen")
 
     stdscr.clear()
     stdscr.addstr(0, indent, "%s History" % symbol)
@@ -146,9 +144,15 @@ def portfolio(stdscr):
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
     indent = 2
     total = 0.0
-    portfolio = db.portfolio.find()
-    datarows = []
     profit = 0
+    datarows = []
+
+    # Print title Row
+    stdscr.clear()
+    stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
+    navmenu(stdscr)
+
+    portfolio = db.portfolio.find()
 
     # Build table data
     tickers = list(db.tickers.find())
@@ -190,11 +194,7 @@ def portfolio(stdscr):
         ])
     colwidths = _colsizes(hdr, strrows)
 
-    stdscr.clear()
 
-    # Print title Row
-    stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
-    navmenu(stdscr)
     dt = tickers[0]["date"].astimezone(localtz).strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 

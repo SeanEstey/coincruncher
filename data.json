@@ -1,14 +1,13 @@
 {
     "watchlist": [
         { "id":"bitcoin", "symbol":"BTC"},
-        { "id":"ripple", "symbol":"XRP"},
-        { "id":"gas", "symbol":"GAS"},
-        { "id":"tether", "symbol":"USDT"},
         { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"cardano", "symbol":"ADA"},
+        { "id":"iota", "symbol":"MIOTA"},
+        { "id":"litecoin", "symbol":"LTC"},
         { "id":"monero", "symbol":"XMR"},
-        { "id":"zilliqa", "symbol":"ZIL"},
-        { "id":"iota", "symbol":"MIOTA"}
+        { "id":"ripple", "symbol":"XRP"},
+        { "id":"tether", "symbol":"USDT"}
     ],
     "portfolio": [
         { "id":"airswap", "symbol":"AST", "amount":1485.00},
@@ -17,17 +16,18 @@
         { "id":"covesting", "symbol":"COV", "amount":640.0},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
-        { "id":"ethereum", "symbol":"ETH", "amount":125.27},
+        { "id":"ethereum", "symbol":"ETH", "amount":126.27},
+        { "id":"gas", "symbol":"GAS", "amount":0.3352},
         { "id":"neo", "symbol":"NEO", "amount":100.00},
         { "id":"omisego", "symbol":"OMG", "amount":77.2},
         { "id":"raiblocks", "symbol":"XRB", "amount":6977.50},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
         { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
         { "id":"singularitynet", "symbol":"AGI", "amount":4735.75},
-        { "id":"spankchain", "symbol":"SPANK", "amount":8167},
         { "id":"trinity-network-credit", "symbol":"TNC", "amount":2927.59},
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
-        { "id":"walton", "symbol":"WTC", "amount":100.00}
+        { "id":"walton", "symbol":"WTC", "amount":100.00},
+        { "id":"zilliqa", "symbol":"ZIL", "amount":21164.00}
     ],
     "_comments": [
         { "id":"iota", "symbol":"MIOTA", "amount":1007.71},

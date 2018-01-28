@@ -1,5 +1,4 @@
 import logging, os, pymongo
-import config
 import db_auth
 log = logging.getLogger(__name__)
 
@@ -8,8 +7,8 @@ def create_client(host=None, port=None, connect=True, auth=True):
     log.debug('MongoDB PID=%s', os.getpid())
 
     client = pymongo.MongoClient(
-        host = host or config.MONGO_URL,
-        port = port or config.MONGO_PORT,
+        host = host,
+        port = port,
         tz_aware = True,
         connect = connect)
 

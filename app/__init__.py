@@ -1,7 +1,8 @@
-# app.__init__
 import logging
 from . import mongo
 from config import *
+from client_config import *
+
 log = logging.getLogger(__name__)
 
 class colors:
@@ -14,6 +15,8 @@ class colors:
     HEADER = '\033[95m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
 
 #---------------------------------------------------------------------------
 def file_handler(level, file_path,

@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from pprint import pprint
 import pandas as pd
 from app import db
-from app.display import pretty
+from app.screen import pretty
 log = logging.getLogger(__name__)
 
 

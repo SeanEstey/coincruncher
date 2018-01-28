@@ -24,7 +24,7 @@ parser.add_argument("--dataframe",
     action='store_true')
 
 #---------------------------------------------------------------------------
-def get_markets():
+def update_markets():
     #log.info('Requesting CMC markets')
     t1 = Timer()
 
@@ -45,7 +45,7 @@ def get_markets():
     log.info("Updated market data in %s ms" % t1.clock(t='ms'))
 
 #------------------------------------------------------------------------------
-def get_tickers(start, limit=None):
+def update_tickers(start, limit=None):
     idx = start
     t = Timer()
 

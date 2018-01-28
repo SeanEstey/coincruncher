@@ -1,6 +1,6 @@
 # Display formatted text to stdout in table form
 import curses, logging, re
-from curses import init_pair, color_pair
+from curses import init_pair, color_pair, KEY_UP, KEY_DOWN
 from decimal import Decimal
 from config import *
 from config import CURRENCY as cur
@@ -9,6 +9,35 @@ log = logging.getLogger(__name__)
 
 class c:
     BOLD = curses.A_BOLD
+
+def get_n_lines():
+    return curses.LINES
+def get_n_cols():
+    return curses.COLS
+
+#----------------------------------------------------------------------
+def setup(stdscr):
+    """Setup curses window.
+    """
+    set_colors(stdscr)
+    # Don't print what I type on the terminal
+    curses.noecho()
+    # React to every key press, not just when pressing "enter"
+    curses.cbreak()
+    stdscr.nodelay(True)
+    stdscr.keypad(True)
+    # hide cursor
+    curses.curs_set(0)
+    stdscr.refresh()
+
+#----------------------------------------------------------------------
+def teardown(stdscr):
+    # Reverse changes made to terminal by cbreak()
+    curses.nocbreak()
+    stdscr.keypad(False)
+    curses.echo()
+    # restore the terminal to its original state
+    curses.endwin()
 
 #----------------------------------------------------------------------
 def printrow(stdscr, y, datarow, colsizes, colors, colspace=2, usecurspos=True):
@@ -20,6 +49,31 @@ def printrow(stdscr, y, datarow, colsizes, colors, colspace=2, usecurspos=True):
             stdscr.getyx()[1],# + colspace, #+1,
             str(datarow[idx]).ljust(colsizes[idx]+colspace),
             colors[idx])
+
+#----------------------------------------------------------------------
+def input_char(stdscr):
+    # Make getch() non-blocking
+    #stdscr.nodelay(True)
+    ch = stdscr.getch()
+    curses.flushinp()
+    #stdscr.nodelay(False)
+    return ch
+
+#----------------------------------------------------------------------
+def input_prompt(stdscr, y, x, prompt):
+    # Block input until Enter key
+    stdscr.nodelay(False)
+    # Show input on screen
+    curses.echo()
+    stdscr.addstr(y, x, prompt)
+    stdscr.refresh()
+
+    inp = stdscr.getstr(y+1, x, 20)
+    # Unblock input
+    stdscr.nodelay(True)
+    curses.noecho()
+
+    return inp
 
 #----------------------------------------------------------------------
 def pretty(number, t=None, f=None, abbr=None, d=None):

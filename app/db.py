@@ -7,6 +7,8 @@ from app import db
 from app.coinmktcap import download_data, extract_data, processDataFrame, parse_options, render_csv_data
 log = logging.getLogger(__name__)
 
+
+
 #------------------------------------------------------------------------------
 def get_ticker_historical():
     currency, start_date, end_date = parse_options("ethereum", "2018-01-01", "2018-01-25")
