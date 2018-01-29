@@ -17,3 +17,10 @@ if __name__ == '__main__':
     data_thread = threading.Thread(name="DataThread", target=update_data)
     data_thread.setDaemon(True)
     data_thread.start()
+
+    log.info("Daemon started")
+
+    while True:
+        time.sleep(0.1)
+
+    exit()

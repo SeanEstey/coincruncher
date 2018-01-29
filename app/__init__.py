@@ -1,7 +1,7 @@
 import logging
 from . import mongo
 from config import *
-from client_config import *
+from server_config import *
 
 log = logging.getLogger(__name__)
 
@@ -65,5 +65,5 @@ logging.basicConfig(
     ]
 )
 
-client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=True)
+client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=False)
 db = client[DB]
