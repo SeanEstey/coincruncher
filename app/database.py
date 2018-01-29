@@ -3,34 +3,51 @@ from datetime import datetime, timedelta
 from dateutil import tz
 from dateutil.parser import parse
 from pprint import pprint
-from app import db
+from pymongo import ReplaceOne
+
+from app import db, utils
+from app.timer import Timer
 from app.coinmktcap import download_data, extract_data, processDataFrame, parse_options, render_csv_data
 log = logging.getLogger(__name__)
 
-
-
 #------------------------------------------------------------------------------
-def get_ticker_historical():
-    currency, start_date, end_date = parse_options("ethereum", "2018-01-01", "2018-01-25")
-    html = download_data(currency, start_date, end_date)
+def get_ticker_historical(ticker, start, end, update_db):
+    """Scrape coinmarketcap.com for historical ticker data
+    """
+    t1 = Timer()
+
+    # Scrape data
+    html = download_data(ticker["id"], start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
     header, rows = extract_data(html)
-    #print(rows)
 
     docrows = []
-    # row: ["date", "open", "high", "low", "close", "vol_24h_usd", "mktcap_usd"]
+    ins_ops = []
+
+    # row = ["date", "open", "high", "low", "close", "vol_24h_usd", "mktcap_usd"]
     for row in rows:
-        # TODO: add "symbol", "id", and "name"
+        _date = parse(row[0]).replace(tzinfo=pytz.utc)
         docrows.append({
-            "date":parse(row[0]).replace(tzinfo=pytz.utc),
+            "symbol":ticker["symbol"],
+            "id":ticker["id"],
+            "name":ticker["name"],
+            "date":_date,
             "open":float(row[1]),
             "high":float(row[2]),
             "low":float(row[3]),
             "close":float(row[4]),
             "vol_24h_usd":float(row[5]),
-            "mktcap_usd":float(row[6])
+            "mktcap_usd":float(row[6]),
+            "rank_now":ticker["rank"]
         })
+        if update_db:
+            ins_ops.append(ReplaceOne({'symbol':ticker["symbol"], "date":_date}, docrows[-1], upsert=True))
 
-    pprint(docrows)
+    if len(ins_ops) > 0:
+        result = db.tickers.historical.bulk_write(ins_ops)
+        print("tickers.hist: symbol=%s, n_scraped=%s, n_modified=%s, \
+            n_upserted=%s, time=%s ms" %(
+            ticker["symbol"], len(docrows), result.modified_count,
+            result.upserted_count, t1.clock(t='ms')))
 
 #------------------------------------------------------------------------------
 def generate_historical_markets():

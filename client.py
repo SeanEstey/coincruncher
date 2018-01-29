@@ -1,6 +1,5 @@
-import json, logging, time
-import curses
-from curses import wrapper#, newpad
+import curses, json, logging, time
+from curses import wrapper
 
 from client_config import *
 from app.timer import Timer
@@ -31,7 +30,7 @@ def update_db(collection, data):
 
 #----------------------------------------------------------------------
 def main(stdscr):
-    refresh_delay = 5
+    refresh_delay = 60
     scrollspeed = 5
     scrollpos = scrollremain = 0
     padheight = 200
@@ -47,7 +46,7 @@ def main(stdscr):
     #update_db('portfolio', user_data['portfolio'])
 
     timer = Timer()
-    fn_show = views.watchlist
+    fn_show = views.markets
     fn_show(stdscr)
 
     while True:
@@ -56,12 +55,15 @@ def main(stdscr):
         if ch == ord('p'):
             fn_show = views.portfolio
             fn_show(stdscr)
+            stdscr.refresh()
         elif ch == ord('m'):
             fn_show = views.markets
             fn_show(stdscr)
+            stdscr.refresh()
         elif ch == ord('w'):
             fn_show = views.watchlist
             fn_show(stdscr)
+            stdscr.refresh()
         elif ch == ord('h'):
             stdscr.clear()
             byte_input = screen.input_prompt(stdscr, 10, int(curses.COLS/2), "Enter Symbol")
@@ -97,7 +99,6 @@ def main(stdscr):
                     continue
                 else:
                     fn_show(stdscr)
-        log.info('sleep loop')
 
     screen.teardown(stdscr)
     exit()

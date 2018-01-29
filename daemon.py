@@ -1,19 +1,10 @@
-import logging, time, threading, inspect
+import logging, time, threading
 from pprint import pformat
 from server_config import *
 from app import analyze, db
 from app.coinmktcap import update_markets, update_tickers
 
 log = logging.getLogger(__name__)
-
-#----------------------------------------------------------------------
-def getAttributes(obj):
-    result = ''
-    for name, value in inspect.getmembers(obj):
-        if callable(value) or name.startswith('__'):
-            continue
-        result += pformat("%s: %s" %(name, value)) + "\n"
-    return result
 
 #----------------------------------------------------------------------
 def update_data():

@@ -10,13 +10,12 @@
         { "id":"tether", "symbol":"USDT"}
     ],
     "portfolio": [
-        { "id":"airswap", "symbol":"AST", "amount":1485.00},
         { "id":"bounty0x", "symbol":"BNTY", "amount":6143.42},
         { "id":"chainlink", "symbol":"LINK", "amount":4605.0},
         { "id":"covesting", "symbol":"COV", "amount":640.0},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
-        { "id":"ethereum", "symbol":"ETH", "amount":126.27},
+        { "id":"ethereum", "symbol":"ETH", "amount":126.57},
         { "id":"gas", "symbol":"GAS", "amount":0.3352},
         { "id":"neo", "symbol":"NEO", "amount":100.00},
         { "id":"omisego", "symbol":"OMG", "amount":77.2},
@@ -27,7 +26,7 @@
         { "id":"trinity-network-credit", "symbol":"TNC", "amount":2927.59},
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"walton", "symbol":"WTC", "amount":100.00},
-        { "id":"zilliqa", "symbol":"ZIL", "amount":21164.00}
+        { "id":"zilliqa", "symbol":"ZIL", "amount":34721.56}
     ],
     "_comments": [
         { "id":"iota", "symbol":"MIOTA", "amount":1007.71},

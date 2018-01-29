@@ -56,6 +56,7 @@ def history(stdscr, symbol):
 
 #----------------------------------------------------------------------
 def markets(stdscr):
+    log.info('Markets view')
     colspace=3
     indent=2
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h', '7d']
@@ -96,6 +97,7 @@ def markets(stdscr):
 
 #----------------------------------------------------------------------
 def watchlist(stdscr):
+    log.info('Watchlist view')
     hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1h", "24h", "7d"]
     indent=2
     colspace=3
@@ -141,6 +143,7 @@ def watchlist(stdscr):
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
+    log.info('Portfolio view')
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
     indent = 2
     total = 0.0
