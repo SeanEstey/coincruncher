@@ -6,8 +6,6 @@ from app import get_db #db
 from app.screen import pretty
 log = logging.getLogger(__name__)
 
-
-
 #------------------------------------------------------------------------------
 def append_globaldata_hist():
     db = get_db()
@@ -27,6 +25,8 @@ def append_globaldata_hist():
         # "vol_24h": {"$last":"$vol_24h_cad"}
     ])
     return results
+
+
 
 #------------------------------------------------------------------------------
 def mcap_diff(period, convert=None):
@@ -62,7 +62,7 @@ def mcap_diff(period, convert=None):
 
     dt_diff = round((mkts[0]['date'] - dt).total_seconds() / 3600, 2)
     if dt_diff > 1:
-        log.debug("Mcap lookup fail, period=%s, closest=%s, tdelta=%shrs",
+        log.debug("mktcap lookup fail:\nperiod=%s,\nclosest=%s,\ntdelta=%shrs",
         period, mkts[0]['date'].strftime("%m-%d-%Y %H:%M"), dt_diff)
         return "--"
 
@@ -110,3 +110,33 @@ def mcap_avg_diff(freq):
         return 0.0
     diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
     return diff
+
+#-------------------------------------------------------------------------------
+def update_hist_mkt():
+    # Fill in missing historical market data w/ recent data
+    pass
+
+#------------------------------------------------------------------------------
+def gen_hist_mkts():
+    """Initialize market.historical data with aggregate ticker.historical data
+    """
+    db = get_db()
+    results = list(db.tickers.historical.aggregate([
+        {"$group": {
+          "_id": "$date",
+          "mktcap_usd": {"$sum":"$mktcap_usd"},
+          "vol_24h_usd": {"$sum":"$vol_24h_usd"},
+          "n_symbols": {"$sum":1}
+        }},
+        {"$sort": {"_id":-1}}
+    ]))
+
+    print("generated %s results" % len(results))
+
+    for r in results:
+        r.update({'date':r['_id']})
+        del r['_id']
+
+    # Remove all documents within date range of aggregate results
+    db.market.historical.delete_many({"date":{"$lte":results[0]["date"]}})
+    db.market.historical.insert_many(results)

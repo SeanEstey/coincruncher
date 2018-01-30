@@ -4,7 +4,7 @@ log = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
 def create_client(host=None, port=None, connect=True, auth=True):
-    log.debug('MongoDB PID=%s', os.getpid())
+    #log.debug('MongoDB PID=%s', os.getpid())
 
     client = pymongo.MongoClient(
         host = host,
@@ -26,7 +26,7 @@ def authenticate(client, user=None, pw=None):
             pw or db_auth.password,
             mechanism='SCRAM-SHA-1')
     except Exception as e:
-        log.exception("Mongo authentication error. host=%s, port=%s",
+        log.exception("mongodb authentication error. host=%s, port=%s",
             client.HOST, client.PORT)
         raise
 

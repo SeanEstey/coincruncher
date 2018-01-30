@@ -1,4 +1,5 @@
 import logging
+from logging import DEBUG, INFO, WARNING
 from .mongo import create_client, authenticate
 from config import *
 
@@ -14,18 +15,27 @@ class colors:
     HEADER = '\033[95m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+class DebugFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == DEBUG
+class InfoFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == INFO
+class WarningFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == WARNING
 
 #---------------------------------------------------------------------------
 def set_db(host):
     global db, client
 
     if host == 'localhost':
-        log.debug("Connecting to localhost mongodb (no authentication)")
+        log.debug("connecting to localhost mongodb (no authentication)")
         client = create_client(host=host, port=27017, connect=True, auth=False)
         db = client[DB]
         return db
     else:
-        log.debug("Authenticating remote mongodb host %s...", host)
+        log.debug("authenticating remote mongodb host %s...", host)
         client = create_client(host=host, port=27017, connect=True, auth=True)
         db = client[DB]
         return db
@@ -36,15 +46,12 @@ def get_db():
     if db:
         return db
     else:
-        log.error("DB host not set!")
+        log.error("db host not set!")
         return None
 
 #---------------------------------------------------------------------------
 def file_handler(level, file_path,
-                 filtr=None, fmt=None, datefmt=None, color=None, name=None):
-
-    from logging import DEBUG
-
+                 filt=None, fmt=None, datefmt=None, color=None, name=None):
     handler = logging.FileHandler(file_path)
     handler.setLevel(level)
 
@@ -53,40 +60,25 @@ def file_handler(level, file_path,
     else:
         handler.name = 'lvl_%s_file_handler' % str(level or '')
 
-    """if filtr == logging.DEBUG:
+    if filt == DEBUG:
         handler.addFilter(DebugFilter())
-    elif filtr == logging.INFO:
+    elif filt == INFO:
         handler.addFilter(InfoFilter())
-    elif filtr == logging.WARNING:
+    elif filt == WARNING:
         handler.addFilter(WarningFilter())
-    """
 
+    # To show thread: %(threadName)s
     formatter = logging.Formatter(
-        colors.BLUE + (fmt or '[%(asctime)s %(name)s %(threadName)s]: ' + colors.ENDC + color + '%(message)s') + colors.ENDC,
-        #(datefmt or '%m-%d %H:%M'))
-        (datefmt or '%H:%M:%S'))
-
+        colors.BLUE + (fmt or '[%(asctime)s %(name)s]: '\
+        + colors.ENDC + color + '%(message)s') + colors.ENDC,
+        (datefmt or '%m-%d %H:%M:%S'))
     handler.setFormatter(formatter)
     return handler
 
 
-logging.basicConfig(
-    level=logging.DEBUG,
-    handlers=[
-        file_handler(
-            logging.DEBUG,
-            DEBUGFILE,
-            color=colors.WHITE
-        ),
-        file_handler(
-            logging.INFO,
-            LOGFILE,
-            color=colors.WHITE
-        )
-    ]
-)
-
+logging.basicConfig(level=DEBUG, handlers=[
+    file_handler(DEBUG, DEBUGFILE, filt=DEBUG, color=colors.WHITE),
+    file_handler(INFO, LOGFILE, color=colors.WHITE)
+])
 client = None
 db = None
-
-#db = client[DB]

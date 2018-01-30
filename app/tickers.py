@@ -1,4 +1,4 @@
-import logging, pytz
+import logging, pytz, json
 from datetime import datetime, timedelta, date
 from dateutil import tz
 from dateutil.parser import parse
@@ -9,6 +9,42 @@ from app.timer import Timer
 from app.utils import to_float
 from app.coinmktcap import download_data, extract_data
 log = logging.getLogger(__name__)
+
+#------------------------------------------------------------------------------
+def diff(symbol, price, period, convert=None):
+    """Compare current ticker price to historical.
+    @price: float in USD
+    @offset: str time period to compare. i.e. '1H', '1D', '7D'
+    @convert: return diff as percentage (dollar value by default)
+    """
+    db = get_db()
+    unit = period[-1]
+    n = int(period[0:-1]) if len(period) > 1 else 1
+    today_dt = parse(str(date.today()))
+
+    if unit == 'M':
+        dt = today_dt - timedelta(minutes=n)
+    elif unit == 'H':
+        dt = today_dt - timedelta(hours=n)
+    elif unit == 'D':
+        dt = today_dt - timedelta(days=n)
+    elif unit == 'Y':
+        dt = today_dt - timedelta(days=365*n)
+
+    ticker = db.tickers.historical.find({"symbol":symbol, "date":dt})
+
+    if ticker.count() < 1:
+        log.debug("no historical ticker found, symbol=%s, period=%s", symbol, period)
+        return None
+
+    ticker = list(ticker)[0]
+
+    diff = price - ticker["close"]
+    pct = round((diff / ticker["close"]) * 100, 2)
+
+    #log.debug("Mcap %s=%s%s", period, pct, "%")
+
+    return pct if convert == 'pct' else diff
 
 #------------------------------------------------------------------------------
 def upd_all_hist_tckr():
@@ -62,49 +98,3 @@ def upd_hist_tckr(ticker, start, end):
     log.info("upd_hist_tckr: sym=%s, scraped=%s, mod=%s, upsert=%s (%s ms)",
         ticker["symbol"], len(rows), result.modified_count, result.upserted_count,
         t1.clock(t='ms'))
-
-#-------------------------------------------------------------------------------
-def update_hist_forex(symbol, start, end):
-    """@symbol: fiat currency to to show USD conversion to
-    @start, end: datetime objects in UTC
-    """
-    db = get_db()
-    diff = end - start
-
-    for n in range(0,diff.days):
-        # TODO: store 'date' and 'CAD' fields in db.forex_historical collection
-        dt = start + timedelta(days=1*n)
-        print(dt.isoformat())
-        uri = "https://api.fixer.io/%s?base=USD&symbols=%s" %(dt.date(),symbol)
-
-#-------------------------------------------------------------------------------
-def update_hist_mkt():
-    # Fill in missing historical market data w/ recent data
-    pass
-
-#------------------------------------------------------------------------------
-def gen_hist_mkts():
-    """Initialize market.historical data with aggregate ticker.historical data
-    """
-    db = get_db()
-    results = list(db.tickers.historical.aggregate([
-        {"$group": {
-          "_id": "$date",
-          "mktcap_usd": {"$sum":"$mktcap_usd"},
-          "vol_24h_usd": {"$sum":"$vol_24h_usd"},
-          "n_symbols": {"$sum":1}
-        }},
-        {"$sort": {"_id":-1}}
-    ]))
-
-    print("generated %s results" % len(results))
-
-    for r in results:
-        r.update({'date':r['_id']})
-        del r['_id']
-
-    # Remove all documents within date range of aggregate results
-    db.market.historical.delete_many({"date":{"$lte":results[0]["date"]}})
-    db.market.historical.insert_many(results)
-
-

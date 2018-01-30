@@ -2,12 +2,13 @@
 import logging, curses
 from datetime import datetime
 from dateutil import tz
-from app import get_db, analyze
+from app import get_db
+import app.markets, app.tickers
 from app.timer import Timer
 from config import *
 from config import CURRENCY as cur
 from app.screen import c, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
-from app.analyze import mcap_diff
+
 localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
 
@@ -78,9 +79,9 @@ def markets(stdscr):
             pretty(mkt['n_markets']),
             pretty(mkt['n_currencies']),
             pretty(mkt['n_assets']),
-            pretty(analyze.mcap_diff('1H', convert='pct'), t="pct", f="sign"),
-            pretty(analyze.mcap_diff('24H', convert='pct'), t="pct", f="sign"),
-            pretty(analyze.mcap_diff('7D', convert='pct'), t="pct", f="sign")
+            pretty(app.markets.mcap_diff('1H', convert='pct'), t="pct", f="sign"),
+            pretty(app.markets.mcap_diff('24H', convert='pct'), t="pct", f="sign"),
+            pretty(app.markets.mcap_diff('7D', convert='pct'), t="pct", f="sign")
         ])
     colwidths = _colsizes(hdr, strrows)
 
@@ -149,7 +150,7 @@ def watchlist(stdscr):
 def portfolio(stdscr):
     log.info('Portfolio view')
     db = get_db()
-    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
+    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d', '30d']
     indent = 2
     total = 0.0
     profit = 0
@@ -169,14 +170,14 @@ def portfolio(stdscr):
             if tckr['symbol'] != hold['symbol']:
                 continue
 
+            _30d = app.tickers.diff(tckr["symbol"], tckr["price_usd"], "30D", convert="pct")
             value = round(hold['amount'] * tckr['price_cad'], 2)
             profit += (tckr['pct_24h']/ 100) * value if tckr['pct_24h'] else 0.0
             total += value
 
             datarows.append([
                 tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), tckr['mktcap_cad'], tckr["vol_24h_cad"],
-                hold['amount'], value, None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"]
-
+                hold['amount'], value, None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d
             ])
 
     # Calculate porfolio %
@@ -198,7 +199,8 @@ def portfolio(stdscr):
             pretty(datarow[7], t='pct'),
             pretty(datarow[8], t='pct', f='sign'),
             pretty(datarow[9], t='pct', f='sign'),
-            pretty(datarow[10], t='pct', f='sign')
+            pretty(datarow[10], t='pct', f='sign'),
+            pretty(datarow[11], t='pct', f='sign')
         ])
     colwidths = _colsizes(hdr, strrows)
 
@@ -212,7 +214,7 @@ def portfolio(stdscr):
     divider(stdscr, 3, colwidths, colspace)
     for y in range(0,len(strrows)):
         strrow = strrows[y]
-        colors = [c.WHITE for x in range(0,8)] + [pnlcolor(strrow[n]) for n in range(8,11)]
+        colors = [c.WHITE for x in range(0,8)] + [pnlcolor(strrow[n]) for n in range(8,12)]
         printrow(stdscr, y+4, strrow, colwidths, colors, colspace=colspace)
 
     # Portfolio value ($)

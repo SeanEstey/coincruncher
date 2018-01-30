@@ -2,10 +2,10 @@ import curses, getopt, json, logging, sys, time
 from curses import wrapper
 from config import *
 from app.timer import Timer
-from app import analyze, screen, set_db, get_db, views
+from app import screen, set_db, get_db, views
 from app.screen import KEY_UP, KEY_DOWN
 
-log = logging.getLogger(__name__)
+log = logging.getLogger("client")
 refresh_delay = 60
 scrollspeed = 5
 scrollpos = scrollremain = 0
@@ -21,20 +21,20 @@ def update_db(collection, data):
     if db[collection].find().count() == 0:
         for item in data:
             db[collection].insert_one(item)
-            log.info('Initialized %s symbol %s', collection, item['symbol'])
+            log.info('initialized %s symbol %s', collection, item['symbol'])
     # Update collection
     else:
         for item in data:
             db[collection].replace_one({'symbol':item['symbol']}, item, upsert=True)
-            log.debug('Updated %s symbol %s', collection, item['symbol'])
+            log.debug('updated %s symbol %s', collection, item['symbol'])
 
         symbols = [ n['symbol'] for n in data ]
         for doc in db[collection].find():
             if doc['symbol'] not in symbols:
-                log.debug('Deleted %s symbol %s', collection, item['symbol'])
+                log.debug('deleted %s symbol %s', collection, item['symbol'])
                 db[collection].delete_one({'_id':doc['_id']})
 
-    log.info("Updated %s", collection)
+    log.info("updated %s", collection)
 
 #----------------------------------------------------------------------
 def process_input(stdscr, ch):
@@ -94,7 +94,7 @@ def main(stdscr):
         sys.exit(2)
 
     log.info("----- client started -----")
-    log.debug("Client started w/ cmd opts=%s, args=%s", opts, args)
+    log.debug("client started,  cmd opts=%s, args=%s", opts, args)
 
     for opt, arg in opts:
         if opt in('-h', '--dbhost'):
@@ -106,7 +106,7 @@ def main(stdscr):
             user_data = json.load(open('data.json'))
             update_db('watchlist', user_data['watchlist'])
 
-    log.debug("Initializing curses screen")
+    log.debug("initializing curses screen")
     screen.setup(stdscr)
     n_lines = screen.get_n_lines()
     n_cols = screen.get_n_cols()
@@ -119,7 +119,7 @@ def main(stdscr):
         process_input(stdscr, ch)
         time.sleep(0.1)
 
-    log.info("Exiting client")
+    log.info("exiting client")
     screen.teardown(stdscr)
     exit()
 
