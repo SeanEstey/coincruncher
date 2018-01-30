@@ -10,7 +10,7 @@ def parse_period(p):
     Examples: '1H' (1 hour), '1D' (24 hrs), '7D' (7 days)
     Return (quantity, time_unit) tuple
     """
-    if type(p) != string:
+    if type(p) != str:
         log.error("period '%s' must be a string, not %s", p, type(p))
         raise TypeError
 

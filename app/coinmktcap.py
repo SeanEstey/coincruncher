@@ -45,6 +45,8 @@ def update_markets():
 
     log.info("Updated market data in %s ms" % t1.clock(t='ms'))
 
+    return store["date"]
+
 #------------------------------------------------------------------------------
 def update_tickers(start, limit=None):
     idx = start

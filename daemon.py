@@ -1,15 +1,24 @@
-import logging, time, threading, getopt, sys
+import logging, time, threading, getopt, pytz, sys
+from datetime import datetime, timedelta
 from pprint import pformat
 from config import *
-from app import set_db
+from app import get_db, set_db
+from app.utils import parse_period
 from app.coinmktcap import update_markets, update_tickers
 log = logging.getLogger(__name__)
 
 def update_data():
+    db = get_db()
+    qty, unit, t_refresh = parse_period("5M")
+
     while True:
         update_tickers(0,1500)
-        update_markets()
-        time.sleep(90)
+        updated_dt = update_markets()
+
+        t_wait = (updated_dt + t_refresh) - datetime.utcnow()
+        log.info("next update in %s sec...", t_wait.seconds)
+        if t_wait.seconds > 0:
+            time.sleep(t_wait.seconds)
 
 if __name__ == '__main__':
     try:

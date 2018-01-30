@@ -79,9 +79,9 @@ def markets(stdscr):
             pretty(mkt['n_markets']),
             pretty(mkt['n_currencies']),
             pretty(mkt['n_assets']),
-            pretty(app.markets.mcap_diff('1H', convert='pct'), t="pct", f="sign"),
-            pretty(app.markets.mcap_diff('24H', convert='pct'), t="pct", f="sign"),
-            pretty(app.markets.mcap_diff('7D', convert='pct'), t="pct", f="sign")
+            pretty(app.markets.diff('1H', to_format='percentage'), t="pct", f="sign"),
+            pretty(app.markets.diff('24H', to_format='percentage'), t="pct", f="sign"),
+            pretty(app.markets.diff('7D', to_format='percentage'), t="pct", f="sign")
         ])
     colwidths = _colsizes(hdr, strrows)
 
@@ -170,7 +170,7 @@ def portfolio(stdscr):
             if tckr['symbol'] != hold['symbol']:
                 continue
 
-            _30d = app.tickers.diff(tckr["symbol"], tckr["price_usd"], "30D", convert="pct")
+            _30d = app.tickers.diff(tckr["symbol"], tckr["price_usd"], "30D", to_format="percentage")
             value = round(hold['amount'] * tckr['price_cad'], 2)
             profit += (tckr['pct_24h']/ 100) * value if tckr['pct_24h'] else 0.0
             total += value
