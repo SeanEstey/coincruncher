@@ -6,32 +6,22 @@ from pymongo import ReplaceOne
 
 from app import get_db
 from app.timer import Timer
-from app.utils import to_float
+from app.utils import to_float, parse_period
 from app.coinmktcap import download_data, extract_data
 log = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
-def diff(symbol, price, period, convert=None):
+def diff(symbol, price, period, to_format):
     """Compare current ticker price to historical.
     @price: float in USD
     @offset: str time period to compare. i.e. '1H', '1D', '7D'
     @convert: return diff as percentage (dollar value by default)
     """
     db = get_db()
-    unit = period[-1]
-    n = int(period[0:-1]) if len(period) > 1 else 1
-    today_dt = parse(str(date.today()))
+    qty, unit, tdelta = parse_period(period)
+    compare_dt = parse(str(date.today())) - tdelta
 
-    if unit == 'M':
-        dt = today_dt - timedelta(minutes=n)
-    elif unit == 'H':
-        dt = today_dt - timedelta(hours=n)
-    elif unit == 'D':
-        dt = today_dt - timedelta(days=n)
-    elif unit == 'Y':
-        dt = today_dt - timedelta(days=365*n)
-
-    ticker = db.tickers.historical.find({"symbol":symbol, "date":dt})
+    ticker = db.tickers.historical.find({"symbol":symbol, "date":compare_dt})
 
     if ticker.count() < 1:
         log.debug("no historical ticker found, symbol=%s, period=%s", symbol, period)
@@ -42,22 +32,21 @@ def diff(symbol, price, period, convert=None):
     diff = price - ticker["close"]
     pct = round((diff / ticker["close"]) * 100, 2)
 
-    #log.debug("Mcap %s=%s%s", period, pct, "%")
-
-    return pct if convert == 'pct' else diff
+    return pct if to_format == 'percentage' else diff
 
 #------------------------------------------------------------------------------
-def upd_all_hist_tckr():
+def update_all_historical():
     db = get_db()
+
+    # TODO: Choose better starting date
     start = parse("2018-01-10")
     end = parse(str(date.today()))
-    tickers = db.tickers.find()
 
-    for ticker in tickers:
-        upd_hist_tckr(ticker, start, end)
+    for ticker in db.tickers.find():
+        update_historical(ticker, start, end)
 
 #------------------------------------------------------------------------------
-def upd_hist_tckr(ticker, start, end):
+def update_historical(ticker, start, end):
     """Scrape coinmarketcap.com for historical ticker data
     """
     db = get_db()
