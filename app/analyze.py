@@ -2,7 +2,7 @@ import logging, pytz
 from datetime import datetime, timedelta
 from pprint import pprint
 import pandas as pd
-from app import db
+from app import get_db #db
 from app.screen import pretty
 log = logging.getLogger(__name__)
 
@@ -10,6 +10,7 @@ log = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
 def append_globaldata_hist():
+    db = get_db()
     # Group by date, get closing mktcap/volume
     results = db.market.aggregate([
         {"$match":{}},
@@ -33,6 +34,7 @@ def mcap_diff(period, convert=None):
     @offset: str time period to compare. i.e. '1H', '1D', '7D'
     @convert: return diff as percentage (dollar value by default)
     """
+    db = get_db()
     unit = period[-1]
     n = int(period[0:-1]) if len(period) > 1 else 1
     now = datetime.now(tz=pytz.UTC)
@@ -76,6 +78,7 @@ def mktcap_resample(freq):
     """Resample datetimes from '5M' to given frequency
     @freq: '1H', '1D', '7D'
     """
+    db = get_db()
     unit = freq[-1]
     n = int(freq[0:-1]) if len(freq) > 1 else 1
 

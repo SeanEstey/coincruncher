@@ -1,6 +1,6 @@
 import logging, time, threading
 from pprint import pformat
-from server_config import *
+from config import *
 from app import analyze, db
 from app.coinmktcap import update_markets, update_tickers
 

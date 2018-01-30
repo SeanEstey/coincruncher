@@ -7,6 +7,7 @@
         { "id":"litecoin", "symbol":"LTC"},
         { "id":"monero", "symbol":"XMR"},
         { "id":"ripple", "symbol":"XRP"},
+        { "id":"dragonchain", "symbol":"DRGN"},
         { "id":"tether", "symbol":"USDT"}
     ],
     "portfolio": [

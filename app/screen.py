@@ -4,7 +4,6 @@ from curses import init_pair, color_pair, KEY_UP, KEY_DOWN
 from decimal import Decimal
 from config import *
 from config import CURRENCY as cur
-from app import db
 log = logging.getLogger(__name__)
 
 class c:

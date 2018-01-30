@@ -1,7 +1,6 @@
 import logging
-from . import mongo
+from .mongo import create_client, authenticate
 from config import *
-from server_config import *
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +15,29 @@ class colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+#---------------------------------------------------------------------------
+def set_db(host):
+    global db, client
 
+    if host == 'localhost':
+        log.debug("Connecting to localhost mongodb (no authentication)")
+        client = create_client(host=host, port=27017, connect=True, auth=False)
+        db = client[DB]
+        return db
+    else:
+        log.debug("Authenticating remote mongodb host %s...", host)
+        client = create_client(host=host, port=27017, connect=True, auth=True)
+        db = client[DB]
+        return db
+
+#---------------------------------------------------------------------------
+def get_db():
+    global db
+    if db:
+        return db
+    else:
+        log.error("DB host not set!")
+        return None
 
 #---------------------------------------------------------------------------
 def file_handler(level, file_path,
@@ -65,5 +86,7 @@ logging.basicConfig(
     ]
 )
 
-client = mongo.create_client(host=MONGO_URL, port=MONGO_PORT, auth=False)
-db = client[DB]
+client = None
+db = None
+
+#db = client[DB]

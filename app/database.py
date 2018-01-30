@@ -4,7 +4,7 @@ from dateutil import tz
 from dateutil.parser import parse
 from pymongo import ReplaceOne
 
-from app import db
+from app import get_db
 from app.timer import Timer
 from app.utils import to_float
 from app.coinmktcap import download_data, extract_data
@@ -12,6 +12,7 @@ log = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
 def upd_all_hist_tckr():
+    db = get_db()
     start = parse("2018-01-10")
     end = parse(str(date.today()))
     tickers = db.tickers.find()
@@ -23,6 +24,7 @@ def upd_all_hist_tckr():
 def upd_hist_tckr(ticker, start, end):
     """Scrape coinmarketcap.com for historical ticker data
     """
+    db = get_db()
     bulkops = []
     t1 = Timer()
 
@@ -66,6 +68,7 @@ def update_hist_forex(symbol, start, end):
     """@symbol: fiat currency to to show USD conversion to
     @start, end: datetime objects in UTC
     """
+    db = get_db()
     diff = end - start
 
     for n in range(0,diff.days):
@@ -83,6 +86,7 @@ def update_hist_mkt():
 def gen_hist_mkts():
     """Initialize market.historical data with aggregate ticker.historical data
     """
+    db = get_db()
     results = list(db.tickers.historical.aggregate([
         {"$group": {
           "_id": "$date",

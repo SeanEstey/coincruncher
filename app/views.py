@@ -2,7 +2,7 @@
 import logging, curses
 from datetime import datetime
 from dateutil import tz
-from app import db, analyze
+from app import get_db, analyze
 from app.timer import Timer
 from config import *
 from config import CURRENCY as cur
@@ -14,13 +14,15 @@ log = logging.getLogger(__name__)
 #----------------------------------------------------------------------
 def history(stdscr, symbol):
     log.info("Querying %s ticker history", symbol)
+    t1 = Timer()
+    db = get_db()
 
     n_display = 95
     colspace=3
     indent=2
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
 
-    t1 = Timer()
+
     tickerdata = db.tickers.historical.find({"symbol":symbol}).sort('date',-1).limit(n_display)
     n_datarows = tickerdata.count()
     log.debug("%s tickers queried in %sms", tickerdata.count(), t1.clock(t='ms'))
@@ -57,6 +59,7 @@ def history(stdscr, symbol):
 #----------------------------------------------------------------------
 def markets(stdscr):
     log.info('Markets view')
+    db = get_db()
     colspace=3
     indent=2
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h', '7d']
@@ -98,6 +101,7 @@ def markets(stdscr):
 #----------------------------------------------------------------------
 def watchlist(stdscr):
     log.info('Watchlist view')
+    db = get_db()
     hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1h", "24h", "7d"]
     indent=2
     colspace=3
@@ -144,6 +148,7 @@ def watchlist(stdscr):
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
     log.info('Portfolio view')
+    db = get_db()
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d']
     indent = 2
     total = 0.0

@@ -26,10 +26,9 @@ def authenticate(client, user=None, pw=None):
             pw or db_auth.password,
             mechanism='SCRAM-SHA-1')
     except Exception as e:
-        print('Mongo authentication error: %s', str(e))
+        log.exception("Mongo authentication error. host=%s, port=%s",
+            client.HOST, client.PORT)
         raise
-
-    #print 'MongoClient authenticated'
 
 #-------------------------------------------------------------------------------
 def dump(path):

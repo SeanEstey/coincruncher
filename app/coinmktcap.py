@@ -3,7 +3,7 @@ import argparse, datetime, logging, requests, json, re, sys, time
 from pymongo import ReplaceOne
 from .timer import Timer
 from config import CMC_MARKETS, CMC_TICKERS, CURRENCY as cur
-from app import db
+from app import get_db
 
 # Silence annoying log msgs
 logging.getLogger("requests").setLevel(logging.ERROR)
@@ -27,6 +27,7 @@ parser.add_argument("--dataframe",
 def update_markets():
     #log.info('Requesting CMC markets')
     t1 = Timer()
+    db = get_db()
 
     # Get CoinMarketCap market data
     cmc_data=None
@@ -48,6 +49,7 @@ def update_markets():
 def update_tickers(start, limit=None):
     idx = start
     t = Timer()
+    db = get_db()
 
     try:
         uri = "https://api.coinmarketcap.com/v1/ticker/?start=%s&limit=%s&convert=%s" %(
