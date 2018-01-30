@@ -29,16 +29,16 @@ class WarningFilter(logging.Filter):
 def set_db(host):
     global db, client
 
-    if host == 'localhost':
-        log.debug("connecting to localhost mongodb (no authentication)")
-        client = create_client(host=host, port=27017, connect=True, auth=False)
-        db = client[DB]
-        return db
-    else:
-        log.debug("authenticating remote mongodb host %s...", host)
-        client = create_client(host=host, port=27017, connect=True, auth=True)
-        db = client[DB]
-        return db
+    #if host == 'localhost':
+    #    log.debug("connecting to localhost mongodb (no authentication)")
+    #    client = create_client(host=host, port=27017, connect=True, auth=False)
+    #    db = client[DB]
+    #    return db
+    #else:
+    log.debug("authenticating remote mongodb host %s...", host)
+    client = create_client(host=host, port=27017, connect=True, auth=True)
+    db = client[DB]
+    return db
 
 #---------------------------------------------------------------------------
 def get_db():
