@@ -1,9 +1,12 @@
 import logging, os, pymongo
+from config import DB
 import db_auth
-log = logging.getLogger(__name__)
+log = logging.getLogger('app.mongodb')
 
 #-------------------------------------------------------------------------------
 def create_client(host=None, port=None, connect=True, auth=True):
+    log.debug("connecting to host '%s'...", host)
+
     client = pymongo.MongoClient(
         host = host,
         port = port,
@@ -13,11 +16,12 @@ def create_client(host=None, port=None, connect=True, auth=True):
     if auth:
         authenticate(client)
 
+    log.debug("success. port='%s', db='%s'", port, DB)
+
     return client
 
 #-------------------------------------------------------------------------------
 def authenticate(client, user=None, pw=None):
-
     try:
         client.admin.authenticate(
             user or db_auth.user,
@@ -32,7 +36,6 @@ def authenticate(client, user=None, pw=None):
 def dump(path):
     import os
     os.system("mongodump -o %s" % path)
-    #log.info("MongoDB backup created")
 
 #-------------------------------------------------------------------------------
 def restore(path):

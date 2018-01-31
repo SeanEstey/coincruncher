@@ -7,9 +7,9 @@ from .timer import Timer
 from config import CMC_MARKETS, CMC_TICKERS, CURRENCY as cur
 from app import get_db
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('app.coinmktcap')
 # Silence annoying log msgs
-logging.getLogger("requests").setLevel(logging.ERROR)
+#logging.getLogger("requests").setLevel(logging.ERROR)
 parser = argparse.ArgumentParser()
 parser.add_argument("currency", help="", type=str)
 parser.add_argument("start_date",  help="", type=str)

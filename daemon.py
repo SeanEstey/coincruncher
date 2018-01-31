@@ -3,6 +3,8 @@ from datetime import datetime
 from config import *
 from app import get_db, set_db
 from app.coinmktcap import updt_markets, updt_tickers
+logging.getLogger("requests").setLevel(logging.ERROR)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
@@ -29,12 +31,12 @@ def update_data():
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':
+    log.info("***** starting daemon *****")
+
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h:", ['dbhost='])
     except getopt.GetoptError:
         sys.exit(2)
-
-    log.info("***** starting daemon *****")
 
     for opt, arg in opts:
         if opt in('-h', '--dbhost'):

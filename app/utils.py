@@ -4,6 +4,12 @@ from pprint import pformat
 log = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
+def get_global_loggers():
+    for key in logging.Logger.manager.loggerDict:
+        print(key)
+    print("--------")
+
+#------------------------------------------------------------------------------
 def parse_period(p):
     """Return properties tuple (quantity, time_unit, timedelta) from given time
     period string. Arg format: <int><time_unit>

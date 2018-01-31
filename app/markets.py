@@ -5,7 +5,7 @@ import pandas as pd
 from app import get_db #db
 from app.screen import pretty
 from app.utils import parse_period
-log = logging.getLogger(__name__)
+log = logging.getLogger('app.markets')
 
 #------------------------------------------------------------------------------
 def diff(period, to_format):

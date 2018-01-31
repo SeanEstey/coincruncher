@@ -8,7 +8,7 @@ from app import get_db
 from app.timer import Timer
 from app.utils import to_float, parse_period
 from app.coinmktcap import download_data, extract_data
-log = logging.getLogger(__name__)
+log = logging.getLogger('app.tickers')
 
 #------------------------------------------------------------------------------
 def diff(symbol, price, period, to_format):
