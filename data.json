@@ -2,24 +2,25 @@
     "watchlist": [
         { "id":"bitcoin", "symbol":"BTC"},
         { "id":"litecoin", "symbol":"LTC"},
-        { "id":"dragonchain", "symbol":"DRGN"},
         { "id":"chainlink", "symbol":"LINK"},
-        { "id":"enjin-coin", "symbol":"ENJ"}
+        { "id":"trinity-network-credit", "symbol":"TNC"},
+        { "id":"kin", "symbol":"KIN"}
     ],
     "portfolio": [
         { "id":"covesting", "symbol":"COV", "amount":640.0},
         { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
+        { "id":"dragonchain", "symbol":"DRGN", "amount":746.65},
         { "id":"enjincoin", "symbol":"ENJ", "amount":11788.00},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
-        { "id":"ethereum", "symbol":"ETH", "amount":126.57},
-        { "id":"gas", "symbol":"GAS", "amount":0.3738},
+        { "id":"ethereum", "symbol":"ETH", "amount":124.57},
+        { "id":"gas", "symbol":"GAS", "amount":0.4178},
+        { "id":"icon", "symbol":"ICX", "amount":276.33},
         { "id":"neo", "symbol":"NEO", "amount":100.00},
         { "id":"omisego", "symbol":"OMG", "amount":77.2},
         { "id":"raiblocks", "symbol":"XRB", "amount":6977.50},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
         { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
         { "id":"singularitynet", "symbol":"AGI", "amount":4735.75},
-        { "id":"trinity-network-credit", "symbol":"TNC", "amount":2927.59},
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"walton", "symbol":"WTC", "amount":100.00},
         { "id":"zilliqa", "symbol":"ZIL", "amount":34721.56}

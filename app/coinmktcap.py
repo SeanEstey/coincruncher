@@ -1,6 +1,6 @@
 # app.coinmktcap
 from datetime import datetime
-import argparse, logging, requests, json, re, sys, time
+import argparse, logging, requests, json, pytz, re, sys, time
 from sys import getsizeof as getsize
 from pymongo import ReplaceOne
 from .timer import Timer
@@ -15,6 +15,31 @@ parser.add_argument("currency", help="", type=str)
 parser.add_argument("start_date",  help="", type=str)
 parser.add_argument("end_date", help="", type=str)
 parser.add_argument("--dataframe", help="", action='store_true')
+
+#---------------------------------------------------------------------------
+def update():
+    """Query and store coinmarketcap market/ticker data. Sync data fetch with
+    CMC 5 min update frequency.
+    """
+    # Fetch coinmarketcap data every 5 min
+    CMC_UPDT_FREQ = 300
+    # Update daily ticker historical data at end of each day.
+    # Use closing price
+    UPDT_HIST_TCKR_FREQ = 3600 * 24
+
+    db = get_db()
+    updated_dt = list(db.market.find().sort('_id',-1).limit(1))[0]['date']
+    now = datetime.utcnow().replace(tzinfo=pytz.utc)
+    t_remain = int(CMC_UPDT_FREQ - (now - updated_dt).total_seconds())
+
+    if t_remain <= 0:
+        updt_tickers(0,1500)
+        updt_markets()
+        log.debug("data refresh in %s sec.", CMC_UPDT_FREQ)
+        time.sleep(60)
+    else:
+        log.debug("data refresh in %s sec.", t_remain)
+        time.sleep(min(t_remain, 60))
 
 #---------------------------------------------------------------------------
 def updt_markets():
@@ -62,14 +87,16 @@ def updt_tickers(start, limit=None):
 
     for ticker in data:
         store={}
-        ticker['last_updated'] = float(ticker['last_updated']) if ticker.get('last_updated') else None
+        ticker['last_updated'] = float(ticker['last_updated']) if \
+            ticker.get('last_updated') else None
 
         for f in CMC_TICKERS:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None
             except Exception as e:
-                log.exception("%s error in '%s' field: %s", ticker['symbol'], f["from"], str(e))
+                log.exception("%s error in '%s' field: %s",
+                    ticker['symbol'], f["from"], str(e))
                 continue
 
         ops.append(ReplaceOne({'symbol':store['symbol']}, store, upsert=True))
@@ -95,15 +122,21 @@ def parse_options(currency, start_date, end_date):
 
   # String validation
   pattern    = re.compile('[2][0][1][0-9]-[0-1][0-9]-[0-3][0-9]')
+
   if not re.match(pattern, start_date):
-    raise ValueError('Invalid format for the start_date: ' + start_date + ". Should be of the form: yyyy-mm-dd.")
+    raise ValueError('Invalid format for the start_date: ' +\
+        start_date + ". Should be of the form: yyyy-mm-dd.")
   if not re.match(pattern, end_date):
-    raise ValueError('Invalid format for the end_date: '   + end_date   + ". Should be of the form: yyyy-mm-dd.")
-  # Datetime validation for the correctness of the date. Will throw a ValueError if not valid
+    raise ValueError('Invalid format for the end_date: '   + end_date  +\
+        ". Should be of the form: yyyy-mm-dd.")
+
+  # Datetime validation for the correctness of the date.
+  # Will throw a ValueError if not valid
   datetime(start_year,int(start_date_split[1]),int(start_date_split[2]))
   datetime(end_year,  int(end_date_split[1]),  int(end_date_split[2]))
 
-  # CoinMarketCap's price data (at least for Bitcoin, presuambly for all others) only goes back to 2013
+  # CoinMarketCap's price data (at least for Bitcoin, presuambly for all others)
+  # only goes back to 2013
   invalid_args =                 start_year < 2013
   invalid_args = invalid_args or end_year   < 2013
   invalid_args = invalid_args or end_year   < start_year
@@ -119,7 +152,8 @@ def parse_options(currency, start_date, end_date):
 
 #---------------------------------------------------------------------------
 def download_data(currency, start_date, end_date):
-  """Download HTML price history for the specified cryptocurrency and time range from CoinMarketCap.
+  """Download HTML price history for the specified cryptocurrency and time
+  range from CoinMarketCap.
   """
   url = 'https://coinmarketcap.com/currencies/' + currency + '/historical-data/' + '?start=' \
                                                 + start_date + '&end=' + end_date
@@ -148,8 +182,8 @@ def download_data(currency, start_date, end_date):
 #---------------------------------------------------------------------------
 def extract_data(html):
   """Extract the price history from the HTML.
-  The CoinMarketCap historical data page has just one HTML table.  This table contains the data we want.
-  It's got one header row with the column names.
+  The CoinMarketCap historical data page has just one HTML table. This table
+  contains the data we want. It's got one header row with the column names.
   We need to derive the "average" price for the provided data.
   """
   head = re.search(r'<thead>(.*)</thead>', html, re.DOTALL).group(1)
