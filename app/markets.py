@@ -1,8 +1,9 @@
+# app.markets
+
 import logging, pytz
 from datetime import datetime, timedelta
-from pprint import pprint
 import pandas as pd
-from app import get_db #db
+from app import get_db
 from app.screen import pretty
 from app.utils import parse_period
 log = logging.getLogger('app.markets')
@@ -14,7 +15,6 @@ def diff(period, to_format):
     @to_format: 'currency' or 'percentage'
     """
     db = get_db()
-
     qty, unit, tdelta = parse_period(period)
     dt = datetime.now(tz=pytz.UTC) - tdelta
 
@@ -32,7 +32,7 @@ def diff(period, to_format):
 
     dt_diff = round((mkts[0]['date'] - dt).total_seconds() / 3600, 2)
     if dt_diff > 1:
-        log.debug("mktcap lookup fail:\nperiod=%s,\nclosest=%s,\ntdelta=%shrs",
+        log.debug("mktcap lookup fail. period='%s', closest='%s', tdelta='%s hrs'",
         period, mkts[0]['date'].strftime("%m-%d-%Y %H:%M"), dt_diff)
         return "--"
 
@@ -41,10 +41,10 @@ def diff(period, to_format):
 
     return pct if to_format == 'percentage' else diff
 
-# TODO store_hist() generate same result as resample()?
-# Compare performance of aggregate query vs dataframe resample
 #------------------------------------------------------------------------------
 def resample(freq):
+    # TODO store_hist() generate same result as resample()?
+    # Compare performance of aggregate query vs dataframe resample
     """Resample datetimes from '5M' to given frequency
     @freq: '1H', '1D', '7D'
     """
@@ -63,10 +63,10 @@ def resample(freq):
     df = df.resample(freq).mean()
     return df
 
-# TODO store_hist() generate same result as resample()?
-# Compare performance of aggregate query vs dataframe resample
 #------------------------------------------------------------------------------
 def update_historical():
+    # TODO store_hist() generate same result as resample()?
+    # Compare performance of aggregate query vs dataframe resample
     db = get_db()
     # Group by date, get closing mktcap/volume
     results = db.market.aggregate([

@@ -41,18 +41,22 @@ def process_input(stdscr, ch):
     global scrollpos, scrollscr, scrollremain, timer, view
 
     if ch == ord('p'):
+        log.info("new view=portfolio")
         view = views.portfolio
         view(stdscr)
         stdscr.refresh()
     elif ch == ord('m'):
+        log.info("new view=market")
         view = views.markets
         view(stdscr)
         stdscr.refresh()
     elif ch == ord('w'):
+        log.info("new view=market")
         view = views.watchlist
         view(stdscr)
         stdscr.refresh()
     elif ch == ord('h'):
+        log.info("new view=history")
         stdscr.clear()
         byte_input = screen.input_prompt(stdscr, 10, int(curses.COLS/2), "Enter Symbol")
         symbol = byte_input.decode('utf-8').upper()

@@ -1,3 +1,5 @@
+# app.daemon
+
 import logging, time, threading, getopt, pytz, sys
 from datetime import datetime
 from config import *
@@ -12,7 +14,13 @@ def update_data():
     """Query and store coinmarketcap market/ticker data. Sync data fetch with
     CMC 5 min update frequency.
     """
+    # Fetch coinmarketcap data every 5 min
     CMC_UPDT_FREQ = 300
+
+    # Update daily ticker historical data at end of each day.
+    # Use closing price
+    UPDT_HIST_TCKR_FREQ = 3600 * 24
+
     db = get_db()
 
     while True:
@@ -23,10 +31,10 @@ def update_data():
         if t_remain <= 0:
             updt_tickers(0,1500)
             updt_markets()
-            log.info("data refresh in %s sec.", CMC_UPDT_FREQ)
+            log.debug("data refresh in %s sec.", CMC_UPDT_FREQ)
             time.sleep(60)
         else:
-            log.info("data refresh in %s sec.", t_remain)
+            log.debug("data refresh in %s sec.", t_remain)
             time.sleep(min(t_remain, 60))
 
 #---------------------------------------------------------------------------

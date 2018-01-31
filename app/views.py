@@ -12,7 +12,7 @@ from app.screen import c, printrow, pretty, pnlcolor, _colsizes, divider, navmen
 localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
 
-#----------------------------------------------------------------------
+#-----------------------------------------------------------------------------
 def history(stdscr, symbol):
     log.info("Querying %s ticker history", symbol)
     t1 = Timer()
@@ -24,9 +24,11 @@ def history(stdscr, symbol):
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
 
 
-    tickerdata = db.tickers.historical.find({"symbol":symbol}).sort('date',-1).limit(n_display)
+    tickerdata = db.tickers.historical.find({"symbol":symbol}
+        ).sort('date',-1).limit(n_display)
     n_datarows = tickerdata.count()
-    log.debug("%s tickers queried in %sms", tickerdata.count(), t1.clock(t='ms'))
+    log.debug("%s tickers queried in %sms",
+        tickerdata.count(), t1.clock(t='ms'))
 
     if tickerdata.count() == 0:
         log.info("No ticker history found for %s", symbol)
@@ -57,13 +59,14 @@ def history(stdscr, symbol):
     log.info("n_datarows=%s, n_rem_scroll=%s", n_datarows, n_rem_scroll)
     return n_rem_scroll
 
-#----------------------------------------------------------------------
+#-----------------------------------------------------------------------------
 def markets(stdscr):
-    log.info('Markets view')
+    diff = app.markets.diff
     db = get_db()
     colspace=3
     indent=2
-    hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies', 'Assets', '1h', '24h', '7d']
+    hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies',
+           'Assets', '1h', '24h', '7d']
 
     mktdata = list(db.market.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
@@ -79,9 +82,9 @@ def markets(stdscr):
             pretty(mkt['n_markets']),
             pretty(mkt['n_currencies']),
             pretty(mkt['n_assets']),
-            pretty(app.markets.diff('1H', to_format='percentage'), t="pct", f="sign"),
-            pretty(app.markets.diff('24H', to_format='percentage'), t="pct", f="sign"),
-            pretty(app.markets.diff('7D', to_format='percentage'), t="pct", f="sign")
+            pretty(diff('1H', to_format='percentage'), t="pct", f="sign"),
+            pretty(diff('24H', to_format='percentage'), t="pct", f="sign"),
+            pretty(diff('7D', to_format='percentage'), t="pct", f="sign")
         ])
     colwidths = _colsizes(hdr, strrows)
 
@@ -99,9 +102,9 @@ def markets(stdscr):
         colors = [c.WHITE for n in range(0,6)] + [pnlcolor(row[n]) for n in range(6,9)]
         printrow(stdscr, i+4, row, colwidths, colors, colspace)
 
-#----------------------------------------------------------------------
+#-----------------------------------------------------------------------------
 def watchlist(stdscr):
-    log.info('Watchlist view')
+    #log.info('Watchlist view')
     db = get_db()
     hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1h", "24h", "7d"]
     indent=2
@@ -143,14 +146,16 @@ def watchlist(stdscr):
     divider(stdscr, 3, colwidths, colspace)
     for n in range(0, len(strrows)):
         row = strrows[n]
-        colors = [c.WHITE, c.WHITE, c.WHITE, c.WHITE, c.WHITE, pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7])]
+        colors = [c.WHITE, c.WHITE, c.WHITE, c.WHITE, c.WHITE, pnlcolor(row[5]),
+            pnlcolor(row[6]), pnlcolor(row[7])]
         printrow(stdscr, n+4, row, colwidths, colors, colspace)
 
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
-    log.info('Portfolio view')
+    diff = app.tickers.diff
     db = get_db()
-    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value', '%/100', '1h', '24h', '7d', '30d']
+    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', 'Amount', 'Value',
+           '%/100', '1h', '24h', '7d', '30d']
     indent = 2
     total = 0.0
     profit = 0
@@ -170,14 +175,16 @@ def portfolio(stdscr):
             if tckr['symbol'] != hold['symbol']:
                 continue
 
-            _30d = app.tickers.diff(tckr["symbol"], tckr["price_usd"], "30D", to_format="percentage")
+            _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
+                to_format="percentage")
             value = round(hold['amount'] * tckr['price_cad'], 2)
-            profit += (tckr['pct_24h']/ 100) * value if tckr['pct_24h'] else 0.0
+            profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
             total += value
 
             datarows.append([
-                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2), tckr['mktcap_cad'], tckr["vol_24h_cad"],
-                hold['amount'], value, None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d
+                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2),
+                tckr['mktcap_cad'], tckr["vol_24h_cad"], hold['amount'], value,
+                None, tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d
             ])
 
     # Calculate porfolio %

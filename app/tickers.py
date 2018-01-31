@@ -24,7 +24,6 @@ def diff(symbol, price, period, to_format):
     ticker = db.tickers.historical.find({"symbol":symbol, "date":compare_dt})
 
     if ticker.count() < 1:
-        log.debug("no historical ticker found, symbol=%s, period=%s", symbol, period)
         return None
 
     ticker = list(ticker)[0]
@@ -54,11 +53,12 @@ def update_historical(ticker, start, end):
     t1 = Timer()
 
     # Scrape data
-    html = download_data(ticker["id"], start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
-    # row = ["date", "open", "high", "low", "close", "vol_24h_usd", "mktcap_usd"]
+    html = download_data(ticker["id"], start.strftime("%Y%m%d"),
+        end.strftime("%Y%m%d"))
     header, rows = extract_data(html)
 
     for row in rows:
+        # ["date", "open", "high", "low", "close", "vol_24h_usd", "mktcap_usd"]
         document = {
             "symbol":ticker["symbol"],
             "id":ticker["id"],
