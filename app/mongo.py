@@ -4,8 +4,6 @@ log = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
 def create_client(host=None, port=None, connect=True, auth=True):
-    #log.debug('MongoDB PID=%s', os.getpid())
-
     client = pymongo.MongoClient(
         host = host,
         port = port,

@@ -1,71 +1,69 @@
 # app.coinmktcap
-import argparse, datetime, logging, requests, json, re, sys, time
+from datetime import datetime
+import argparse, logging, requests, json, re, sys, time
+from sys import getsizeof as getsize
 from pymongo import ReplaceOne
 from .timer import Timer
 from config import CMC_MARKETS, CMC_TICKERS, CURRENCY as cur
 from app import get_db
 
+log = logging.getLogger(__name__)
 # Silence annoying log msgs
 logging.getLogger("requests").setLevel(logging.ERROR)
-log = logging.getLogger(__name__)
 parser = argparse.ArgumentParser()
-parser.add_argument("currency",
-    help="This is the name of the crypto, as is shown on coinmarketcap. For BTC, "
-    "for example, type: bitcoin.", type=str)
-parser.add_argument("start_date",
-    help="Start date from which you wish to retrieve the historical data. For example, "
-    "'2017-10-01'.", type=str)
-parser.add_argument("end_date",
-    help="End date for the historical data retrieval. If you wish to retrieve all the "
-    "data then you can give a date in the future. Same format as in start_date "
-    "'yyyy-mm-dd'.", type=str)
-parser.add_argument("--dataframe",
-    help="If present, returns a pandas DataFrame.",
-    action='store_true')
+parser.add_argument("currency", help="", type=str)
+parser.add_argument("start_date",  help="", type=str)
+parser.add_argument("end_date", help="", type=str)
+parser.add_argument("--dataframe", help="", action='store_true')
 
 #---------------------------------------------------------------------------
-def update_markets():
-    #log.info('Requesting CMC markets')
+def updt_markets():
+    """Get CoinMarketCap global market data
+    """
+    data=None
+    store={}
     t1 = Timer()
     db = get_db()
+    log.info("fetching market data...")
 
-    # Get CoinMarketCap market data
-    cmc_data=None
     try:
-        r = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % cur)
-        data = json.loads(r.text)
+        response = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % cur)
+        data = json.loads(response.text)
     except Exception as e:
         log.warning("Error getting CMC market data: %s", str(e))
         return False
     else:
-        store = {}
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
+
         db.market.replace_one({'date':store['date']}, store, upsert=True)
 
-    log.info("Updated market data in %s ms" % t1.clock(t='ms'))
-
-    return store["date"]
+    log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
 
 #------------------------------------------------------------------------------
-def update_tickers(start, limit=None):
+def updt_tickers(start, limit=None):
+    """Get CoinMarketCap ticker data for all assets.
+    """
     idx = start
     t = Timer()
     db = get_db()
+    log.info("fetching ticker data...")
 
     try:
-        uri = "https://api.coinmarketcap.com/v1/ticker/?start=%s&limit=%s&convert=%s" %(
-            idx, limit or 1500, 'cad')
-        response = requests.get(uri)
-        results = json.loads(response.text)
+        response = requests.get(
+            "https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}&convert={}"\
+            .format(idx, limit or 1500, 'cad'))
+        data = json.loads(response.text)
     except Exception as e:
-        log.exception("Failed to get cmc ticker: %s", str(e))
+        log.exception("updt_ticker() error")
         return False
 
     ops = []
-    for ticker in results:
+
+    for ticker in data:
         store={}
         ticker['last_updated'] = float(ticker['last_updated']) if ticker.get('last_updated') else None
+
         for f in CMC_TICKERS:
             try:
                 val = ticker[f["from"]]
@@ -73,12 +71,13 @@ def update_tickers(start, limit=None):
             except Exception as e:
                 log.exception("%s error in '%s' field: %s", ticker['symbol'], f["from"], str(e))
                 continue
-        #db.tickers.replace_one({'symbol':store['symbol']}, store, upsert=True)
+
         ops.append(ReplaceOne({'symbol':store['symbol']}, store, upsert=True))
 
     result = db.tickers.bulk_write(ops)
 
-    log.info("Updated %s tickers in %s ms", len(results), t.clock(t='ms'))
+    log.info("received {:,} bytes in {:,} ms. {:,} tickers.".format(
+        getsize(response.text), t.clock(t='ms'), len(data)))
 
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):
@@ -101,8 +100,8 @@ def parse_options(currency, start_date, end_date):
   if not re.match(pattern, end_date):
     raise ValueError('Invalid format for the end_date: '   + end_date   + ". Should be of the form: yyyy-mm-dd.")
   # Datetime validation for the correctness of the date. Will throw a ValueError if not valid
-  datetime.datetime(start_year,int(start_date_split[1]),int(start_date_split[2]))
-  datetime.datetime(end_year,  int(end_date_split[1]),  int(end_date_split[2]))
+  datetime(start_year,int(start_date_split[1]),int(start_date_split[2]))
+  datetime(end_year,  int(end_date_split[1]),  int(end_date_split[2]))
 
   # CoinMarketCap's price data (at least for Bitcoin, presuambly for all others) only goes back to 2013
   invalid_args =                 start_year < 2013

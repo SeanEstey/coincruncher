@@ -3,7 +3,7 @@ from logging import DEBUG, INFO, WARNING
 from .mongo import create_client, authenticate
 from config import *
 
-log = logging.getLogger(__name__)
+log = logging.getLogger('mongodb')
 
 class colors:
     BLUE = '\033[94m'
@@ -28,16 +28,11 @@ class WarningFilter(logging.Filter):
 #---------------------------------------------------------------------------
 def set_db(host):
     global db, client
-
-    #if host == 'localhost':
-    #    log.debug("connecting to localhost mongodb (no authentication)")
-    #    client = create_client(host=host, port=27017, connect=True, auth=False)
-    #    db = client[DB]
-    #    return db
-    #else:
-    log.debug("authenticating remote mongodb host %s...", host)
-    client = create_client(host=host, port=27017, connect=True, auth=True)
+    port = 27017
+    log.debug("connecting to host '%s'...", host)
+    client = create_client(host=host, port=port, connect=True, auth=True)
     db = client[DB]
+    log.debug("success. port='%s', db='%s'", port, DB)
     return db
 
 #---------------------------------------------------------------------------

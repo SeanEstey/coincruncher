@@ -1,33 +1,40 @@
 import logging, time, threading, getopt, pytz, sys
-from datetime import datetime, timedelta
-from pprint import pformat
+from datetime import datetime
 from config import *
 from app import get_db, set_db
-from app.utils import parse_period
-from app.coinmktcap import update_markets, update_tickers
-log = logging.getLogger(__name__)
+from app.coinmktcap import updt_markets, updt_tickers
+log = logging.getLogger("daemon")
 
+#---------------------------------------------------------------------------
 def update_data():
+    """Query and store coinmarketcap market/ticker data. Sync data fetch with
+    CMC 5 min update frequency.
+    """
+    CMC_UPDT_FREQ = 300
     db = get_db()
-    qty, unit, t_refresh = parse_period("5M")
 
     while True:
-        update_tickers(0,1500)
-        updated_dt = update_markets()
+        updated_dt = list(db.market.find().sort('_id',-1).limit(1))[0]['date']
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        t_remain = int(CMC_UPDT_FREQ - (now - updated_dt).total_seconds())
 
-        t_wait = (updated_dt + t_refresh) - datetime.utcnow()
-        log.info("next update in %s sec...", t_wait.seconds)
-        if t_wait.seconds > 0:
-            time.sleep(t_wait.seconds)
+        if t_remain <= 0:
+            updt_tickers(0,1500)
+            updt_markets()
+            log.info("data refresh in %s sec.", CMC_UPDT_FREQ)
+            time.sleep(60)
+        else:
+            log.info("data refresh in %s sec.", t_remain)
+            time.sleep(min(t_remain, 60))
 
+#---------------------------------------------------------------------------
 if __name__ == '__main__':
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h:", ['dbhost='])
     except getopt.GetoptError:
         sys.exit(2)
 
-    log.info("----- client started -----")
-    log.debug("opts=%s, args=%s", opts, args)
+    log.info("***** starting daemon *****")
 
     for opt, arg in opts:
         if opt in('-h', '--dbhost'):
@@ -37,9 +44,8 @@ if __name__ == '__main__':
     data_thread.setDaemon(True)
     data_thread.start()
 
-    log.info("Daemon started")
-
     while True:
         time.sleep(0.1)
 
+    log.info("***** terminating daemon *****")
     exit()
