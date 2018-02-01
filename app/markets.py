@@ -61,9 +61,10 @@ def resample(start, end, freq):
     df = df.resample(freq).mean()
     return df
 
-
 #------------------------------------------------------------------------------
-def generate_historical(start, end):
+def aggregate_series(start, end):
+    """TODO: refactor so this calls aggregate inside loop
+    """
     db = get_db()
 
     dt = start
