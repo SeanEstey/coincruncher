@@ -1,7 +1,11 @@
-import inspect, logging, unicodedata
-from datetime import timedelta
+import inspect, logging, unicodedata, pytz
+from datetime import datetime, timedelta, time
 from pprint import pformat
 log = logging.getLogger(__name__)
+
+#------------------------------------------------------------------------------
+def utc_dt(_date):
+    return datetime.combine(_date, time()).replace(tzinfo=pytz.utc)
 
 #------------------------------------------------------------------------------
 def get_global_loggers():

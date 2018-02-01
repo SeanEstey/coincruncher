@@ -1,12 +1,13 @@
 # app.markets
 
 import logging, pytz
-from datetime import datetime, timedelta
+from pprint import pprint
+from datetime import datetime, date, timedelta as delta
 import pandas as pd
 from app import get_db
 from app.screen import pretty
-from app.utils import parse_period
-log = logging.getLogger('app.markets')
+from app.utils import parse_period, utc_dt
+log = logging.getLogger(__name__) #'app.markets')
 
 #------------------------------------------------------------------------------
 def diff(period, to_format):
@@ -42,14 +43,11 @@ def diff(period, to_format):
     return pct if to_format == 'percentage' else diff
 
 #------------------------------------------------------------------------------
-def resample(freq):
-    # TODO store_hist() generate same result as resample()?
-    # Compare performance of aggregate query vs dataframe resample
+def resample(start, end, freq):
     """Resample datetimes from '5M' to given frequency
     @freq: '1H', '1D', '7D'
     """
     db = get_db()
-
     qty, unit, tdelta = parse_period(freq)
     dt = datetime.now(tz=pytz.UTC) - tdelta
 
@@ -63,27 +61,88 @@ def resample(freq):
     df = df.resample(freq).mean()
     return df
 
+
 #------------------------------------------------------------------------------
-def update_historical():
-    # TODO store_hist() generate same result as resample()?
-    # Compare performance of aggregate query vs dataframe resample
+def generate_historical(start, end):
     db = get_db()
-    # Group by date, get closing mktcap/volume
-    results = db.market.aggregate([
-        {"$match":{}},
-        {"$group": {
-            # Compound key
-            "_id": {
-                "day": { "$dayOfYear": "$date" }
-                #"hour": { "$hour": "$date" }
-            },
-            "volume": { "$avg": "$vol_24h_cad"}
-        }}
-        #"date": { "$max":"$date" },
-        # "mktcap": {"$last":"$mktcap_cad"},
-        # "vol_24h": {"$last":"$vol_24h_cad"}
-    ])
-    return results
+
+    dt = start
+    while dt <= end:
+        # Build market analysis for yesterday's data
+        results = db.market.find(
+            {"date": {"$gte":dt, "$lt":dt + delta(days=1)}},
+            {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
+
+        if results.count() < 1:
+            log.debug("no datapoints for '%s'", dt)
+            dt += delta(days=1)
+            continue
+
+        log.debug("resampling %s data points", results.count())
+
+        # Build pandas dataframe and resample to 1D
+        df = pd.DataFrame(list(results))
+        df.index = df['date']
+        df = df.resample("1D").mean()
+        df_dict = df.to_dict(orient='records')
+
+        if len(df_dict) != 1:
+            log.error("dataframe length is %s!", len(df_dict))
+            raise Exception("invalid df length")
+
+        df_dict = df_dict[0]
+        df_dict["date"] = dt
+        df_dict["mktcap_cad"] = int(df_dict["mktcap_cad"])
+        df_dict["mktcap_usd"] = int(df_dict["mktcap_usd"])
+        df_dict["vol_24h_cad"] = int(df_dict["vol_24h_cad"])
+        df_dict["vol_24h_usd"] = int(df_dict["vol_24h_usd"])
+        db.market.historical.insert_one(df_dict)
+
+        log.info("market.historical inserted for '%s'.", dt)
+
+        dt += delta(days=1)
+
+#------------------------------------------------------------------------------
+def aggregate():
+    # Check if yesterday's market data has been added to market.historical
+    # Return n_seconds to end of today for next update.
+    db = get_db()
+    today = datetime.utcnow().replace(tzinfo=pytz.utc).date()
+    yday = utc_dt(today + delta(days=-1))
+
+    if db.market.historical.find({"date":yday}).count() > 0:
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        tmrw = utc_dt(today + delta(days=1))
+        log.debug("market.historical update in %s", tmrw - now)
+        return int((tmrw - now).total_seconds())
+
+    # Build market analysis for yesterday's data
+    results = db.market.find(
+        {"date": {"$gte":yday, "$lt":yday+delta(days=1)}},
+        {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
+
+    log.debug("resampling %s data points", results.count())
+
+    # Build pandas dataframe and resample to 1D
+    df = pd.DataFrame(list(results))
+    df.index = df['date']
+    df = df.resample("1D").mean()
+    df_dict = df.to_dict(orient='records')
+
+    if len(df_dict) != 1:
+        log.error("dataframe length is %s!", len(df_dict))
+        raise Exception("invalid df length")
+
+    df_dict[0]["date"] = yday
+    db.market.historical.insert_one(df_dict[0])
+
+    now = datetime.utcnow().replace(tzinfo=pytz.utc)
+    tmrw = utc_dt(today + delta(days=1))
+
+    log.info("market.historical updated for '%s'. next update in %s",
+        yday.date(), tmrw - now)
+
+    return int((tmrw - now).total_seconds())
 
 #------------------------------------------------------------------------------
 def mcap_avg_diff(freq):

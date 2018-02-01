@@ -13,6 +13,10 @@ localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------
+def upt_historical():
+    pass
+
+#-----------------------------------------------------------------------------
 def history(stdscr, symbol):
     log.info("Querying %s ticker history", symbol)
     t1 = Timer()
@@ -154,10 +158,8 @@ def watchlist(stdscr):
 def portfolio(stdscr):
     diff = app.tickers.diff
     db = get_db()
-    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h',
-           '1 Hour', '24 Hour', '7 Day', '30 Day',
-           'Amount', 'Value', '/100'
-    ]
+    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
+           '7 Day', '30 Day', 'Amount', 'Value', '/100']
     indent = 2
     total = 0.0
     profit = 0

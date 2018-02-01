@@ -2,7 +2,7 @@
 
 import logging, time, threading, getopt, sys
 from config import *
-from app import get_db, set_db, coinmktcap
+from app import get_db, set_db, coinmktcap, markets
 logging.getLogger("requests").setLevel(logging.ERROR)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger("daemon")
@@ -10,7 +10,12 @@ log = logging.getLogger("daemon")
 #---------------------------------------------------------------------------
 def main():
     while True:
-        coinmktcap.update()
+        t1 = coinmktcap.update()
+        t2 = markets.aggregate()
+
+        # Sleep until time
+        log.debug("next update in %s sec", min(t1,t2))
+        time.sleep(min(t1,t2))
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':

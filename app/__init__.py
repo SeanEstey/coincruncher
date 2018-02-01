@@ -71,7 +71,7 @@ def file_handler(level, file_path,
 
 logging.basicConfig(level=DEBUG, handlers=[
     file_handler(DEBUG, DEBUGFILE, filt=DEBUG, color=colors.WHITE),
-    file_handler(INFO, LOGFILE, color=colors.WHITE)
+    file_handler(INFO, LOGFILE, filt=INFO, color=colors.WHITE)
 ])
 client = None
 db = None

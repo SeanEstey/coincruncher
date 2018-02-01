@@ -22,24 +22,23 @@ def update():
     CMC 5 min update frequency.
     """
     # Fetch coinmarketcap data every 5 min
-    CMC_UPDT_FREQ = 300
-    # Update daily ticker historical data at end of each day.
-    # Use closing price
-    UPDT_HIST_TCKR_FREQ = 3600 * 24
+    update_frequency = 300
 
     db = get_db()
     updated_dt = list(db.market.find().sort('_id',-1).limit(1))[0]['date']
     now = datetime.utcnow().replace(tzinfo=pytz.utc)
-    t_remain = int(CMC_UPDT_FREQ - (now - updated_dt).total_seconds())
+    t_remain = int(update_frequency - (now - updated_dt).total_seconds())
 
     if t_remain <= 0:
         updt_tickers(0,1500)
         updt_markets()
-        log.debug("data refresh in %s sec.", CMC_UPDT_FREQ)
-        time.sleep(60)
+        log.debug("data refresh in %s sec.", update_frequency)
+        return update_frequency
+        #time.sleep(60)
     else:
         log.debug("data refresh in %s sec.", t_remain)
-        time.sleep(min(t_remain, 60))
+        return t_remain
+        #time.sleep(min(t_remain, 60))
 
 #---------------------------------------------------------------------------
 def updt_markets():
