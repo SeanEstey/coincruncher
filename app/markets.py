@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta as delta
 import pandas as pd
 from app import get_db
 from app.screen import pretty
-from app.utils import parse_period, utc_dt, utc_date, utc_delta_tomorrow
+from app.utils import parse_period, utc_dt, utc_date, utc_tomorrow_delta
 log = logging.getLogger(__name__) #'app.markets')
 
 #------------------------------------------------------------------------------
@@ -99,25 +99,25 @@ def aggregate_series(start, end):
         #df_dict["mktcap_usd"] = int(df_dict["mktcap_usd"])
         #df_dict["vol_24h_cad"] = int(df_dict["vol_24h_cad"])
         #df_dict["vol_24h_usd"] = int(df_dict["vol_24h_usd"])
-        db.markets.aggregate.insert_one(df_dict)
+        db.markets.agg.insert_one(df_dict)
 
-        log.info("markets.aggregate inserted for '%s'.", dt)
+        log.info("markets.agg inserted for '%s'.", dt)
 
         dt += delta(days=1)
 
 #------------------------------------------------------------------------------
 def aggregate():
     """Aggregate previous day's market data at the beginning of each day.
-    Check if yesterday's market data has been added to markets.aggregate
+    Check if yesterday's market data has been added to markets.agg
     Return n_seconds to end of today for next update.
     """
     db = get_db()
     today = utc_date()
     yday_dt = utc_dt(today + delta(days=-1))
 
-    if db.markets.aggregate.find({"date":yday_dt}).count() > 0:
+    if db.markets.agg.find({"date":yday_dt}).count() > 0:
         tmrw = utc_tomorrow_delta()
-        log.debug("markets.aggregate update in %s", tmrw)
+        log.debug("markets.agg update in %s", tmrw)
         return int(tmrw.total_seconds())
 
     # Build market analysis for yesterday's data
@@ -140,12 +140,12 @@ def aggregate():
         raise Exception("invalid df length")
 
     df_dict[0]["date"] = yday_dt
-    db.markets.aggregate.insert_one(df_dict[0])
+    db.markets.agg.insert_one(df_dict[0])
 
     now = datetime.utcnow().replace(tzinfo=pytz.utc)
     tmrw = utc_dt(today + delta(days=1))
 
-    log.info("markets.aggregate updated for '%s'. next update in %s",
+    log.info("markets.agg updated for '%s'. next update in %s",
         yday_dt.date(), tmrw - now)
 
     return int((tmrw - now).total_seconds())
@@ -167,7 +167,7 @@ def update_hist_mkt():
 
 #------------------------------------------------------------------------------
 def gen_hist_mkts():
-    """Initialize markets.aggregate data with aggregate ticker.historical data
+    """Initialize markets.agg data with aggregate ticker.historical data
     """
     db = get_db()
     results = list(db.tickers.historical.aggregate([
@@ -187,5 +187,5 @@ def gen_hist_mkts():
         del r['_id']
 
     # Remove all documents within date range of aggregate results
-    db.markets.aggregate.delete_many({"date":{"$lte":results[0]["date"]}})
-    db.markets.aggregate.insert_many(results)
+    db.markets.agg.delete_many({"date":{"$lte":results[0]["date"]}})
+    db.markets.agg.insert_many(results)
