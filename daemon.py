@@ -2,7 +2,7 @@
 
 import logging, time, threading, getopt, sys
 from config import *
-from app import get_db, set_db, coinmktcap, markets
+from app import get_db, set_db, coinmktcap, forex, markets
 logging.getLogger("requests").setLevel(logging.ERROR)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger("daemon")

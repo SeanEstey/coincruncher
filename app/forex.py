@@ -7,6 +7,12 @@ from app.utils import utc_dt, utc_date, utc_tomorrow_delta
 log = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
+def rate(currency, date):
+    db = get_db()
+    result = db.forex.historical.find_one({"date":date})
+    return result[currency]
+
+#-------------------------------------------------------------------------------
 def update():
     base = 'USD'
     to = 'CAD'
@@ -17,19 +23,19 @@ def update():
     # Have we saved today's rates?
     if results.count() > 0:
         tmrw = utc_tomorrow_delta()
-        log.debug("forex rates saved for today. next update in %s", tmrw)
-        return tmrw
+        log.debug("forex update in %s", tmrw)
+        return int(tmrw.total_seconds())
 
     uri = "https://api.fixer.io/%s?base=%s&symbols=%s" %(today,base,to)
     try:
         response = requests.get(uri)
     except Exception as e:
         log.exception("error querying forex rates")
-        return utc_tomorrow_delta()
+        return int(utc_tomorrow_delta().total_seconds())
     else:
         if response.status_code != 200:
             log.error("forex status=%s, text=%s", response.status_code, response.text)
-            return utc_tomorrow_delta()
+            return int(utc_tomorrow_delta().total_seconds())
 
     # Update
     data = json.loads(response.text)
@@ -42,7 +48,7 @@ def update():
     log.info("updated forex rates for %s, USD->CAD=%s",
         today, data["rates"][to])
 
-    return utc_tomorrow_delta()
+    return int(utc_tomorrow_delta().total_seconds())
 
 #-------------------------------------------------------------------------------
 def update_hist_forex(symbol, start, end):

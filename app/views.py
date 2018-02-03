@@ -2,8 +2,10 @@
 import logging, curses
 from datetime import datetime
 from dateutil import tz
-from app import get_db
+from app import get_db, markets
 import app.markets, app.tickers
+from app.utils import utc_dt, utc_date
+from app.forex import rate
 from app.timer import Timer
 from config import *
 from config import CURRENCY as cur
@@ -22,11 +24,11 @@ def history(stdscr, symbol):
     t1 = Timer()
     db = get_db()
 
+    exrate = rate('CAD',utc_dt(utc_date()))
     n_display = 95
     colspace=3
     indent=2
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
-
 
     tickerdata = db.tickers.historical.find({"symbol":symbol}
         ).sort('date',-1).limit(n_display)
@@ -69,6 +71,7 @@ def markets(stdscr):
     db = get_db()
     colspace=3
     indent=2
+    exrate = rate('CAD',utc_dt(utc_date()))
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies',
            'Assets', '1 Hour', '24 Hour', '7 Day']
 
@@ -80,8 +83,8 @@ def markets(stdscr):
     strrows=[]
     for mkt in mktdata:
         strrows.append([
-            pretty(mkt['mktcap_cad'], t="money", abbr=True),
-            pretty(mkt['vol_24h_cad'], t="money", abbr=True),
+            pretty(exrate * mkt['mktcap_usd'], t="money", abbr=True),
+            pretty(exrate * mkt['vol_24h_usd'], t="money", abbr=True),
             pretty(mkt['pct_mktcap_btc'], t="pct"),
             pretty(mkt['n_markets']),
             pretty(mkt['n_currencies']),
@@ -128,9 +131,9 @@ def watchlist(stdscr):
             strrows.append([
                 tckr["rank"],
                 tckr["symbol"],
-                pretty(tckr["price_cad"], t='money'),
-                pretty(tckr["mktcap_cad"], t='money', abbr=True),
-                pretty(tckr["vol_24h_cad"], t='money', abbr=True),
+                pretty(tckr["price_usd"], t='money'),
+                pretty(tckr["mktcap_usd"], t='money', abbr=True),
+                pretty(tckr["vol_24h_usd"], t='money', abbr=True),
                 pretty(tckr["pct_1h"], t='pct', f='sign'),
                 pretty(tckr["pct_24h"], t='pct', f='sign'),
                 pretty(tckr["pct_7d"], t='pct', f='sign')
@@ -164,6 +167,7 @@ def portfolio(stdscr):
     total = 0.0
     profit = 0
     datarows = []
+    exrate = rate('CAD',utc_dt(utc_date()))
 
     # Print title Row
     stdscr.clear()
@@ -181,13 +185,13 @@ def portfolio(stdscr):
 
             _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
                 to_format="percentage")
-            value = round(hold['amount'] * tckr['price_cad'], 2)
+            value = round(hold['amount'] * exrate * tckr['price_usd'], 2)
             profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
             total += value
 
             datarows.append([
-                tckr['rank'], tckr['symbol'], round(tckr['price_cad'],2),
-                tckr['mktcap_cad'], tckr["vol_24h_cad"],
+                tckr['rank'], tckr['symbol'], exrate * round(tckr['price_usd'],2),
+                exrate * tckr.get('mktcap_usd',0), exrate * tckr["vol_24h_usd"],
                 tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d,
                 hold['amount'], value, None
             ])

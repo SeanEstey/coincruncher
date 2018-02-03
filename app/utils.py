@@ -3,6 +3,12 @@ from datetime import datetime, timedelta, time
 from pprint import pformat
 log = logging.getLogger(__name__)
 
+def to_int(val):
+    if type(val) == str:
+        return int(float(val))
+    else:
+        return int(val)
+
 #------------------------------------------------------------------------------
 def utc_tomorrow_delta():
     """Return time remaining today until tomorrow in UTC

@@ -25,7 +25,7 @@ def diff(period, to_format):
     ]
 
     for m in  mkts:
-        if len(m) < 1 or m[0].get('mktcap_cad') is None:
+        if len(m) < 1 or m[0].get('mktcap_usd') is None:
             return 0.0
 
     mkts[0] = mkts[0][0]
@@ -37,8 +37,8 @@ def diff(period, to_format):
         period, mkts[0]['date'].strftime("%m-%d-%Y %H:%M"), dt_diff)
         return "--"
 
-    diff = mkts[1]['mktcap_cad'] - mkts[0]['mktcap_cad']
-    pct = round((diff / mkts[0]['mktcap_cad']) * 100, 2)
+    diff = mkts[1]['mktcap_usd'] - mkts[0]['mktcap_usd']
+    pct = round((diff / mkts[0]['mktcap_usd']) * 100, 2)
 
     return pct if to_format == 'percentage' else diff
 
@@ -154,7 +154,7 @@ def aggregate():
 def mcap_avg_diff(freq):
     """@freq: '1H', '1D', '7D'
     """
-    caps = list(mktcap_resample(freq)['mktcap_cad'])
+    caps = list(mktcap_resample(freq)['mktcap_usd'])
     if len(caps) < 2:
         return 0.0
     diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
