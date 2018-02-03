@@ -10,12 +10,14 @@ log = logging.getLogger("daemon")
 #---------------------------------------------------------------------------
 def main():
     while True:
-        t1 = coinmktcap.update()
-        t2 = markets.aggregate()
+        t_rem = []
+        t_rem += [coinmktcap.update()]
+        t_rem += [markets.aggregate()]
+        t_rem += [forex.update()]
 
         # Sleep until time
-        log.debug("next update in %s sec", min(t1,t2))
-        time.sleep(min(t1,t2))
+        log.debug("next update in %s sec", min(t_rem))
+        time.sleep(min(t_rem))
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':

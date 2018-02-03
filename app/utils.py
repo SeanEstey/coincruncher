@@ -4,6 +4,18 @@ from pprint import pformat
 log = logging.getLogger(__name__)
 
 #------------------------------------------------------------------------------
+def utc_tomorrow_delta():
+    """Return time remaining today until tomorrow in UTC
+    UTC midnight == 5:00pm MST
+    """
+    tomorrow = utc_dt(utc_date() + timedelta(days=1))
+    return tomorrow - datetime.utcnow().replace(tzinfo=pytz.utc)
+
+#------------------------------------------------------------------------------
+def utc_date():
+    return datetime.utcnow().replace(tzinfo=pytz.utc).date()
+
+#------------------------------------------------------------------------------
 def utc_dt(_date):
     return datetime.combine(_date, time()).replace(tzinfo=pytz.utc)
 

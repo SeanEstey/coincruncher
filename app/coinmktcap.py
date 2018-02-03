@@ -25,7 +25,7 @@ def update():
     update_frequency = 300
 
     db = get_db()
-    updated_dt = list(db.market.find().sort('_id',-1).limit(1))[0]['date']
+    updated_dt = list(db.markets.find().sort('_id',-1).limit(1))[0]['date']
     now = datetime.utcnow().replace(tzinfo=pytz.utc)
     t_remain = int(update_frequency - (now - updated_dt).total_seconds())
 
@@ -51,7 +51,7 @@ def updt_markets():
     log.info("fetching market data...")
 
     try:
-        response = requests.get("https://api.coinmarketcap.com/v1/global?convert=%s" % cur)
+        response = requests.get("https://api.coinmarketcap.com/v1/global")
         data = json.loads(response.text)
     except Exception as e:
         log.warning("Error getting CMC market data: %s", str(e))
@@ -60,7 +60,7 @@ def updt_markets():
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
 
-        db.market.replace_one({'date':store['date']}, store, upsert=True)
+        db.markets.replace_one({'date':store['date']}, store, upsert=True)
 
     log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
 
@@ -75,8 +75,8 @@ def updt_tickers(start, limit=None):
 
     try:
         response = requests.get(
-            "https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}&convert={}"\
-            .format(idx, limit or 1500, 'cad'))
+            "https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
+            .format(idx, limit or 1500))
         data = json.loads(response.text)
     except Exception as e:
         log.exception("updt_ticker() error")

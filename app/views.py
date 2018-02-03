@@ -72,9 +72,9 @@ def markets(stdscr):
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies',
            'Assets', '1 Hour', '24 Hour', '7 Day']
 
-    mktdata = list(db.market.find().limit(1).sort('date',-1))
+    mktdata = list(db.markets.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
-        log.info("db.market empty")
+        log.info("db.markets empty")
         return False
 
     strrows=[]
