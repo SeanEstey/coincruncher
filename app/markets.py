@@ -139,10 +139,9 @@ def aggregate():
         log.error("dataframe length is %s!", len(df_dict))
         raise Exception("invalid df length")
 
+    # Convert numpy types to python and store
     df_dict[0] = numpy_to_py(df_dict[0])
     df_dict[0]["date"] = yday_dt
-    log.debug(df_dict[0])
-    log.debug(type(df_dict[0]["vol_24h_usd"]))
     db.markets.agg.insert_one(df_dict[0])
 
     now = datetime.utcnow().replace(tzinfo=pytz.utc)
