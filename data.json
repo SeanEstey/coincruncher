@@ -3,6 +3,7 @@
         { "id":"bitcoin", "symbol":"BTC"},
         { "id":"litecoin", "symbol":"LTC"},
         { "id":"chainlink", "symbol":"LINK"},
+        { "id":"ripple", "symbol":"XRP"},
         { "id":"trinity-network-credit", "symbol":"TNC"},
         { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
         { "id":"gas", "symbol":"GAS", "amount":0.4178},
