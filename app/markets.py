@@ -6,7 +6,7 @@ from datetime import datetime, date, timedelta as delta
 import pandas as pd
 from app import get_db
 from app.screen import pretty
-from app.utils import parse_period, utc_dt, utc_date, utc_tomorrow_delta
+from app.utils import numpy_to_py, parse_period, utc_dt, utc_date, utc_tomorrow_delta
 log = logging.getLogger(__name__) #'app.markets')
 
 #------------------------------------------------------------------------------
@@ -139,7 +139,10 @@ def aggregate():
         log.error("dataframe length is %s!", len(df_dict))
         raise Exception("invalid df length")
 
+    df_dict[0] = numpy_to_py(df_dict[0])
     df_dict[0]["date"] = yday_dt
+    log.debug(df_dict[0])
+    log.debug(type(df_dict[0]["vol_24h_usd"]))
     db.markets.agg.insert_one(df_dict[0])
 
     now = datetime.utcnow().replace(tzinfo=pytz.utc)

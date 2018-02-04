@@ -3,6 +3,17 @@ from datetime import datetime, timedelta, time
 from pprint import pformat
 log = logging.getLogger(__name__)
 
+#------------------------------------------------------------------------------
+def numpy_to_py(adict):
+    """Convert dict containing numpy.int64 values to python int's
+    """
+    import numpy
+    for k in adict:
+        if type(adict[k]) == numpy.int64:
+            adict[k] = int(adict[k])
+    return adict
+
+#------------------------------------------------------------------------------
 def to_int(val):
     if type(val) == str:
         return int(float(val))
