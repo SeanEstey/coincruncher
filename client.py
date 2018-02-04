@@ -6,7 +6,7 @@ from app import screen, set_db, get_db, views
 from app.screen import KEY_UP, KEY_DOWN
 
 log = logging.getLogger("client")
-refresh_delay = 60
+refresh_delay = 30
 scrollspeed = 5
 scrollpos = scrollremain = 0
 padheight = 200

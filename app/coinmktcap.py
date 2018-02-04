@@ -34,7 +34,7 @@ def update():
         updt_tickers(0,1500)
         updt_markets()
 
-        last_updated = list(db.markets.find().limit(1).sort('date',-1))[0]["date"]
+        last_updated = list(db.tickers.find().limit(1).sort('date',-1))[0]["date"]
         now = datetime.utcnow().replace(tzinfo=pytz.utc)
         t_remain = update_frequency - int((now - last_updated).total_seconds())
 
