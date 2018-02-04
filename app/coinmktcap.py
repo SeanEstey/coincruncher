@@ -34,7 +34,7 @@ def update():
         last_updated = list(db.tickers.find().sort('date',-1).limit(1))[0]["date"]
         now = datetime.utcnow().replace(tzinfo=pytz.utc)
         t_remain = update_frequency - int((now - last_updated).total_seconds())
-        log.debug("data refresh in %s sec.", t_remain)
+        log.debug("updated %s. next update in %s sec.", last_updated, t_remain)
         return t_remain
     else:
         log.debug("data refresh in %s sec.", t_remain)

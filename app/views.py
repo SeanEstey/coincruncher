@@ -178,14 +178,14 @@ def portfolio(stdscr):
     portfolio = db.portfolio.find()
 
     # Build table data
-    tickers = list(db.tickers.find())
+    tickers = list(db.tickers.find().sort("date"-1))
     for hold in portfolio:
         for tckr in tickers:
             if tckr['symbol'] != hold['symbol']:
                 continue
 
-            _30d = 0.0 #diff(tckr["symbol"], tckr["price_usd"], "30D",
-                #to_format="percentage")
+            _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
+                to_format="percentage")
             value = round(hold['amount'] * exrate * tckr['price_usd'], 2)
             profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
             total += value
