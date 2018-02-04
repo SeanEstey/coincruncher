@@ -178,7 +178,7 @@ def portfolio(stdscr):
     portfolio = db.portfolio.find()
 
     # Build table data
-    tickers = list(db.tickers.find().sort("date"-1))
+    tickers = list(db.tickers.find().sort("date",-1))
     for hold in portfolio:
         for tckr in tickers:
             if tckr['symbol'] != hold['symbol']:
