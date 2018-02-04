@@ -25,15 +25,21 @@ def update():
     update_frequency = 300
 
     db = get_db()
+
     updated_dt = list(db.markets.find().sort('_id',-1).limit(1))[0]['date']
     now = datetime.utcnow().replace(tzinfo=pytz.utc)
-    t_remain = int(update_frequency - (now - updated_dt).total_seconds())
+    t_remain = update_frequency - int((now - updated_dt).total_seconds())
 
     if t_remain <= 0:
         updt_tickers(0,1500)
         updt_markets()
-        log.debug("data refresh in %s sec.", update_frequency)
-        return update_frequency
+
+        last_updated = list(db.markets.find().limit(1).sort('date',-1))[0]["date"]
+        now = datetime.utcnow().replace(tzinfo=pytz.utc)
+        t_remain = update_frequency - int((now - last_updated).total_seconds())
+
+        log.debug("data refresh in %s sec.", t_remain)
+        return t_remain
         #time.sleep(60)
     else:
         log.debug("data refresh in %s sec.", t_remain)
@@ -74,15 +80,18 @@ def updt_tickers(start, limit=None):
     log.info("fetching ticker data...")
 
     try:
-        response = requests.get(
-            "https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
+        r = requests.get("https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
             .format(idx, limit or 1500))
-        data = json.loads(response.text)
+        data = json.loads(r.text)
     except Exception as e:
         log.exception("updt_ticker() error")
         return False
 
     ops = []
+
+    #tickers = list(db.tickers.find())
+    #_30d = 0.0 diff(tckr["symbol"], tckr["price_usd"], "30D",
+    #    to_format="percentage")
 
     for ticker in data:
         store={}
@@ -103,7 +112,7 @@ def updt_tickers(start, limit=None):
     result = db.tickers.bulk_write(ops)
 
     log.info("received {:,} bytes in {:,} ms. {:,} tickers.".format(
-        getsize(response.text), t.clock(t='ms'), len(data)))
+        getsize(r.text), t.clock(t='ms'), len(data)))
 
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):

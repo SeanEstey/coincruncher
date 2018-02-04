@@ -54,7 +54,7 @@ def history(stdscr, symbol):
 
     stdscr.clear()
     stdscr.addstr(0, indent, "%s History" % symbol)
-    navmenu(stdscr)
+    #navmenu(stdscr)
     printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
     divider(stdscr, 3, colwidths, colspace)
     for i in range(0, len(strrows)):
@@ -98,7 +98,7 @@ def markets(stdscr):
     stdscr.clear()
     # Print Title row
     stdscr.addstr(0, indent, "Global (%s)" % cur.upper())
-    navmenu(stdscr)
+    #navmenu(stdscr)
     updated = "Updated " + mktdata[0]["date"].astimezone(localtz).strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(updated) -2, updated)
     # Print Datatable
@@ -144,7 +144,7 @@ def watchlist(stdscr):
 
     # Print Title row
     stdscr.addstr(0, indent, "Watchlist (%s)" % cur.upper())
-    navmenu(stdscr)
+    #navmenu(stdscr)
     dt = tickers[0]["date"].astimezone(localtz).strftime("%I:%M %p")
     stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
 
@@ -160,6 +160,7 @@ def watchlist(stdscr):
 #-----------------------------------------------------------------------------
 def portfolio(stdscr):
     diff = app.tickers.diff
+    t1 = Timer()
     db = get_db()
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
            '7 Day', '30 Day', 'Amount', 'Value', '/100']
@@ -172,7 +173,7 @@ def portfolio(stdscr):
     # Print title Row
     stdscr.clear()
     stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
-    navmenu(stdscr)
+    #navmenu(stdscr)
 
     portfolio = db.portfolio.find()
 
@@ -183,8 +184,8 @@ def portfolio(stdscr):
             if tckr['symbol'] != hold['symbol']:
                 continue
 
-            _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
-                to_format="percentage")
+            _30d = 0.0 #diff(tckr["symbol"], tckr["price_usd"], "30D",
+                #to_format="percentage")
             value = round(hold['amount'] * exrate * tckr['price_usd'], 2)
             profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
             total += value
@@ -241,3 +242,5 @@ def portfolio(stdscr):
         [ "Total: ", pretty(total, t='money'), ' (', pretty(int(profit), t="money", f='sign', d=0), ')' ],
         [ 0,0,0,0,0 ],
         [ c.WHITE, c.BOLD, c.WHITE, pnlcolor(profit), c.WHITE ])
+
+    log.debug("portfolio rendered in %s ms", t1.clock(t='ms'))
