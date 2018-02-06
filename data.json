@@ -16,7 +16,7 @@
         { "id":"enjincoin", "symbol":"ENJ", "amount":19948.00},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
         { "id":"ethereum", "symbol":"ETH", "amount":120.57},
-        { "id":"icon", "symbol":"ICX", "amount":999.03},
+        { "id":"icon", "symbol":"ICX", "amount":1260.03},
         { "id":"neo", "symbol":"NEO", "amount":100.00},
         { "id":"omisego", "symbol":"OMG", "amount":77.2},
         { "id":"raiblocks", "symbol":"XRB", "amount":6877.50},

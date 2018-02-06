@@ -1,5 +1,6 @@
-import inspect, logging, unicodedata, pytz
+import inspect, logging, numpy, re, unicodedata, pytz
 from datetime import datetime, timedelta, time
+from dateutil.parser import parse
 from pprint import pformat
 log = logging.getLogger(__name__)
 
@@ -7,7 +8,6 @@ log = logging.getLogger(__name__)
 def numpy_to_py(adict):
     """Convert dict containing numpy.int64 values to python int's
     """
-    import numpy
     for k in adict:
         if type(adict[k]) == numpy.int64:
             adict[k] = int(adict[k])
@@ -17,8 +17,50 @@ def numpy_to_py(adict):
 def to_int(val):
     if type(val) == str:
         return int(float(val))
+    elif type(val) == numpy.int64:
+        return int(val)
     else:
         return int(val)
+
+#------------------------------------------------------------------------------
+def is_number(s):
+    try:
+        float(s)
+        return True
+    except ValueError:
+        pass
+    try:
+        unicodedata.numeric(s)
+        return True
+    except (TypeError, ValueError):
+        pass
+    return False
+
+#------------------------------------------------------------------------------
+def to_float(val, dec=None):
+    if not is_number(val):
+        return None
+    return round(float(val),dec) if dec else float(val)
+
+#------------------------------------------------------------------------------
+def to_dt(val):
+    if val is None:
+        return None
+    # Timestamp
+    elif type(val) == int:
+        return datetime.utcfromtimestamp(val).replace(tzinfo=pytz.utc)
+    elif type(val) == str:
+        # Timestamp
+        if re.match(r'^[0-9]*$', val):
+            return datetime.utcfromtimestamp(float(val)).replace(tzinfo=pytz.utc)
+        # ISO formatted datetime str?
+        else:
+            try:
+                return parse(val).replace(tzinfo=pytz.utc)
+            except Exception as e:
+                raise
+
+    raise Exception("to_dt(): invalid type '%s'" % type(val))
 
 #------------------------------------------------------------------------------
 def utc_tomorrow_delta():
@@ -66,26 +108,6 @@ def parse_period(p):
         tdelta = timedelta(days = 365 * qty)
 
     return (qty, unit, tdelta)
-
-#------------------------------------------------------------------------------
-def is_number(s):
-    try:
-        float(s)
-        return True
-    except ValueError:
-        pass
-    try:
-        unicodedata.numeric(s)
-        return True
-    except (TypeError, ValueError):
-        pass
-    return False
-
-#------------------------------------------------------------------------------
-def to_float(val, dec=None):
-    if not is_number(val):
-        return None
-    return round(float(val),dec) if dec else float(val)
 
 #----------------------------------------------------------------------
 def getAttributes(obj):

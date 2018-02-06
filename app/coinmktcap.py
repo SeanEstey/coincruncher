@@ -4,8 +4,9 @@ import argparse, logging, requests, json, pytz, re, sys, time
 from sys import getsizeof as getsize
 from pymongo import ReplaceOne
 from .timer import Timer
-from config import CMC_MARKETS, CMC_TICKERS, CURRENCY as cur
+from config import CURRENCY as cur
 from app import get_db
+from app.utils import to_int, to_dt
 
 log = logging.getLogger('app.coinmktcap')
 # Silence annoying log msgs
@@ -16,28 +17,54 @@ parser.add_argument("start_date",  help="", type=str)
 parser.add_argument("end_date", help="", type=str)
 parser.add_argument("--dataframe", help="", action='store_true')
 
+CMC_MARKETS = [
+    {"from":"last_updated", "to":"date", "type":to_dt},
+    {"from":"total_market_cap_usd", "to":"mktcap_usd", "type":to_int},
+    {"from":"total_24h_volume_usd", "to":"vol_24h_usd", "type":to_int},
+    {"from":"bitcoin_percentage_of_market_cap", "to":"pct_mktcap_btc", "type":float},
+    {"from":"active_assets", "to":"n_assets", "type":to_int},
+    {"from":"active_currencies", "to":"n_currencies", "type":to_int},
+    {"from":"active_markets", "to":"n_markets", "type":to_int}
+]
+CMC_TICKERS = [
+    {"from":"id", "to":"id", "type":str},
+    {"from":"symbol", "to":"symbol", "type":str},
+    {"from":"name", "to":"name", "type":str},
+    {"from":"last_updated", "to":"date", "type":to_dt},
+    {"from":"rank", "to":"rank", "type":to_int},
+    {"from":"market_cap_usd", "to":"mktcap_usd", "type":to_int},
+    {"from":"24h_volume_usd", "to":"vol_24h_usd", "type":to_int},
+    {"from":"available_supply", "to":"circulating_supply", "type":to_int},
+    {"from":"total_supply", "to":"total_supply", "type":to_int},
+    {"from":"max_supply", "to":"max_supply", "type":to_int},
+    {"from":"price_usd", "to":"price_usd", "type":float},
+    {"from":"percent_change_1h", "to":"pct_1h", "type":float},
+    {"from":"percent_change_24h", "to":"pct_24h", "type":float},
+    {"from":"percent_change_7d", "to":"pct_7d", "type":float}
+]
+
 #---------------------------------------------------------------------------
-def update():
+def update_5m():
     """Query and store coinmarketcap market/ticker data. Sync data fetch with
     CMC 5 min update frequency.
     """
     # Fetch coinmarketcap data every 5 min
     update_frequency = 350
     db = get_db()
-    updated_dt = list(db.tickers.find().sort("date",-1).limit(1))[0]['date']
+    updated_dt = list(db.tickers_5m.find().sort("date",-1).limit(1))[0]['date']
     now = datetime.utcnow().replace(tzinfo=pytz.utc)
     t_remain = update_frequency - int((now - updated_dt).total_seconds())
 
     if t_remain <= 0:
         updt_tickers(0,1500)
         updt_markets()
-        last_updated = list(db.tickers.find().sort('date',-1).limit(1))[0]["date"]
+        last_updated = list(db.tickers_5m.find().sort('date',-1).limit(1))[0]["date"]
         now = datetime.utcnow().replace(tzinfo=pytz.utc)
         t_remain = update_frequency - int((now - last_updated).total_seconds())
-        log.debug("updated %s. next update in %s sec.", last_updated, t_remain)
+        log.debug("5m updated, next in %s sec.", t_remain)
         return t_remain
     else:
-        log.debug("data refresh in %s sec.", t_remain)
+        log.debug("next 5m update in %s sec.", t_remain)
         return t_remain
 
 #---------------------------------------------------------------------------
@@ -60,7 +87,7 @@ def updt_markets():
         for m in CMC_MARKETS:
             store[m["to"]] = m["type"]( data[m["from"]] )
 
-        db.markets.replace_one({'date':store['date']}, store, upsert=True)
+        db.market_idx_5m.replace_one({'date':store['date']}, store, upsert=True)
 
     log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
 
@@ -83,15 +110,12 @@ def updt_tickers(start, limit=None):
 
     ops = []
 
-    #tickers = list(db.tickers.find())
+    #tickers = list(db.tickers_5m.find())
     #_30d = 0.0 diff(tckr["symbol"], tckr["price_usd"], "30D",
     #    to_format="percentage")
 
     for ticker in data:
         store={}
-        ticker['last_updated'] = float(ticker['last_updated']) if \
-            ticker.get('last_updated') else None
-
         for f in CMC_TICKERS:
             try:
                 val = ticker[f["from"]]
@@ -103,7 +127,7 @@ def updt_tickers(start, limit=None):
 
         ops.append(ReplaceOne({'symbol':store['symbol']}, store, upsert=True))
 
-    result = db.tickers.bulk_write(ops)
+    result = db.tickers_5m.bulk_write(ops)
 
     log.info("received {:,} bytes in {:,} ms. {:,} tickers.".format(
         getsize(r.text), t.clock(t='ms'), len(data)))

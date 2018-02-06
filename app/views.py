@@ -30,7 +30,7 @@ def history(stdscr, symbol):
     indent=2
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
 
-    tickerdata = db.tickers.historical.find({"symbol":symbol}
+    tickerdata = db.tickers_1d.find({"symbol":symbol}
         ).sort('date',-1).limit(n_display)
     n_datarows = tickerdata.count()
     log.debug("%s tickers queried in %sms",
@@ -75,9 +75,9 @@ def markets(stdscr):
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies',
            'Assets', '1 Hour', '24 Hour', '7 Day']
 
-    mktdata = list(db.markets.find().limit(1).sort('date',-1))
+    mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
-        log.info("db.markets empty")
+        log.info("db.market_idx_5m empty")
         return False
 
     strrows=[]
@@ -117,7 +117,8 @@ def watchlist(stdscr):
     indent=2
     colspace=3
     watchlist = db.watchlist.find()
-    tickers = list(db.tickers.find())
+    tickers = list(db.tickers_5m.find())
+    exrate = rate('CAD',utc_dt(utc_date()))
 
     if len(tickers) == 0:
         log.error("coinmktcap collection empty")
@@ -131,9 +132,9 @@ def watchlist(stdscr):
             strrows.append([
                 tckr["rank"],
                 tckr["symbol"],
-                pretty(tckr["price_usd"], t='money'),
-                pretty(tckr["mktcap_usd"], t='money', abbr=True),
-                pretty(tckr["vol_24h_usd"], t='money', abbr=True),
+                pretty(exrate * tckr["price_usd"], t='money'),
+                pretty(exrate * tckr["mktcap_usd"], t='money', abbr=True),
+                pretty(exrate * tckr["vol_24h_usd"], t='money', abbr=True),
                 pretty(tckr["pct_1h"], t='pct', f='sign'),
                 pretty(tckr["pct_24h"], t='pct', f='sign'),
                 pretty(tckr["pct_7d"], t='pct', f='sign')
@@ -178,7 +179,7 @@ def portfolio(stdscr):
     portfolio = db.portfolio.find()
 
     # Build table data
-    tickers = list(db.tickers.find().sort("date",-1))
+    tickers = list(db.tickers_5m.find().sort("date",-1))
     for hold in portfolio:
         for tckr in tickers:
             if tckr['symbol'] != hold['symbol']:
