@@ -1,83 +1,54 @@
 # app.tickers
 
 import logging, pytz, json
-from datetime import datetime, timedelta, date
+from datetime import datetime, timedelta as delta, date
 from dateutil import tz
 from dateutil.parser import parse
 from pymongo import ReplaceOne
 
 from app import get_db
 from app.timer import Timer
-from app.utils import to_float, to_int, parse_period
+from app.utils import utc_dt, utc_date, to_float, to_int, parse_period
 from app.coinmktcap import download_data, extract_data
 log = logging.getLogger('app.tickers')
 
 #------------------------------------------------------------------------------
 def update_1d():
     """Update 1d ticker data from 5m data for each ticker.
-
-    If today document doesn't exist, create it: {
-        "id":<>,
-        "symbol":<>,
-        "name":<>,
-        "date":<>,
-        "close":None,
-        "open":<price_usd>,
-        "low":<price_usd>,
-        "high":<price_usd>,
-        "mktcap_usd":<mktcap_usd>, # Start or end of day value?
-        "vol_24h_usd":<vol_24h_usd>, # Start or end of day value?
-        "rank_now":<rank>
-    }
-
-    If today document exists, update: {
-        "low":min("$low", price_usd),
-        "high":max("$high", price_usd),
-        "close":price_usd,
-        "mktcap_usd":<mktcap_usd>
-        "vol_24h_usd":<vol_24h_usd>
-    }
+    """
     db = get_db()
     today = utc_date()
-    yday_dt = utc_dt(today + delta(days=-1))
+    today_dt = utc_dt(today)
+    n_mod=0
+    n_upserted=0
 
-    if db.tickers.agg.find({"date":yday_dt}).count() > 0:
-        tmrw = utc_tomorrow_delta()
-        log.debug("markets.agg update in %s", tmrw)
-        return int(tmrw.total_seconds())
+    # TODO: Switch to a bulk update/upsert operation
+    for ticker in db.tickers_5m.find({"date":{"$gte":today_dt}}):
+        r = db.tickers_1d.update_one(
+            {"symbol":ticker["symbol"], "date":today_dt},
+            {
+                "$set": {
+                    "symbol":ticker["symbol"],
+                    "id":ticker["id"],
+                    "name":ticker["name"],
+                    "date":today_dt,
+                    "close":ticker["price_usd"],
+                    "mktcap_usd":ticker["mktcap_usd"],
+                    "vol_24h_usd":ticker["vol_24h_usd"],
+                    "rank_now":ticker["rank"]
+                },
+                "$setOnInsert":{"open":ticker["price_usd"]},
+                "$max":{"high":ticker["price_usd"]},
+                "$min":{"low":ticker["price_usd"]},
+            },
+            upsert=True
+        )
+        #log.debug("%s n_matched=%s, n_mod=%s, upserted_id=%s", ticker["symbol"],
+        #    r.matched_count, r.modified_count, r.upserted_id)
+        n_mod+=r.modified_count
+        n_upserted += 0 if r.upserted_id is None else 1
 
-    # Build market analysis for yesterday's data
-    results = db.markets.find(
-        {"date": {"$gte":yday_dt, "$lt":yday_dt+delta(days=1)}},
-        {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
-
-    log.debug("resampling %s data points", results.count())
-
-    # Build pandas dataframe and resample to 1D
-    df = pd.DataFrame(list(results))
-    df.index = df['date']
-    df = df.resample("1D").mean()
-    cols = ["mktcap_usd", "vol_24h_usd"]
-    df[cols] = df[cols].fillna(0.0).astype(int)
-    df_dict = df.to_dict(orient='records')
-
-    if len(df_dict) != 1:
-        log.error("dataframe length is %s!", len(df_dict))
-        raise Exception("invalid df length")
-
-    # Convert numpy types to python and store
-    df_dict[0] = numpy_to_py(df_dict[0])
-    df_dict[0]["date"] = yday_dt
-    db.markets.agg.insert_one(df_dict[0])
-
-    now = datetime.utcnow().replace(tzinfo=pytz.utc)
-    tmrw = utc_dt(today + delta(days=1))
-
-    log.info("markets.agg updated for '%s'. next update in %s",
-        yday_dt.date(), tmrw - now)
-
-    return int((tmrw - now).total_seconds())
-    """
+    log.info("tickers.update_1d: updated %s, inserted %s", n_mod, n_upserted)
     return True
 
 #------------------------------------------------------------------------------
