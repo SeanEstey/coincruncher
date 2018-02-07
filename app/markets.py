@@ -2,59 +2,90 @@
 
 import logging, pytz
 from pprint import pprint
-from datetime import datetime, date, timedelta as delta
+from datetime import datetime, date, timedelta
 import pandas as pd
 from app import get_db
 from app.screen import pretty
-from app.utils import numpy_to_py, parse_period, utc_dt, utc_date, utc_tomorrow_delta
-log = logging.getLogger(__name__) #'app.markets')
+from app.utils import numpy_to_py, parse_period, duration, utc_date, utc_dtdate, utc_datetime
+log = logging.getLogger(__name__)
+
+#---------------------------------------------------------------------------
+def next_update():
+    """Seconds remaining until next API data refresh.
+    """
+    updated_dt = list(collection.find().sort("date",-1).limit(1))[0]['date']
+    elapsed = int((utc_dt() - updated_dt).total_seconds())
+
+    log.debug("%s sec since '%s' last_updated timestamp",
+        collection.name, elapsed.total_seconds())
+
+    if elapsed >= api_refresh:
+
+        return 0
+    else:
+        assert(elapsed >= 0)
+        return api_refresh - elapsed
 
 #------------------------------------------------------------------------------
 def update_1d():
-    """Aggregate previous day's market data at the beginning of each day.
-    Check if yesterday's market data has been added to market_idx_1d
-    Return n_seconds to end of today for next update.
+    """Generate '1d' market index by resampling prev day '5m' data. Runs daily
+    at UTC T00:00:00.000+0000. Returns total seconds until next update.
     """
     db = get_db()
-    today = utc_date()
-    yday_dt = utc_dt(today + delta(days=-1))
+    yesterday = utc_dtdate() + timedelta(days=-1)
+    tomorrow = utc_dtdate() + timedelta(days=1)
 
-    if db.market_idx_1d.find({"date":yday_dt}).count() > 0:
-        tmrw = utc_tomorrow_delta()
-        log.debug("next 1d update in %s", tmrw)
-        return int(tmrw.total_seconds())
+    # Check if yesterday's market data has been added to market_idx_1d
+    if db.market_idx_1d.find({"date":yesterday}).count() > 0:
+        _next = tomorrow - utc_datetime()
 
-    # Build market analysis for yesterday's data
+        log.debug("yesterday '1d' index exists, next update in %s hrs",
+            duration(_next,'hours'))
+
+        return duration(_next)
+
+    # All data from yesterday
     results = db.market_idx_5m.find(
-        {"date": {"$gte":yday_dt, "$lt":yday_dt+delta(days=1)}},
-        {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
+        {"date": {"$gte":yesterday, "$lt":utc_dtdate()}},
+        {'_id':0})
 
-    log.debug("resampling %s data points", results.count())
+    results = list(results)
+    r1 = (results[0]["date"], results[-1]["date"])
 
-    # Build pandas dataframe and resample to 1D
-    df = pd.DataFrame(list(results))
+    log.debug("building market_idx, p='1d', d='%s', t='%s-%s', n=%s",
+        r1[0].date(), r1[0].strftime("%H:%M"), r1[1].strftime("%H:%M"), len(results))
+
+    # Pandas magic
+    df = pd.DataFrame(results)
     df.index = df['date']
-    df = df.resample("1D").mean()
-    cols = ["mktcap_usd", "vol_24h_usd"]
-    df[cols] = df[cols].fillna(0.0).astype(int)
-    df_dict = df.to_dict(orient='records')
+    stats = df.describe().astype(int)
+    mcap = stats["mktcap_usd"]
+    vol = stats["vol_24h_usd"]
+    db.market_idx_1d.insert_one({
+        "date":            yesterday,
+    	"n_markets":       results[-1]["n_markets"],
+		"n_assets":        results[-1]["n_assets"],
+    	"n_currencies":    results[-1]["n_currencies"],
+		"n_symbols":       results[-1]["n_currencies"] + results[-1]["n_assets"],
+    	"btc_mcap":        results[-1]["pct_mktcap_btc"],
+        "mcap_mean":       int(mcap["mean"]),
+        "mcap_std" :       int(mcap["std"]),
+        "mcap_high":       int(mcap["max"]),
+        "mcap_low":        int(mcap["min"]),
+        "mcap_spread":     int(mcap["max"] - mcap["min"]),
+        "vol_mean":        int(vol["mean"]),
+        "vol_std":         int(vol["std"]),
+        "vol_high":        int(vol["max"]),
+        "vol_low":         int(vol["min"]),
+        "vol_spread":      int(vol["max"] - vol["min"])
+    })
 
-    if len(df_dict) != 1:
-        log.error("dataframe length is %s!", len(df_dict))
-        raise Exception("invalid df length")
-
-    # Convert numpy types to python and store
-    df_dict[0] = numpy_to_py(df_dict[0])
-    df_dict[0]["date"] = yday_dt
-    db.market_idx_1d.insert_one(df_dict[0])
-
-    now = datetime.utcnow().replace(tzinfo=pytz.utc)
-    tmrw = utc_dt(today + delta(days=1))
+    _next = tomorrow - utc_datetime()
 
     log.info("market_idx_1d updated for '%s'. next update in %s",
-        yday_dt.date(), tmrw - now)
+        yesterday.date(), _next)
 
-    return int((tmrw - now).total_seconds())
+    return duration(_next)
 
 #------------------------------------------------------------------------------
 def update_1d_series(start, end):
@@ -66,12 +97,12 @@ def update_1d_series(start, end):
     while dt <= end:
         # Build market analysis for yesterday's data
         results = db.market_idx_5m.find(
-            {"date": {"$gte":dt, "$lt":dt + delta(days=1)}},
+            {"date": {"$gte":dt, "$lt":dt + timedelta(days=1)}},
             {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
 
         if results.count() < 1:
             log.debug("no datapoints for '%s'", dt)
-            dt += delta(days=1)
+            dt += timedelta(days=1)
             continue
 
         log.debug("resampling %s data points", results.count())
@@ -94,7 +125,7 @@ def update_1d_series(start, end):
 
         log.info("market_idx_1d inserted for '%s'.", dt)
 
-        dt += delta(days=1)
+        dt += timedelta(days=1)
 
 #------------------------------------------------------------------------------
 def diff(period, to_format):

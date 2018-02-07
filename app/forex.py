@@ -1,9 +1,9 @@
 # app.forex
 
 import json, logging, pytz, requests
-from datetime import datetime, date, timedelta as delta
+from datetime import datetime, date, timedelta
 from app import get_db
-from app.utils import utc_dt, utc_date, utc_tomorrow_delta
+from app.utils import duration, utc_datetime, utc_dtdate, utc_date
 log = logging.getLogger(__name__)
 
 #-------------------------------------------------------------------------------
@@ -17,25 +17,24 @@ def update_1d():
     base = 'USD'
     to = 'CAD'
     db = get_db()
-    today = utc_date()
-    results = db.forex_1d.find({"date":utc_dt(today)})
+    tomorrow = utc_dtdate() + timedelta(days=1)
+    _next = tomorrow - utc_datetime()
 
     # Have we saved today's rates?
-    if results.count() > 0:
-        tmrw = utc_tomorrow_delta()
-        log.debug("next 1d update in %s", tmrw)
-        return int(tmrw.total_seconds())
+    if db.forex_1d.find({"date":utc_dtdate()}).count() > 0:
+        log.debug("next 1d update in %s", duration(_next, "hours"))
+        return duration(_next)
 
-    uri = "https://api.fixer.io/%s?base=%s&symbols=%s" %(today,base,to)
     try:
+        uri = "https://api.fixer.io/%s?base=%s&symbols=%s" %(utc_date(),base,to)
         response = requests.get(uri)
     except Exception as e:
         log.exception("error querying forex rates")
-        return int(utc_tomorrow_delta().total_seconds())
+        return duration(_next)
     else:
         if response.status_code != 200:
             log.error("forex status=%s, text=%s", response.status_code, response.text)
-            return int(utc_tomorrow_delta().total_seconds())
+            return duration(_next)
 
     # Update
     data = json.loads(response.text)
@@ -48,7 +47,7 @@ def update_1d():
     log.info("updated forex rates for %s, USD->CAD=%s",
         today, data["rates"][to])
 
-    return int(utc_tomorrow_delta().total_seconds())
+    return duration(_next)
 
 #-------------------------------------------------------------------------------
 def update_hist_forex(symbol, start, end):

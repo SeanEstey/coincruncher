@@ -1,20 +1,38 @@
 import inspect, logging, numpy, re, unicodedata, pytz
-from datetime import datetime, timedelta, time
+from datetime import datetime, timedelta, time, date
 from dateutil.parser import parse
 from pprint import pformat
 log = logging.getLogger(__name__)
 
-#------------------------------------------------------------------------------
+# datetime methods
+def utc_date():
+    """current date in UTC timezone"""
+    return datetime.utcnow().replace(tzinfo=pytz.utc).date()
+def utc_dtdate():
+    """current date as datetime obj at T:00:00:00:00 in UTC timezone"""
+    return datetime.combine(utc_date(), time()).replace(tzinfo=pytz.utc)
+def utc_datetime():
+    """tz-aware UTC datetime object"""
+    return datetime.utcnow().replace(tzinfo=pytz.utc)
+def duration(_timedelta, units='total_seconds'):
+    if units == 'total_seconds':
+        return int(_timedelta.total_seconds())
+    elif units == 'hours':
+        return round(_timedelta.total_seconds()/3600,1)
+
+# datatype methods
 def numpy_to_py(adict):
     """Convert dict containing numpy.int64 values to python int's
     """
     for k in adict:
         if type(adict[k]) == numpy.int64:
             adict[k] = int(adict[k])
+        elif type(adict[k]) == numpy.float64:
+            adict[k] = float(adict[k])
     return adict
 
-#------------------------------------------------------------------------------
 def to_int(val):
+    """ """
     if type(val) == str:
         return int(float(val))
     elif type(val) == numpy.int64:
@@ -22,8 +40,8 @@ def to_int(val):
     else:
         return int(val)
 
-#------------------------------------------------------------------------------
 def is_number(s):
+    """ """
     try:
         float(s)
         return True
@@ -36,8 +54,8 @@ def is_number(s):
         pass
     return False
 
-#------------------------------------------------------------------------------
 def to_float(val, dec=None):
+    """ """
     if not is_number(val):
         return None
     return round(float(val),dec) if dec else float(val)
@@ -62,21 +80,7 @@ def to_dt(val):
 
     raise Exception("to_dt(): invalid type '%s'" % type(val))
 
-#------------------------------------------------------------------------------
-def utc_tomorrow_delta():
-    """Return time remaining today until tomorrow in UTC
-    UTC midnight == 5:00pm MST
-    """
-    tomorrow = utc_dt(utc_date() + timedelta(days=1))
-    return tomorrow - datetime.utcnow().replace(tzinfo=pytz.utc)
 
-#------------------------------------------------------------------------------
-def utc_date():
-    return datetime.utcnow().replace(tzinfo=pytz.utc).date()
-
-#------------------------------------------------------------------------------
-def utc_dt(_date):
-    return datetime.combine(_date, time()).replace(tzinfo=pytz.utc)
 
 #------------------------------------------------------------------------------
 def get_global_loggers():

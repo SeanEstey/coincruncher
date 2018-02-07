@@ -84,7 +84,7 @@ def process_input(stdscr, ch):
         return False
 
     timer.restart()
-    log.debug("refresh timer reset")
+    #log.debug("refresh timer reset")
 
     if view != views.history:
         view(stdscr)

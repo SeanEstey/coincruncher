@@ -6,7 +6,7 @@ from pymongo import ReplaceOne
 from .timer import Timer
 from config import CURRENCY as cur
 from app import get_db
-from app.utils import to_int, to_dt
+from app.utils import utc_datetime, duration, to_int, to_dt
 
 log = logging.getLogger('app.coinmktcap')
 # Silence annoying log msgs
@@ -17,7 +17,9 @@ parser.add_argument("start_date",  help="", type=str)
 parser.add_argument("end_date", help="", type=str)
 parser.add_argument("--dataframe", help="", action='store_true')
 
-CMC_MARKETS = [
+
+api_refresh = 350
+market_f = [
     {"from":"last_updated", "to":"date", "type":to_dt},
     {"from":"total_market_cap_usd", "to":"mktcap_usd", "type":to_int},
     {"from":"total_24h_volume_usd", "to":"vol_24h_usd", "type":to_int},
@@ -26,7 +28,7 @@ CMC_MARKETS = [
     {"from":"active_currencies", "to":"n_currencies", "type":to_int},
     {"from":"active_markets", "to":"n_markets", "type":to_int}
 ]
-CMC_TICKERS = [
+ticker_f = [
     {"from":"id", "to":"id", "type":str},
     {"from":"symbol", "to":"symbol", "type":str},
     {"from":"name", "to":"name", "type":str},
@@ -44,57 +46,30 @@ CMC_TICKERS = [
 ]
 
 #---------------------------------------------------------------------------
-def update_5m():
-    """Query and store coinmarketcap market/ticker data. Sync data fetch with
-    CMC 5 min update frequency.
+def next_update(collection):
+    """Seconds remaining until next API data refresh.
     """
-    # Fetch coinmarketcap data every 5 min
-    update_frequency = 350
-    db = get_db()
-    updated_dt = list(db.tickers_5m.find().sort("date",-1).limit(1))[0]['date']
-    now = datetime.utcnow().replace(tzinfo=pytz.utc)
-    t_remain = update_frequency - int((now - updated_dt).total_seconds())
+    updated_dt = list(collection.find().sort("date",-1).limit(1))[0]['date']
+    elapsed = duration(utc_datetime() - updated_dt)
 
-    if t_remain <= 0:
-        updt_tickers(0,1500)
-        updt_markets()
-        last_updated = list(db.tickers_5m.find().sort('date',-1).limit(1))[0]["date"]
-        now = datetime.utcnow().replace(tzinfo=pytz.utc)
-        t_remain = update_frequency - int((now - last_updated).total_seconds())
-        log.debug("5m updated, next in %s sec.", t_remain)
-        return t_remain
+    if elapsed >= api_refresh:
+        log.debug("%s updated %s sec ago. next update in %s sec.",
+            collection.name, elapsed, api_refresh - elapsed)
+        return 0
     else:
-        log.debug("next 5m update in %s sec.", t_remain)
-        return t_remain
-
-#---------------------------------------------------------------------------
-def updt_markets():
-    """Get CoinMarketCap global market data
-    """
-    data=None
-    store={}
-    t1 = Timer()
-    db = get_db()
-    log.info("fetching market data...")
-
-    try:
-        response = requests.get("https://api.coinmarketcap.com/v1/global")
-        data = json.loads(response.text)
-    except Exception as e:
-        log.warning("Error getting CMC market data: %s", str(e))
-        return False
-    else:
-        for m in CMC_MARKETS:
-            store[m["to"]] = m["type"]( data[m["from"]] )
-
-        db.market_idx_5m.replace_one({'date':store['date']}, store, upsert=True)
-
-    log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
+        log.debug("%s updated %s sec ago. next update in %s sec.",
+            collection.name, elapsed, api_refresh - elapsed)
+        assert(elapsed >= 0)
+        return api_refresh - elapsed
 
 #------------------------------------------------------------------------------
-def updt_tickers(start, limit=None):
-    """Get CoinMarketCap ticker data for all assets.
+def get_tickers_5m(start=0, limit=None):
+    """Update 5m ticker data from coinmarketcap.com REST API.
     """
+    _t = next_update(get_db().tickers_5m)
+    if _t > 0:
+        return _t
+
     idx = start
     t = Timer()
     db = get_db()
@@ -116,7 +91,7 @@ def updt_tickers(start, limit=None):
 
     for ticker in data:
         store={}
-        for f in CMC_TICKERS:
+        for f in ticker_f:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None
@@ -131,6 +106,38 @@ def updt_tickers(start, limit=None):
 
     log.info("received {:,} bytes in {:,} ms. {:,} tickers.".format(
         getsize(r.text), t.clock(t='ms'), len(data)))
+
+    return next_update(get_db().tickers_5m)
+
+#---------------------------------------------------------------------------
+def get_marketidx_5m():
+    """Update 5m market index data from coinmarketcap.com REST API.
+    """
+    _t = next_update(get_db().market_idx_5m)
+    if _t > 0:
+        return _t
+
+    data=None
+    store={}
+    t1 = Timer()
+    db = get_db()
+    log.info("fetching market data...")
+
+    try:
+        response = requests.get("https://api.coinmarketcap.com/v1/global")
+        data = json.loads(response.text)
+    except Exception as e:
+        log.warning("Error getting CMC market data: %s", str(e))
+        return 60
+    else:
+        for m in market_f:
+            store[m["to"]] = m["type"]( data[m["from"]] )
+
+        db.market_idx_5m.replace_one({'date':store['date']}, store, upsert=True)
+
+    log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
+
+    return next_update(get_db().market_idx_5m)
 
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):

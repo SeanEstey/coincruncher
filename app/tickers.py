@@ -4,34 +4,31 @@ import logging, pytz, json
 from datetime import datetime, timedelta as delta, date
 from dateutil import tz
 from dateutil.parser import parse
-from pymongo import ReplaceOne
-
+from pymongo import ReplaceOne, UpdateOne
 from app import get_db
 from app.timer import Timer
-from app.utils import utc_dt, utc_date, to_float, to_int, parse_period
+from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, parse_period
 from app.coinmktcap import download_data, extract_data
+
 log = logging.getLogger('app.tickers')
 
 #------------------------------------------------------------------------------
 def update_1d():
-    """Update 1d ticker data from 5m data for each ticker.
+    """Update ticker '1d' documents from latest '5m' data.
     """
     db = get_db()
-    today = utc_date()
-    today_dt = utc_dt(today)
-    n_mod=0
-    n_upserted=0
+    today = utc_dtdate()
+    operations=[]
 
-    # TODO: Switch to a bulk update/upsert operation
-    for ticker in db.tickers_5m.find({"date":{"$gte":today_dt}}):
-        r = db.tickers_1d.update_one(
-            {"symbol":ticker["symbol"], "date":today_dt},
+    for ticker in db.tickers_5m.find({"date":{"$gte":today}}):
+        operations.append(UpdateOne(
+            {"symbol":ticker["symbol"], "date":today},
             {
                 "$set": {
                     "symbol":ticker["symbol"],
                     "id":ticker["id"],
                     "name":ticker["name"],
-                    "date":today_dt,
+                    "date":today,
                     "close":ticker["price_usd"],
                     "mktcap_usd":ticker["mktcap_usd"],
                     "vol_24h_usd":ticker["vol_24h_usd"],
@@ -41,15 +38,23 @@ def update_1d():
                 "$max":{"high":ticker["price_usd"]},
                 "$min":{"low":ticker["price_usd"]},
             },
-            upsert=True
-        )
-        #log.debug("%s n_matched=%s, n_mod=%s, upserted_id=%s", ticker["symbol"],
-        #    r.matched_count, r.modified_count, r.upserted_id)
-        n_mod+=r.modified_count
-        n_upserted += 0 if r.upserted_id is None else 1
+            upsert=True))
 
-    log.info("tickers.update_1d: updated %s, inserted %s", n_mod, n_upserted)
-    return True
+    if len(operations) < 1:
+        return 300
+
+    log.debug("tickers_1d writing %s updates...", len(operations))
+
+    try:
+        result = db.tickers_1d.bulk_write(operations)
+    except Exception as e:
+        log.exception("update_1d bulk_write error")
+        return 300
+
+    log.info("tickers_1d updated. %s modified, %s upserted.",
+        result.modified_count, result.upserted_count)
+
+    return 300
 
 #------------------------------------------------------------------------------
 def diff(symbol, price, period, to_format):

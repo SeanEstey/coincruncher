@@ -2,7 +2,7 @@
 
 import logging, time, threading, getopt, sys
 from config import *
-from app import get_db, set_db, coinmktcap, forex, markets
+from app import get_db, set_db, tickers, coinmktcap, forex, markets
 logging.getLogger("requests").setLevel(logging.ERROR)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger("daemon")
@@ -10,18 +10,21 @@ log = logging.getLogger("daemon")
 #---------------------------------------------------------------------------
 def main():
     while True:
-        t_rem = []
-        t_rem += [coinmktcap.update_5m()]
-        t_rem += [markets.update_1d()]
-        t_rem += [forex.update_1d()]
+        t = 500
+        t = min(t, forex.update_1d()) # Once a day
+        t = min(t, coinmktcap.get_tickers_5m())
+        t = min(t, coinmktcap.get_marketidx_5m())
+        t = min(t, tickers.update_1d())
+        t = min(t, markets.update_1d()) # Once a day
 
-        # Sleep until time
-        log.debug("refresh in %s sec", abs(min(t_rem)))
-        time.sleep(abs(min(t_rem)))
+        log.debug("sleeping for %s sec", t)
+
+        time.sleep(t)
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':
     log.info("***** starting daemon *****")
+    log.debug("***** starting daemon *****")
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h:", ['dbhost='])
