@@ -4,7 +4,7 @@ import json, logging, pytz, requests
 from datetime import datetime, date, timedelta
 from app import get_db
 from app.utils import duration, utc_datetime, utc_dtdate, utc_date
-log = logging.getLogger(__name__)
+log = logging.getLogger('forex')
 
 #-------------------------------------------------------------------------------
 def rate(currency, date):
@@ -22,7 +22,7 @@ def update_1d():
 
     # Have we saved today's rates?
     if db.forex_1d.find({"date":utc_dtdate()}).count() > 0:
-        log.debug("next 1d update in %s", duration(_next, "hours"))
+        log.debug("forex_1d update in %s hrs.", duration(_next, "hours"))
         return duration(_next)
 
     try:

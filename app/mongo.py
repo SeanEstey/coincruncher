@@ -1,7 +1,7 @@
 import logging, os, pymongo
 from config import DB
 import db_auth
-log = logging.getLogger('app.mongodb')
+log = logging.getLogger('mongodb')
 
 #-------------------------------------------------------------------------------
 def create_client(host=None, port=None, connect=True, auth=True):

@@ -1,13 +1,11 @@
 # app.markets
 
 import logging, pytz
-from pprint import pprint
-from datetime import datetime, date, timedelta
+from datetime import datetime, timedelta
 import pandas as pd
 from app import get_db
-from app.screen import pretty
-from app.utils import numpy_to_py, parse_period, duration, utc_date, utc_dtdate, utc_datetime
-log = logging.getLogger(__name__)
+from app.utils import duration, utc_dtdate, utc_datetime
+log = logging.getLogger('markets')
 
 #---------------------------------------------------------------------------
 def next_update():
@@ -27,65 +25,61 @@ def next_update():
         return api_refresh - elapsed
 
 #------------------------------------------------------------------------------
-def update_1d():
-    """Generate '1d' market index by resampling prev day '5m' data. Runs daily
-    at UTC T00:00:00.000+0000. Returns total seconds until next update.
+def generate_5m():
+    pass
+
+#------------------------------------------------------------------------------
+def generate_1d(_date):
+    """Generate '1d' market index on given date from '5m' data (~236 datapoints).
+    Source data is from coinmarketcap API global data.
     """
+    from pprint import pformat
     db = get_db()
-    yesterday = utc_dtdate() + timedelta(days=-1)
-    tomorrow = utc_dtdate() + timedelta(days=1)
 
-    # Check if yesterday's market data has been added to market_idx_1d
-    if db.market_idx_1d.find({"date":yesterday}).count() > 0:
-        _next = tomorrow - utc_datetime()
+    # Already generated?
+    if db.market_idx_1d.find_one({"date":_date}):
+        log.debug("marketidx_1d already exists for '%s'", _date.date())
+        return 75000
 
-        log.debug("yesterday '1d' index exists, next update in %s hrs",
-            duration(_next,'hours'))
+    # Gather source data
+    cursor = db.market_idx_5m.find({"date":{"$gte":_date, "$lt":_date+timedelta(days=1)}})
 
-        return duration(_next)
+    if cursor.count() < 1:
+        log.error("no '5m' source data found on '%s'", _date.date())
+        return 75000
 
-    # All data from yesterday
-    results = db.market_idx_5m.find(
-        {"date": {"$gte":yesterday, "$lt":utc_dtdate()}},
-        {'_id':0})
+    g_data = list(cursor)
+    r1 = (g_data[0]["date"], g_data[-1]["date"])
 
-    results = list(results)
-    r1 = (results[0]["date"], results[-1]["date"])
-
-    log.debug("building market_idx, p='1d', d='%s', t='%s-%s', n=%s",
-        r1[0].date(), r1[0].strftime("%H:%M"), r1[1].strftime("%H:%M"), len(results))
+    log.debug("building 1d market_idx, date='%s', t='%s-%s', n_datapoints=%s",
+        _date.date(), r1[0].strftime("%H:%M"), r1[1].strftime("%H:%M"), len(g_data))
 
     # Pandas magic
-    df = pd.DataFrame(results)
+    df = pd.DataFrame(g_data)
     df.index = df['date']
-    stats = df.describe().astype(int)
-    mcap = stats["mktcap_usd"]
-    vol = stats["vol_24h_usd"]
+    del df['_id']
+    df_mcap = df.describe().astype(int)["mktcap_usd"]
     db.market_idx_1d.insert_one({
-        "date":            yesterday,
-    	"n_markets":       results[-1]["n_markets"],
-		"n_assets":        results[-1]["n_assets"],
-    	"n_currencies":    results[-1]["n_currencies"],
-		"n_symbols":       results[-1]["n_currencies"] + results[-1]["n_assets"],
-    	"btc_mcap":        results[-1]["pct_mktcap_btc"],
-        "mcap_mean":       int(mcap["mean"]),
-        "mcap_std" :       int(mcap["std"]),
-        "mcap_high":       int(mcap["max"]),
-        "mcap_low":        int(mcap["min"]),
-        "mcap_spread":     int(mcap["max"] - mcap["min"]),
-        "vol_mean":        int(vol["mean"]),
-        "vol_std":         int(vol["std"]),
-        "vol_high":        int(vol["max"]),
-        "vol_low":         int(vol["min"]),
-        "vol_spread":      int(vol["max"] - vol["min"])
+        "date":                   _date,
+        "mktcap_open_usd":        int(g_data[0]["mktcap_usd"]),
+        "mktcap_close_usd":       int(g_data[-1]["mktcap_usd"]),
+        "mktcap_high_usd":        int(df_mcap["max"]),
+        "mktcap_low_usd":         int(df_mcap["min"]),
+        "mktcap_spread_usd":      int(df_mcap["max"] - df_mcap["min"]),
+        "mktcap_mean_24h_usd":    int(df_mcap["mean"]),
+        "mktcap_std_24h_usd" :    int(df_mcap["std"]),
+        "vol_24h_close_usd":      int(g_data[-1]["vol_24h_usd"]),
+    	"n_markets":              g_data[-1]["n_markets"],
+		"n_assets":               g_data[-1]["n_assets"],
+    	"n_currencies":           g_data[-1]["n_currencies"],
+		"n_symbols":              g_data[-1]["n_currencies"] + g_data[-1]["n_assets"],
+    	"btc_mcap":               g_data[-1]["pct_mktcap_btc"]
     })
 
-    _next = tomorrow - utc_datetime()
+    log.info("market_idx_1d generated.")
+    log.debug(pformat(db.market_idx_1d.find_one({"date":_date})))
 
-    log.info("market_idx_1d updated for '%s'. next update in %s",
-        yesterday.date(), _next)
-
-    return duration(_next)
+    return 75000
 
 #------------------------------------------------------------------------------
 def update_1d_series(start, end):
@@ -133,6 +127,7 @@ def diff(period, to_format):
     @period: str time period to compare. i.e. '1H', '1D', '7D'
     @to_format: 'currency' or 'percentage'
     """
+    from app.utils import parse_period
     db = get_db()
     qty, unit, tdelta = parse_period(period)
     dt = datetime.now(tz=pytz.UTC) - tdelta
@@ -165,6 +160,7 @@ def resample(start, end, freq):
     """Resample datetimes from '5M' to given frequency
     @freq: '1H', '1D', '7D'
     """
+    from app.utils import parse_period
     db = get_db()
     qty, unit, tdelta = parse_period(freq)
     dt = datetime.now(tz=pytz.UTC) - tdelta

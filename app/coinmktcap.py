@@ -8,7 +8,7 @@ from config import CURRENCY as cur
 from app import get_db
 from app.utils import utc_datetime, duration, to_int, to_dt
 
-log = logging.getLogger('app.coinmktcap')
+log = logging.getLogger('coinmktcap')
 # Silence annoying log msgs
 #logging.getLogger("requests").setLevel(logging.ERROR)
 parser = argparse.ArgumentParser()
@@ -53,11 +53,10 @@ def next_update(collection):
     elapsed = duration(utc_datetime() - updated_dt)
 
     if elapsed >= api_refresh:
-        log.debug("%s updated %s sec ago. next update in %s sec.",
-            collection.name, elapsed, api_refresh - elapsed)
+        log.debug("%s updated %s sec ago. updating now.", collection.name, elapsed)
         return 0
     else:
-        log.debug("%s updated %s sec ago. next update in %s sec.",
+        log.debug("%s updated %s sec ago (%s remaining).",
             collection.name, elapsed, api_refresh - elapsed)
         assert(elapsed >= 0)
         return api_refresh - elapsed
@@ -107,7 +106,7 @@ def get_tickers_5m(start=0, limit=None):
     log.info("received {:,} bytes in {:,} ms. {:,} tickers.".format(
         getsize(r.text), t.clock(t='ms'), len(data)))
 
-    return next_update(get_db().tickers_5m)
+    return 60 #next_update(get_db().tickers_5m)
 
 #---------------------------------------------------------------------------
 def get_marketidx_5m():
@@ -137,7 +136,7 @@ def get_marketidx_5m():
 
     log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
 
-    return next_update(get_db().market_idx_5m)
+    return 60 #next_update(get_db().market_idx_5m)
 
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):

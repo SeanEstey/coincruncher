@@ -4,7 +4,7 @@ from datetime import datetime
 from dateutil import tz
 from app import get_db, markets
 import app.markets, app.tickers
-from app.utils import utc_dt, utc_date
+from app.utils import utc_dtdate
 from app.forex import rate
 from app.timer import Timer
 from config import *
@@ -24,7 +24,7 @@ def history(stdscr, symbol):
     t1 = Timer()
     db = get_db()
 
-    exrate = rate('CAD',utc_dt(utc_date()))
+    exrate = rate('CAD',utc_dtdate())
     n_display = 95
     colspace=3
     indent=2
@@ -71,7 +71,7 @@ def markets(stdscr):
     db = get_db()
     colspace=3
     indent=2
-    exrate = rate('CAD',utc_dt(utc_date()))
+    exrate = rate('CAD',utc_dtdate())
     hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies',
            'Assets', '1 Hour', '24 Hour', '7 Day']
 
@@ -118,7 +118,7 @@ def watchlist(stdscr):
     colspace=3
     watchlist = db.watchlist.find()
     tickers = list(db.tickers_5m.find())
-    exrate = rate('CAD',utc_dt(utc_date()))
+    exrate = rate('CAD',utc_dtdate())
 
     if len(tickers) == 0:
         log.error("coinmktcap collection empty")
@@ -169,7 +169,7 @@ def portfolio(stdscr):
     total = 0.0
     profit = 0
     datarows = []
-    exrate = rate('CAD',utc_dt(utc_date()))
+    exrate = rate('CAD',utc_dtdate())
 
     # Print title Row
     stdscr.clear()

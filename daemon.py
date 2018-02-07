@@ -17,14 +17,14 @@ def main():
         t = min(t, tickers.update_1d())
         t = min(t, markets.update_1d()) # Once a day
 
-        log.debug("sleeping for %s sec", t)
+        log.debug("sleeping %s sec...", t)
 
-        time.sleep(t)
+        time.sleep(max(t,0))
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':
-    log.info("***** starting daemon *****")
-    log.debug("***** starting daemon *****")
+    log.info("---------- starting daemon ----------")
+    log.debug("---------- starting daemon ----------")
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h:", ['dbhost='])
@@ -42,5 +42,5 @@ if __name__ == '__main__':
     while True:
         time.sleep(0.1)
 
-    log.info("***** terminating daemon *****")
+    log.info("---------- terminating daemon ----------")
     exit()
