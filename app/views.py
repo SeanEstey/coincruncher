@@ -17,8 +17,80 @@ localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
 
 #-----------------------------------------------------------------------------
-def upt_historical():
-    pass
+def markets(stdscr):
+    """Global market data.
+    """
+    _diff = app.markets.diff
+    _to = pretty
+    db = get_db()
+    stdscr.clear()
+
+    stdscr.addstr(0, 2, "Aggregate Market Data")
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, cur.upper())
+    stdscr.addstr(1, 0, "")
+
+    # Latest market (table)
+    ex = getrate('CAD',utc_dtdate())
+    hdr = ['Mcap', '24h Vol', 'BTC Dominance', 'Markets', 'Currencies',
+           '1 Hour', '24 Hour', '7 Day']
+    mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
+    if len(mktdata) == 0:
+        return log.error("db.market_idx_5m empty")
+    rows, colors = [], []
+    for mkt in mktdata:
+        rows.append([
+            _to(ex * mkt['mktcap_usd'], t="money", abbr=True),
+            _to(ex * mkt['vol_24h_usd'], t="money", abbr=True),
+            _to(mkt['pct_mktcap_btc'], t="pct"),
+            _to(mkt['n_markets'], d=0),
+            _to(mkt['n_assets'] + mkt['n_currencies'], d=0),
+            _to(_diff('1H', to_format='percentage'), t="pct", f="sign"),
+            _to(_diff('24H', to_format='percentage'), t="pct", f="sign"),
+            _to(_diff('7D', to_format='percentage'), t="pct", f="sign")
+        ])
+        colors.append([c.WHITE]*5 + [pnlcolor(rows[-1][col]) for col in range(5,8)])
+
+    updated = to_relative_str(utc_datetime() - mktdata[0]["date"])
+    print_table(
+        stdscr,
+        ["Latest (%s)" % updated],
+        hdr, rows, colors, div=True)
+
+    # Weekly market (table)
+    start = utc_dtdate() + timedelta(days=-14)
+    cursor = db.market_idx_1d.find(
+        {"date":{"$gte":start, "$lt":utc_dtdate()}}).sort('date',-1)
+    if cursor.count() < 1:
+        return log.error("no data for weekly markets")
+    hdr = ["Date","Mcap Open", "Mcap High","Mcap Low", "Mcap Close",
+          "Mcap Spread", "Mcap SD", "Volume","BTC Dom"]
+    rows, colors = [], []
+
+    for mkt in cursor:
+        ex = getrate('CAD', mkt["date"])
+        diff = _to(mkt["mktcap_spread_usd"]/mkt["mktcap_low_usd"] * 100, t='pct')
+        rows.append([
+            mkt["date"].strftime("%b-%d"),
+            _to(ex * mkt["mktcap_open_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt["mktcap_high_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt["mktcap_low_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt["mktcap_close_usd"], t='money', d=1, abbr=True),
+            diff,
+            _to(ex * mkt["mktcap_std_24h_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt['vol_24h_close_usd'], t="money", d=1, abbr=True),
+            _to(ex * mkt['btc_mcap'], t="pct")
+        ])
+        colors.append([c.WHITE]*9)
+
+    cursor.rewind()
+    df = pd.DataFrame(list(cursor))
+
+    colors[df["mktcap_high_usd"].idxmax()][2] = c.GREEN
+    colors[df["mktcap_low_usd"].idxmin()][3] = c.RED
+    colors[df["vol_24h_close_usd"].idxmax()][7] = c.GREEN
+
+    stdscr.addstr(stdscr.getyx()[0]+1, 0, "")
+    print_table(stdscr, ["Daily Historic"], hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
 def history(stdscr, symbol):
@@ -66,83 +138,6 @@ def history(stdscr, symbol):
     n_rem_scroll = n_datarows - (curses.LINES - 4)
     log.info("n_datarows=%s, n_rem_scroll=%s", n_datarows, n_rem_scroll)
     return n_rem_scroll
-
-#-----------------------------------------------------------------------------
-def markets(stdscr):
-    """Global market data.
-    """
-    _diff = app.markets.diff
-    _to = pretty
-    db = get_db()
-    stdscr.clear()
-
-    stdscr.addstr(0, 2, "Aggregate Market Data")
-    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, cur.upper())
-    stdscr.addstr(1, 0, "")
-
-    # Latest market (table)
-    ex = getrate('CAD',utc_dtdate())
-    hdr = ['Mcap', '24h Vol', 'BTC Dominance', 'Markets', 'Currencies',
-           '1 Hour', '24 Hour', '7 Day']
-    mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
-    if len(mktdata) == 0:
-        return log.error("db.market_idx_5m empty")
-    rows, colors = [], []
-    for mkt in mktdata:
-        rows.append([
-            _to(ex * mkt['mktcap_usd'], t="money", abbr=True),
-            _to(ex * mkt['vol_24h_usd'], t="money", abbr=True),
-            _to(mkt['pct_mktcap_btc'], t="pct"),
-            _to(mkt['n_markets'], d=0),
-            _to(mkt['n_assets'] + mkt['n_currencies'], d=0),
-            _to(_diff('1H', to_format='percentage'), t="pct", f="sign"),
-            _to(_diff('24H', to_format='percentage'), t="pct", f="sign"),
-            _to(_diff('7D', to_format='percentage'), t="pct", f="sign")
-        ])
-        colors.append([c.WHITE]*5 + [pnlcolor(rows[-1][col]) for col in range(5,8)])
-
-    updated = to_relative_str(utc_datetime() - mktdata[0]["date"])
-    print_table(
-        stdscr,
-        ["Latest (%s)" % updated],
-        #["Now (updated %s)" % to_local(mktdata[0]["date"]).strftime("%I:%M %p")],
-        hdr, rows, colors, div=True)
-
-    # Weekly market (table)
-    start = utc_dtdate() + timedelta(days=-14)
-    cursor = db.market_idx_1d.find(
-        {"date":{"$gte":start, "$lt":utc_dtdate()}}).sort('date',-1)
-    if cursor.count() < 1:
-        return log.error("no data for weekly markets")
-    hdr = ["Date","Mcap Open", "Mcap High","Mcap Low", "Mcap Close",
-          "Mcap Spread", "Mcap SD", "Volume","BTC Dom"]
-    rows, colors = [], []
-
-    for mkt in cursor:
-        ex = getrate('CAD', mkt["date"])
-        diff = _to(mkt["mktcap_spread_usd"]/mkt["mktcap_low_usd"] * 100, t='pct')
-        rows.append([
-            mkt["date"].strftime("%b-%d"),
-            _to(ex * mkt["mktcap_open_usd"], t='money', d=1, abbr=True),
-            _to(ex * mkt["mktcap_high_usd"], t='money', d=1, abbr=True),
-            _to(ex * mkt["mktcap_low_usd"], t='money', d=1, abbr=True),
-            _to(ex * mkt["mktcap_close_usd"], t='money', d=1, abbr=True),
-            diff,
-            _to(ex * mkt["mktcap_std_24h_usd"], t='money', d=1, abbr=True),
-            _to(ex * mkt['vol_24h_close_usd'], t="money", d=1, abbr=True),
-            _to(ex * mkt['btc_mcap'], t="pct")
-        ])
-        colors.append([c.WHITE]*9)
-
-    cursor.rewind()
-    df = pd.DataFrame(list(cursor))
-
-    colors[df["mktcap_high_usd"].idxmax()][2] = c.GREEN
-    colors[df["mktcap_low_usd"].idxmin()][3] = c.RED
-    colors[df["vol_24h_close_usd"].idxmax()][7] = c.GREEN
-
-    stdscr.addstr(stdscr.getyx()[0]+1, 0, "")
-    print_table(stdscr, ["Daily Historic"], hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
 def watchlist(stdscr):
@@ -198,24 +193,18 @@ def portfolio(stdscr):
     diff = app.tickers.diff
     t1 = Timer()
     db = get_db()
-    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
-           '7 Day', '30 Day', 'Amount', 'Value', '/100']
-    indent = 2
     total = 0.0
     profit = 0
     datarows = []
     ex = getrate('CAD',utc_dtdate())
 
-    # Print title Row
-    stdscr.clear()
-    stdscr.addstr(0, indent, "Portfolio (%s)" % cur.upper())
-    #navmenu(stdscr)
+    # Build datarows
 
-    portfolio = db.portfolio.find()
-
-    # Build table data
     tickers = list(db.tickers_5m.find().sort("date",-1))
-    for hold in portfolio:
+    hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
+           '7 Day', '30 Day', 'Amount', 'Value', '/100']
+
+    for hold in db.portfolio.find():
         for tckr in tickers:
             if tckr['symbol'] != hold['symbol']:
                 continue
@@ -239,9 +228,11 @@ def portfolio(stdscr):
     # Sort by value
     datarows = sorted(datarows, key=lambda x: int(x[10]))[::-1]
 
-    strrows = []
+    rows, colors = [], []
     for datarow in datarows:
-        strrows.append([
+        colors.append(
+            [c.WHITE]*5 + [pnlcolor(datarow[n]) for n in range(5,9)] + [c.WHITE]*3)
+        rows.append([
             datarow[0],
             datarow[1],
             pretty(datarow[2], t='money'),
@@ -255,28 +246,29 @@ def portfolio(stdscr):
             pretty(datarow[10], t='money'),
             pretty(datarow[11], t='pct')
         ])
-    colwidths = _colsizes(hdr, strrows)
 
-    updated = "Updated " + tickers[0]["date"].astimezone(localtz).strftime("%I:%M %p")
-    stdscr.addstr(0, stdscr.getmaxyx()[1] - len(updated) -2, updated)
+    # Print title Row
+    stdscr.clear()
+    updated = to_relative_str(utc_datetime() - tickers[0]["date"])
+    stdscr.addstr(0, 2, "Updated %s" % updated)
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, cur.upper())
+    stdscr.addstr(1, 0, "")
 
-    # Print Datatable
-    colspace=2
-    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace=colspace)
-    divider(stdscr, 3, colwidths, colspace)
-    for y in range(0,len(strrows)):
-        strrow = strrows[y]
-        colors = [c.WHITE, c.WHITE, c.WHITE, c.WHITE, c.WHITE] +\
-                 [pnlcolor(strrow[n]) for n in range(5,9)] +\
-                 [c.WHITE, c.WHITE, c.WHITE]
-        printrow(stdscr, y+4, strrow, colwidths, colors, colspace=colspace)
+    # Portfolio datatable
+    print_table(stdscr, ["Portfolio"], hdr, rows, colors, div=True)
+    stdscr.addstr(stdscr.getyx()[0]+1, 0, "")
 
-    # Portfolio value ($)
-    printrow(
+    # Summary table
+    print_table(
         stdscr,
-        stdscr.getyx()[0]+2,
-        [ "Total: ", pretty(total, t='money'), ' (', pretty(int(profit), t="money", f='sign', d=0), ')' ],
-        [ 0,0,0,0,0 ],
-        [ c.WHITE, c.BOLD, c.WHITE, pnlcolor(profit), c.WHITE ])
+        ["Summary"],
+        ["Holdings", "24 Hour", "Total Value"],
+        [[
+            len(datarows),
+            pretty(int(profit), t="money", f='sign', d=0),
+            pretty(total, t='money')
+        ]],
+        [[c.WHITE, pnlcolor(profit), c.WHITE]],
+        div=True)
 
     log.debug("portfolio rendered in %s ms", t1.clock(t='ms'))
