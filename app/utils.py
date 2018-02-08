@@ -1,26 +1,57 @@
-import inspect, logging, numpy, re, unicodedata, pytz
-from datetime import datetime, timedelta, time, date
-from dateutil.parser import parse
+import inspect, logging, re, unicodedata
 from pprint import pformat
 log = logging.getLogger(__name__)
 
-# datetime methods
+# Datetime methods
+import pytz
+from datetime import datetime, timedelta, time, date
+from dateutil import tz
+from dateutil.parser import parse
+
 def utc_date():
     """current date in UTC timezone"""
     return datetime.utcnow().replace(tzinfo=pytz.utc).date()
+
 def utc_dtdate():
     """current date as datetime obj at T:00:00:00:00 in UTC timezone"""
     return datetime.combine(utc_date(), time()).replace(tzinfo=pytz.utc)
+
 def utc_datetime():
     """tz-aware UTC datetime object"""
     return datetime.utcnow().replace(tzinfo=pytz.utc)
+
 def duration(_timedelta, units='total_seconds'):
     if units == 'total_seconds':
         return int(_timedelta.total_seconds())
     elif units == 'hours':
         return round(_timedelta.total_seconds()/3600,1)
 
-# datatype methods
+def to_local(dt):
+    return dt.astimezone(tz.tzlocal())
+
+def to_dt(val):
+    """Convert timestamp or ISOstring to datetime obj
+    """
+    if val is None:
+        return None
+    # Timestamp
+    elif type(val) == int:
+        return datetime.utcfromtimestamp(val).replace(tzinfo=pytz.utc)
+    elif type(val) == str:
+        # Timestamp
+        if re.match(r'^[0-9]*$', val):
+            return datetime.utcfromtimestamp(float(val)).replace(tzinfo=pytz.utc)
+        # ISO formatted datetime str?
+        else:
+            try:
+                return parse(val).replace(tzinfo=pytz.utc)
+            except Exception as e:
+                raise
+    raise Exception("to_dt(): invalid type '%s'" % type(val))
+
+# Data type methods
+import numpy
+
 def numpy_to_py(adict):
     """Convert dict containing numpy.int64 values to python int's
     """
@@ -60,25 +91,7 @@ def to_float(val, dec=None):
         return None
     return round(float(val),dec) if dec else float(val)
 
-#------------------------------------------------------------------------------
-def to_dt(val):
-    if val is None:
-        return None
-    # Timestamp
-    elif type(val) == int:
-        return datetime.utcfromtimestamp(val).replace(tzinfo=pytz.utc)
-    elif type(val) == str:
-        # Timestamp
-        if re.match(r'^[0-9]*$', val):
-            return datetime.utcfromtimestamp(float(val)).replace(tzinfo=pytz.utc)
-        # ISO formatted datetime str?
-        else:
-            try:
-                return parse(val).replace(tzinfo=pytz.utc)
-            except Exception as e:
-                raise
 
-    raise Exception("to_dt(): invalid type '%s'" % type(val))
 
 
 

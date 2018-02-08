@@ -7,10 +7,29 @@ from app.utils import duration, utc_datetime, utc_dtdate, utc_date
 log = logging.getLogger('forex')
 
 #-------------------------------------------------------------------------------
-def rate(currency, date):
+def getrate(currency, _date):
     db = get_db()
-    result = db.forex_1d.find_one({"date":date})
-    return result[currency]
+    result = db.forex_1d.find_one({"date":_date})
+    if result:
+        return result[currency]
+    else:
+        return queryrate(currency,_date)
+
+#-------------------------------------------------------------------------------
+def queryrate(currency, _date):
+    try:
+        uri = "https://api.fixer.io/%s?base=%s&symbols=%s" %(_date,base,currency)
+        response = requests.get(uri)
+        data = json.loads(response.text)
+    except Exception as e:
+        log.exception("error querying forex rates")
+        return False
+    else:
+        if response.status_code != 200:
+            log.error("forex status=%s, text=%s", response.status_code, response.text)
+            return False
+
+    return data["rates"][currency]
 
 #-------------------------------------------------------------------------------
 def update_1d():
@@ -39,13 +58,13 @@ def update_1d():
     # Update
     data = json.loads(response.text)
     db.forex_1d.insert_one({
-        "date":utc_dt(today),
+        "date":utc_dtdate(),
         "USD":1,
         "CAD":data["rates"][to]
     })
 
     log.info("updated forex rates for %s, USD->CAD=%s",
-        today, data["rates"][to])
+        utc_dtdate().date(), data["rates"][to])
 
     return duration(_next)
 

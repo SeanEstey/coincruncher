@@ -87,7 +87,7 @@ def pretty(number, t=None, f=None, abbr=None, d=None):
 
     head = ""
     tail = ""
-    decimal = d if d else 2
+    dec = d if d is not None else 2
 
     if abbr == True:
         if isinstance(number, Decimal):
@@ -99,16 +99,20 @@ def pretty(number, t=None, f=None, abbr=None, d=None):
         if exp in range(0,3):
             strval = str(number)
         elif exp in range(3,6):
-            strval = "%s%s" %(round(number/pow(10,3), 2), 'K')
+            short = int(number/pow(10,3)) if dec==0 else round(number/pow(10,3),dec)
+            strval = "%s%s" %(short, 'K')
         elif exp in range(6,9):
-            strval = "%s%s" %(round(number/pow(10,6), 2), 'M')
+            short = int(number/pow(10,6)) if dec==0 else round(number/pow(10,6),dec)
+            strval = "%s%s" %(short, 'M')
         elif exp in range(9,12):
-            strval = "%s%s" %(round(number/pow(10,9), 2), 'B')
+            short = int(number/pow(10,9)) if dec==0 else round(number/pow(10,9),dec)
+            strval = "%s%s" %(short, 'B')
         elif exp in range(12,15):
-            strval = "%s%s" %(round(number/pow(10,12), 2), 'T')
+            short = int(number/pow(10,12)) if dec==0 else round(number/pow(10,12),dec)
+            strval = "%s%s" %(short, 'T')
     # Full length number w/ comma separators
     else:
-        strval = "{:,}".format(round(number,decimal))
+        strval = "{:,}".format(round(number,dec))
 
     if f == 'sign':
         head += "+" if number > 0 else ""

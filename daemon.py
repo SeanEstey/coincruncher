@@ -14,8 +14,8 @@ def main():
         t = min(t, forex.update_1d()) # Once a day
         t = min(t, coinmktcap.get_tickers_5m())
         t = min(t, coinmktcap.get_marketidx_5m())
-        t = min(t, tickers.update_1d())
-        t = min(t, markets.update_1d()) # Once a day
+        #t = min(t, tickers.update_1d())
+        #t = min(t, markets.update_1d()) # Once a day
 
         log.debug("sleeping %s sec...", t)
 
