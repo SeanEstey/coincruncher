@@ -1,5 +1,6 @@
 # views.py
 import logging, curses
+import pandas as pd
 from datetime import datetime, timedelta
 from dateutil import tz
 from app import get_db, markets
@@ -9,8 +10,8 @@ from app.forex import getrate
 from app.timer import Timer
 from config import *
 from config import CURRENCY as cur
-from app.screen import c, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
-from app.utils import to_local
+from app.screen import c, print_table, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
+from app.utils import to_local, to_relative_str, utc_datetime
 
 localtz = tz.tzlocal()
 log = logging.getLogger(__name__)
@@ -67,48 +68,6 @@ def history(stdscr, symbol):
     return n_rem_scroll
 
 #-----------------------------------------------------------------------------
-def print_table(stdscr, titles, hdr, datarows, colors, div=True):
-    """Print justified datatable w/ header row.
-    @hdr: list of column headers
-    @datarows: list of rows, each row a list of column print values
-    @colors: list of rows, each row a list of column print colors
-    """
-    col_sp=3  # Column spacing
-    tbl_pd=2  # Table padding
-    col_wdt = _colsizes(hdr, datarows) # Justified column widths
-    getyx = stdscr.getyx
-
-    # 1 title = center-align, 2 titles = justified align
-    if len(titles) == 1:
-        # Centered
-        tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
-        x = int(tbl_width/2 - len(titles[0])/2)
-        stdscr.addstr(getyx()[0]+1, x, titles[0])
-    elif len(titles) == 2:
-        y = getyx()[0]+1
-        # Left-aligned
-        stdscr.addstr(y, tbl_pd, titles[0])
-        # Right-aligned
-        tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
-        x = tbl_width - len(titles[1])
-        stdscr.addstr(y, x, titles[1])
-
-    # Print header row (white)
-    printrow(stdscr,
-        getyx()[0]+2,
-        hdr,
-        col_wdt,
-        [c.WHITE for n in hdr],
-        col_sp)
-
-    if div:
-        divider(stdscr, getyx()[0]+1, col_wdt, col_sp)
-
-    # Print data rows (custom colors)
-    for n in range(0, len(datarows)):
-        printrow(stdscr, getyx()[0]+1, datarows[n], col_wdt, colors[n], col_sp)
-
-#-----------------------------------------------------------------------------
 def markets(stdscr):
     """Global market data.
     """
@@ -117,13 +76,14 @@ def markets(stdscr):
     db = get_db()
     stdscr.clear()
 
-    stdscr.addstr(0, 2, "Global Crypto Market (%s)" % cur.upper())
+    stdscr.addstr(0, 2, "Aggregate Market Data")
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, cur.upper())
     stdscr.addstr(1, 0, "")
 
     # Latest market (table)
     ex = getrate('CAD',utc_dtdate())
-    hdr = ['Market Cap', '24h Vol', 'BTC Cap %', 'Markets', 'Currencies',
-           'Assets', '1 Hour', '24 Hour', '7 Day']
+    hdr = ['Mcap', '24h Vol', 'BTC Dominance', 'Markets', 'Currencies',
+           '1 Hour', '24 Hour', '7 Day']
     mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
         return log.error("db.market_idx_5m empty")
@@ -133,43 +93,56 @@ def markets(stdscr):
             _to(ex * mkt['mktcap_usd'], t="money", abbr=True),
             _to(ex * mkt['vol_24h_usd'], t="money", abbr=True),
             _to(mkt['pct_mktcap_btc'], t="pct"),
-            _to(mkt['n_markets']),
-            _to(mkt['n_currencies']),
-            _to(mkt['n_assets']),
+            _to(mkt['n_markets'], d=0),
+            _to(mkt['n_assets'] + mkt['n_currencies'], d=0),
             _to(_diff('1H', to_format='percentage'), t="pct", f="sign"),
             _to(_diff('24H', to_format='percentage'), t="pct", f="sign"),
             _to(_diff('7D', to_format='percentage'), t="pct", f="sign")
         ])
-        colors.append([c.WHITE]*6 + [pnlcolor(rows[-1][col]) for col in range(6,9)])
+        colors.append([c.WHITE]*5 + [pnlcolor(rows[-1][col]) for col in range(5,8)])
+
+    updated = to_relative_str(utc_datetime() - mktdata[0]["date"])
     print_table(
         stdscr,
-        ["Latest", "Updated " + to_local(mktdata[0]["date"]).strftime("%I:%M %p")],
-        hdr, rows, colors, div=False)
+        ["Latest (%s)" % updated],
+        #["Now (updated %s)" % to_local(mktdata[0]["date"]).strftime("%I:%M %p")],
+        hdr, rows, colors, div=True)
 
     # Weekly market (table)
-    start = utc_dtdate() + timedelta(days=-5)
+    start = utc_dtdate() + timedelta(days=-14)
     cursor = db.market_idx_1d.find(
         {"date":{"$gte":start, "$lt":utc_dtdate()}}).sort('date',-1)
     if cursor.count() < 1:
         return log.error("no data for weekly markets")
-    hdr = ["Date","Market Cap", "Market Cap High","Market Cap Low",
-          "Market Cap Spread","Volume","BTC Dom"]
+    hdr = ["Date","Mcap Open", "Mcap High","Mcap Low", "Mcap Close",
+          "Mcap Spread", "Mcap SD", "Volume","BTC Dom"]
     rows, colors = [], []
+
     for mkt in cursor:
         ex = getrate('CAD', mkt["date"])
+        diff = _to(mkt["mktcap_spread_usd"]/mkt["mktcap_low_usd"] * 100, t='pct')
         rows.append([
             mkt["date"].strftime("%b-%d"),
-            _to(ex * mkt["mktcap_close_usd"], t='money', d=0, abbr=True),
-            _to(ex * mkt["mktcap_high_usd"], t='money', d=0, abbr=True),
-            _to(ex * mkt["mktcap_low_usd"], t='money', d=0, abbr=True),
-            _to(ex * mkt["mktcap_spread_usd"], t='money', d=0, abbr=True),
-            _to(ex * mkt['vol_24h_close_usd'], t="money", d=0, abbr=True),
+            _to(ex * mkt["mktcap_open_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt["mktcap_high_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt["mktcap_low_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt["mktcap_close_usd"], t='money', d=1, abbr=True),
+            diff,
+            _to(ex * mkt["mktcap_std_24h_usd"], t='money', d=1, abbr=True),
+            _to(ex * mkt['vol_24h_close_usd'], t="money", d=1, abbr=True),
             _to(ex * mkt['btc_mcap'], t="pct")
         ])
-        colors.append([c.WHITE]*7)
+        colors.append([c.WHITE]*9)
+
+    cursor.rewind()
+    df = pd.DataFrame(list(cursor))
+
+    colors[df["mktcap_high_usd"].idxmax()][2] = c.GREEN
+    colors[df["mktcap_low_usd"].idxmin()][3] = c.RED
+    colors[df["vol_24h_close_usd"].idxmax()][7] = c.GREEN
 
     stdscr.addstr(stdscr.getyx()[0]+1, 0, "")
-    print_table(stdscr, ["Recent",""], hdr, rows, colors, div=False)
+    print_table(stdscr, ["Daily Historic"], hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
 def watchlist(stdscr):

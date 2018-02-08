@@ -13,12 +13,16 @@ def getrate(currency, _date):
     if result:
         return result[currency]
     else:
-        return queryrate(currency,_date)
+        return queryrate(currency, _date)
 
 #-------------------------------------------------------------------------------
 def queryrate(currency, _date):
+    base = 'USD'
+    log.debug("querying forex '%s' rate on '%s'", currency, _date.date())
+
     try:
-        uri = "https://api.fixer.io/%s?base=%s&symbols=%s" %(_date,base,currency)
+        uri = "https://api.fixer.io/%s?base=%s&symbols=%s" %(
+            _date.date(), base, currency)
         response = requests.get(uri)
         data = json.loads(response.text)
     except Exception as e:
@@ -26,8 +30,15 @@ def queryrate(currency, _date):
         return False
     else:
         if response.status_code != 200:
-            log.error("forex status=%s, text=%s", response.status_code, response.text)
-            return False
+            return log.error("forex status=%s, text=%s", response.status_code, response.text)
+
+        get_db().forex_1d.insert_one({
+            "date":_date,
+            "USD":1,
+            "CAD":data["rates"][currency]
+        })
+
+    log.debug("forex rate='%s", data["rates"][currency])
 
     return data["rates"][currency]
 

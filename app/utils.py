@@ -134,3 +134,49 @@ def getAttributes(obj):
             continue
         result += pformat("%s: %s" %(name, value)) + "\n"
     return result
+
+#----------------------------------------------------------------------
+def to_relative_str(_delta):
+    diff_ms = abs(_delta.total_seconds() * 1000)
+    min_ms = 1000 * 60
+    hour_ms = 1000 * 3600
+    day_ms = hour_ms * 24
+    week_ms = day_ms * 7
+    month_ms = day_ms * 30
+    year_ms = day_ms * 365
+
+    log.debug("diff_ms=%s", diff_ms)
+
+    if diff_ms >= year_ms:
+        # Year(s) span
+        nYears = int(diff_ms/year_ms)
+        return "{} year{} ago".format(nYears, 's' if nYears > 1 else '')
+
+    if diff_ms >= month_ms:
+        # Month(s) span
+        nMonths = int(diff_ms/month_ms)
+        return "{} month{} ago".format(nMonths, 's' if nMonths > 1 else '')
+
+    if diff_ms >= week_ms:
+        # Week(s) span
+        nWeeks = int(diff_ms/week_ms)
+        return "{} week{} ago".format(nWeeks, 's' if nWeeks > 1 else '')
+
+    if diff_ms >= day_ms:
+        # Day(s) span
+        nDays = int(diff_ms/day_ms)
+        return "{} day{} ago".format(nDays, 's' if nDays > 1 else '')
+
+    if diff_ms >= hour_ms:
+        # Hour(s) span
+        nHours = int(diff_ms/hour_ms)
+        return "{} hour{} ago".format(nHours, 's' if nHours > 1 else '')
+
+    if diff_ms >= min_ms:
+        # Minute(s) span
+        nMin = int(diff_ms/min_ms)
+        return "{} min ago".format(nMin)
+
+    # Second(s) span
+    nSec = int(diff_ms/1000)
+    return "{} second{} ago".format(nSec, 's' if nSec > 1 else '')

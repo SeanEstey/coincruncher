@@ -39,15 +39,53 @@ def teardown(stdscr):
     curses.endwin()
 
 #----------------------------------------------------------------------
-def printrow(stdscr, y, datarow, colsizes, colors, colspace=2, usecurspos=True):
+def printrow(stdscr, y, datarow, colsizes, colors, colspace=2, x=None, usecurspos=True):
+    x = x if x is not None else 2
     if usecurspos:
-        stdscr.move(y,2)
+        stdscr.move(y,x)
     for idx in range(0, len(datarow)):
         stdscr.addstr(
             y,
             stdscr.getyx()[1],# + colspace, #+1,
             str(datarow[idx]).ljust(colsizes[idx]+colspace),
             colors[idx])
+
+#-----------------------------------------------------------------------------
+def print_table(stdscr, titles, hdr, datarows, colors, div=True):
+    """Print justified datatable w/ header row.
+    @hdr: list of column headers
+    @datarows: list of rows, each row a list of column print values
+    @colors: list of rows, each row a list of column print colors
+    """
+    col_sp=3  # Column spacing
+    col_wdt = _colsizes(hdr, datarows) # Justified column widths
+    tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
+    tbl_sp = int((stdscr.getmaxyx()[1] - tbl_width)/2) # Tablespacing
+    getyx = stdscr.getyx
+
+    if len(titles) == 1:
+        # Centered
+        tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
+        x = int(tbl_width/2 - len(titles[0])/2)
+        stdscr.addstr(getyx()[0]+1, tbl_sp + x, titles[0])
+    elif len(titles) == 2:
+        y = getyx()[0]+1
+        # Left-aligned
+        stdscr.addstr(y, tbl_sp, titles[0])
+        # Right-aligned
+        tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
+        x = tbl_sp + tbl_width - len(titles[1])
+        stdscr.addstr(y, x, titles[1])
+
+    # Print header row (white)
+    printrow(stdscr,getyx()[0]+2,hdr,col_wdt,[c.WHITE for n in hdr],col_sp,x=tbl_sp)
+
+    if div:
+        divider(stdscr, getyx()[0]+1, col_wdt, col_sp, x=tbl_sp)
+
+    # Print data rows (custom colors)
+    for n in range(0, len(datarows)):
+        printrow(stdscr, getyx()[0]+1, datarows[n], col_wdt, colors[n], col_sp, x=tbl_sp)
 
 #----------------------------------------------------------------------
 def input_char(stdscr):
@@ -112,7 +150,8 @@ def pretty(number, t=None, f=None, abbr=None, d=None):
             strval = "%s%s" %(short, 'T')
     # Full length number w/ comma separators
     else:
-        strval = "{:,}".format(round(number,dec))
+        num = int(number) if dec == 0 else round(number, dec)
+        strval = "{:,}".format(num)
 
     if f == 'sign':
         head += "+" if number > 0 else ""
@@ -168,8 +207,9 @@ def _colsizes(hdr, rows):
     return widths
 
 #----------------------------------------------------------------------
-def divider(stdscr, y, colwidths, colspace):
-    stdscr.hline(y, 2, '-', sum(colwidths) + (len(colwidths)-1)*colspace)
+def divider(stdscr, y, colwidths, colspace, x=None):
+    x = x if x is not None else 2
+    stdscr.hline(y, x, '-', sum(colwidths) + (len(colwidths)-1)*colspace)
 
 #----------------------------------------------------------------------
 def navmenu(stdscr):
