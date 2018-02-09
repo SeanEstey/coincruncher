@@ -10,7 +10,6 @@ from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, parse_period
 from app.coinmktcap import download_data, extract_data
-
 log = logging.getLogger('tickers')
 
 #------------------------------------------------------------------------------

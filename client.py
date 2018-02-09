@@ -1,3 +1,5 @@
+# client
+
 import curses, getopt, json, logging, sys, time
 from curses import wrapper
 from config import *
@@ -42,17 +44,17 @@ def process_input(stdscr, ch):
 
     if ch == ord('p'):
         log.info("switching to portfolio view")
-        view = views.portfolio
+        view = views.show_portfolio
         view(stdscr)
         stdscr.refresh()
     elif ch == ord('m'):
         log.info("switching to market view")
-        view = views.markets
+        view = views.show_markets
         view(stdscr)
         stdscr.refresh()
     elif ch == ord('w'):
         log.info("switching to watchlist view")
-        view = views.watchlist
+        view = views.show_watchlist
         view(stdscr)
         stdscr.refresh()
     elif ch == ord('h'):
@@ -62,18 +64,18 @@ def process_input(stdscr, ch):
         symbol = byte_input.decode('utf-8').upper()
         scrollscr = curses.newpad(padheight, curses.COLS-1)
         scrollpos = 0
-        scrollremain = views.history(scrollscr, symbol)
+        scrollremain = views.show_history(scrollscr, symbol)
         scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
-        view = views.history
+        view = views.show_history
     elif ch == KEY_UP:
-        if view != views.history:
+        if view != views.show_history:
             return False
         scrollremain += min(scrollspeed, scrollpos)
         scrollpos -= min(scrollspeed, scrollpos)
         log.debug('UP scroll, pos=%s, remain=%s', scrollpos, scrollremain)
         scrollscr.refresh(scrollpos, 0, 0, 0, n_lines-1, n_cols-1)
     elif ch == KEY_DOWN:
-        if view != views.history:
+        if view != views.show_history:
             return False
         scrollpos += min(scrollspeed, scrollremain)
         scrollremain -= min(scrollspeed, scrollremain)
@@ -86,7 +88,7 @@ def process_input(stdscr, ch):
     timer.restart()
     #log.debug("refresh timer reset")
 
-    if view != views.history:
+    if view != views.show_history:
         view(stdscr)
 
 #----------------------------------------------------------------------
@@ -115,7 +117,7 @@ def main(stdscr):
     screen.setup(stdscr)
     n_lines = screen.get_n_lines()
     n_cols = screen.get_n_cols()
-    view = views.markets
+    view = views.show_markets
     view(stdscr)
     ch = None
 

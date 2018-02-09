@@ -1,36 +1,30 @@
-# views.py
-import logging, curses
-import pandas as pd
-from datetime import datetime, timedelta
-from dateutil import tz
-from app import get_db, markets
-import app.markets, app.tickers
-from app.utils import utc_dtdate
-from app.forex import getrate
-from app.timer import Timer
-from config import *
-from config import CURRENCY as cur
-from app.screen import c, print_table, printrow, pretty, pnlcolor, _colsizes, divider, navmenu
-from app.utils import to_local, to_relative_str, utc_datetime
+# app.views
 
-localtz = tz.tzlocal()
-log = logging.getLogger(__name__)
+import logging
+import pandas as pd
+from datetime import timedelta
+from app import get_db, forex, markets, tickers
+from app.utils import utc_dtdate, to_relative_str, utc_datetime
+from app.screen import c, print_table, pretty, pnlcolor
+from app.timer import Timer
+from config import CURRENCY
+log = logging.getLogger('views')
 
 #-----------------------------------------------------------------------------
-def markets(stdscr):
+def show_markets(stdscr):
     """Global market data.
     """
-    _diff = app.markets.diff
+    _diff = markets.diff
     _to = pretty
     db = get_db()
     stdscr.clear()
 
     stdscr.addstr(0, 2, "Aggregate Market Data")
-    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, cur.upper())
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
     stdscr.addstr(1, 0, "")
 
     # Latest market (table)
-    ex = getrate('CAD',utc_dtdate())
+    ex = forex.getrate('CAD',utc_dtdate())
     hdr = ['Mcap', '24h Vol', 'BTC Dominance', 'Markets', 'Currencies',
            '1 Hour', '24 Hour', '7 Day']
     mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
@@ -67,7 +61,7 @@ def markets(stdscr):
     rows, colors = [], []
 
     for mkt in cursor:
-        ex = getrate('CAD', mkt["date"])
+        ex = forex.getrate('CAD', mkt["date"])
         diff = _to(mkt["mktcap_spread_usd"]/mkt["mktcap_low_usd"] * 100, t='pct')
         rows.append([
             mkt["date"].strftime("%b-%d"),
@@ -93,12 +87,12 @@ def markets(stdscr):
     print_table(stdscr, ["Daily Historic"], hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
-def history(stdscr, symbol):
+def show_history(stdscr, symbol):
     log.info("Querying %s ticker history", symbol)
     t1 = Timer()
     db = get_db()
 
-    ex = getrate('CAD',utc_dtdate())
+    ex = forex.getrate('CAD',utc_dtdate())
     n_display = 95
     colspace=3
     indent=2
@@ -124,12 +118,14 @@ def history(stdscr, symbol):
             pretty(tck['mktcap_usd'], t="money", abbr=True),
             pretty(tck['vol_24h_usd'], t="money", abbr=True)
         ])
+    import curses
+    from app.screen import divider, printrow, _colsizes
     colwidths = _colsizes(hdr, strrows)
 
     stdscr.clear()
     stdscr.addstr(0, indent, "%s History" % symbol)
-    #navmenu(stdscr)
     printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
+
     divider(stdscr, 3, colwidths, colspace)
     for i in range(0, len(strrows)):
         colors = [c.WHITE for n in range(0,7)]
@@ -140,26 +136,22 @@ def history(stdscr, symbol):
     return n_rem_scroll
 
 #-----------------------------------------------------------------------------
-def watchlist(stdscr):
-    #log.info('Watchlist view')
+def show_watchlist(stdscr):
     db = get_db()
-    hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1 Hour", "24 Hour", "7d"]
-    indent=2
-    colspace=3
-    watchlist = db.watchlist.find()
+    ex = forex.getrate('CAD',utc_dtdate())
     tickers = list(db.tickers_5m.find())
-    ex = getrate('CAD',utc_dtdate())
 
     if len(tickers) == 0:
-        log.error("coinmktcap collection empty")
-        return False
+        return log.error("coinmktcap collection empty")
 
-    strrows = []
-    for watch in watchlist:
+    rows, colors = [], []
+    hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1 Hour", "24 Hour", "7d"]
+
+    for watch in db.watchlist.find():
         for tckr in tickers:
             if tckr['id'] != watch['id']:
                 continue
-            strrows.append([
+            rows.append([
                 tckr["rank"],
                 tckr["symbol"],
                 pretty(ex * tckr["price_usd"], t='money'),
@@ -169,43 +161,38 @@ def watchlist(stdscr):
                 pretty(tckr["pct_24h"], t='pct', f='sign'),
                 pretty(tckr["pct_7d"], t='pct', f='sign')
             ])
-    colwidths = _colsizes(hdr, strrows)
-    strrows = sorted(strrows, key=lambda x: int(x[0])) #[::-1]
+            colors.append(
+                [c.WHITE]*5 +\
+                [pnlcolor(rows[-1][5]), pnlcolor(rows[-1][6]), pnlcolor(rows[-1][7])])
+
+    rows = sorted(rows, key=lambda x: int(x[0]))
+
+    # Print
     stdscr.clear()
-
-    # Print Title row
-    stdscr.addstr(0, indent, "Watchlist (%s)" % cur.upper())
-    #navmenu(stdscr)
-    dt = tickers[0]["date"].astimezone(localtz).strftime("%I:%M %p")
-    stdscr.addstr(0, stdscr.getmaxyx()[1] - len(dt) -2, dt)
-
-    # Print Datatable
-    printrow(stdscr, 2, hdr, colwidths, [c.WHITE for n in hdr], colspace)
-    divider(stdscr, 3, colwidths, colspace)
-    for n in range(0, len(strrows)):
-        row = strrows[n]
-        colors = [c.WHITE, c.WHITE, c.WHITE, c.WHITE, c.WHITE, pnlcolor(row[5]),
-            pnlcolor(row[6]), pnlcolor(row[7])]
-        printrow(stdscr, n+4, row, colwidths, colors, colspace)
+    updated = to_relative_str(utc_datetime() - tickers[0]["date"])
+    stdscr.addstr(0, 2, "Updated %s" % updated)
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
+    stdscr.addstr(1, 0, "")
+    print_table(stdscr, ["Watchlist"], hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
-def portfolio(stdscr):
-    diff = app.tickers.diff
+def show_portfolio(stdscr):
+    diff = tickers.diff
     t1 = Timer()
     db = get_db()
     total = 0.0
     profit = 0
     datarows = []
-    ex = getrate('CAD',utc_dtdate())
+    ex = forex.getrate('CAD',utc_dtdate())
 
     # Build datarows
 
-    tickers = list(db.tickers_5m.find().sort("date",-1))
+    _tickers = list(db.tickers_5m.find().sort("date",-1))
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
            '7 Day', '30 Day', 'Amount', 'Value', '/100']
 
     for hold in db.portfolio.find():
-        for tckr in tickers:
+        for tckr in _tickers:
             if tckr['symbol'] != hold['symbol']:
                 continue
 
@@ -249,9 +236,9 @@ def portfolio(stdscr):
 
     # Print title Row
     stdscr.clear()
-    updated = to_relative_str(utc_datetime() - tickers[0]["date"])
+    updated = to_relative_str(utc_datetime() - _tickers[0]["date"])
     stdscr.addstr(0, 2, "Updated %s" % updated)
-    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, cur.upper())
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
     stdscr.addstr(1, 0, "")
 
     # Portfolio datatable

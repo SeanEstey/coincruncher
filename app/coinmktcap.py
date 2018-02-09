@@ -1,5 +1,5 @@
 # app.coinmktcap
-from datetime import datetime
+from datetime import datetime, timedelta
 import argparse, logging, requests, json, pytz, re, sys, time
 from sys import getsizeof as getsize
 from pymongo import ReplaceOne
@@ -32,7 +32,7 @@ ticker_f = [
     {"from":"id", "to":"id", "type":str},
     {"from":"symbol", "to":"symbol", "type":str},
     {"from":"name", "to":"name", "type":str},
-    {"from":"last_updated", "to":"date", "type":to_dt},
+    #{"from":"last_updated", "to":"date", "type":to_dt},
     {"from":"rank", "to":"rank", "type":to_int},
     {"from":"market_cap_usd", "to":"mktcap_usd", "type":to_int},
     {"from":"24h_volume_usd", "to":"vol_24h_usd", "type":to_int},
@@ -49,15 +49,19 @@ ticker_f = [
 def next_update(collection):
     """Seconds remaining until next API data refresh.
     """
-    updated_dt = list(collection.find().sort("date",-1).limit(1))[0]['date']
-    elapsed = duration(utc_datetime() - updated_dt)
+    result = collection.find().sort("date",-1).limit(1)
+
+    if result.count() < 1:
+        log.debug("%s empty. refresh now", collection.name)
+        return 0
+
+    elapsed = duration(utc_datetime() - list(result)[0]["date"])
 
     if elapsed >= api_refresh:
-        log.debug("%s updated %s sec ago. updating now.", collection.name, elapsed)
+        log.debug("%s refresh due now", collection.name)
         return 0
     else:
-        log.debug("%s updated %s sec ago (%s remaining).",
-            collection.name, elapsed, api_refresh - elapsed)
+        log.debug("%s refresh in %s s.", collection.name, api_refresh-elapsed)
         assert(elapsed >= 0)
         return api_refresh - elapsed
 
@@ -77,35 +81,49 @@ def get_tickers_5m(start=0, limit=None):
     try:
         r = requests.get("https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
             .format(idx, limit or 1500))
-        data = json.loads(r.text)
     except Exception as e:
-        log.exception("updt_ticker() error")
-        return False
+        log.exception("API error: %s", r.text)
+        return 30
+    else:
+        if r.status_code != 200:
+            log.error("API error %s", r.status_code)
+            return 60
+        log.debug("recd {:,} bytes in {:,} ms.".format(getsize(r.text), t.clock(t='ms')))
+        data = json.loads(r.text)
 
+    # Sort by timestamp in descending order
+    data = sorted(data, key=lambda x: int(x["last_updated"]))[::-1]
+
+    # Prune outdated tickers
+    ts_range = range(
+        int(data[0]["last_updated"]) - 60,
+        int(data[0]["last_updated"]) + 1)
+    tickerdata = [ n for n in data if int(n["last_updated"]) in ts_range ]
+    _dt = to_dt(int(data[0]["last_updated"]))
+    updated = _dt - timedelta(seconds=_dt.second, microseconds=_dt.microsecond)
     ops = []
 
-    #tickers = list(db.tickers_5m.find())
-    #_30d = 0.0 diff(tckr["symbol"], tckr["price_usd"], "30D",
-    #    to_format="percentage")
+    for ticker in tickerdata:
+        store={"date":updated}
 
-    for ticker in data:
-        store={}
         for f in ticker_f:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None
             except Exception as e:
-                log.exception("%s error in '%s' field: %s",
-                    ticker['symbol'], f["from"], str(e))
+                log.exception("%s ticker error", ticker["symbol"])
                 continue
 
-        ops.append(ReplaceOne({'symbol':store['symbol']}, store, upsert=True))
+        ops.append(ReplaceOne(
+            {'date':updated, 'symbol':store['symbol']}, store, upsert=True))
 
     result = db.tickers_5m.bulk_write(ops)
 
-    log.info("received {:,} bytes in {:,} ms. {:,} tickers.".format(
-        getsize(r.text), t.clock(t='ms'), len(data)))
-
+    log.debug("tickerdata updated at %s, n_mod=%s, n_upsert=%s, n_outdated=%s",
+        updated.time(), result.modified_count, result.upserted_count,
+        len(data)-len(tickerdata))
+    log.info("%s tickers saved, updated at %s",
+        len(tickerdata), updated.time())
     return 60 #next_update(get_db().tickers_5m)
 
 #---------------------------------------------------------------------------
@@ -124,11 +142,11 @@ def get_marketidx_5m():
 
     try:
         response = requests.get("https://api.coinmarketcap.com/v1/global")
-        data = json.loads(response.text)
     except Exception as e:
-        log.warning("Error getting CMC market data: %s", str(e))
+        log.exception("API error: %s", response.text)
         return 60
     else:
+        data = json.loads(response.text)
         for m in market_f:
             store[m["to"]] = m["type"]( data[m["from"]] )
 

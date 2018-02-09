@@ -145,8 +145,6 @@ def to_relative_str(_delta):
     month_ms = day_ms * 30
     year_ms = day_ms * 365
 
-    log.debug("diff_ms=%s", diff_ms)
-
     if diff_ms >= year_ms:
         # Year(s) span
         nYears = int(diff_ms/year_ms)
