@@ -8,7 +8,23 @@ logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
+def verify_db():
+    """Verifies the completeness of the db collections, generates any
+    necessary documents to fill gaps if possible.
+    """
+    db = get_db()
+    log.debug("verifying db...")
+    tickers_1d = db.tickers_1d.find().sort('date',1)
+    log.debug("tickers_1d collection has %s documents", tickers_1d.count())
+    market_1d = db.market_idx_1d.find().sort('date',1)
+    log.debug("market_idx_1d collection has %s documents", market_1d.count())
+
+    # TODO: generate documents for missing date gaps
+
+#---------------------------------------------------------------------------
 def main():
+    verify_db()
+
     while True:
         t = 500
         t = min(t, forex.update_1d()) # Once a day

@@ -1,6 +1,7 @@
 {
     "watchlist": [
         { "id":"bitcoin", "symbol":"BTC"},
+        { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"litecoin", "symbol":"LTC"},
         { "id":"chainlink", "symbol":"LINK"},
         { "id":"ripple", "symbol":"XRP"},

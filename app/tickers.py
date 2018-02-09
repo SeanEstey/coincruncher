@@ -1,6 +1,7 @@
 # app.tickers
 
 import logging, pytz, json
+from pprint import pformat
 from datetime import datetime, timedelta as delta, date
 from dateutil import tz
 from dateutil.parser import parse
@@ -11,6 +12,60 @@ from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, pars
 from app.coinmktcap import download_data, extract_data
 
 log = logging.getLogger('tickers')
+
+#------------------------------------------------------------------------------
+def generate_1d(_date):
+    """Generate '1d' ticker data on given date from '5m' data (~236 datapoints).
+    Source data is from coinmarketcap API ticker data.
+    """
+    db = get_db()
+
+    # Already generated?
+    if db.tickers_1d.find_one({"date":_date}):
+        log.debug("tickers_1d already exists for '%s'", _date.date())
+        return 75000
+
+    # Gather source data
+    cursor = db.tickers_5m.find({"date":{"$gte":_date, "$lt":_date+timedelta(days=1)}})
+
+    if cursor.count() < 1:
+        log.error("no '5m' source data found on '%s'", _date.date())
+        return 75000
+
+    operations = []
+
+    for ticker in cursor:
+        operations.append(UpdateOne(
+            {"symbol":ticker["symbol"], "date":today},
+            {
+                "$set": {
+                    "symbol":ticker["symbol"],
+                    "id":ticker["id"],
+                    "name":ticker["name"],
+                    "date":today,
+                    "close":ticker["price_usd"],
+                    "mktcap_usd":ticker["mktcap_usd"],
+                    "vol_24h_usd":ticker["vol_24h_usd"],
+                    "rank_now":ticker["rank"]
+                },
+                "$setOnInsert":{"open":ticker["price_usd"]},
+                "$max":{"high":ticker["price_usd"]},
+                "$min":{"low":ticker["price_usd"]},
+            },
+            upsert=True))
+
+    log.debug("tickers_1d writing %s updates...", len(operations))
+
+    try:
+        result = db.tickers_1d.bulk_write(operations)
+    except Exception as e:
+        log.exception("update_1d bulk_write error")
+        return 300
+
+    log.info("tickers_1d updated. %s modified, %s upserted.",
+        result.modified_count, result.upserted_count)
+
+    return 300
 
 #------------------------------------------------------------------------------
 def update_1d():

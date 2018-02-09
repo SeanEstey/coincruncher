@@ -1,7 +1,8 @@
 # app.markets
 
-import logging, pytz
+import logging
 from datetime import datetime, timedelta
+from pprint import pformat
 import pandas as pd
 from app import get_db
 from app.utils import duration, utc_dtdate, utc_datetime
@@ -25,15 +26,11 @@ def next_update():
         return api_refresh - elapsed
 
 #------------------------------------------------------------------------------
-def generate_5m():
-    pass
-
-#------------------------------------------------------------------------------
 def generate_1d(_date):
     """Generate '1d' market index on given date from '5m' data (~236 datapoints).
     Source data is from coinmarketcap API global data.
     """
-    from pprint import pformat
+
     db = get_db()
 
     # Already generated?
@@ -127,6 +124,7 @@ def diff(period, to_format):
     @period: str time period to compare. i.e. '1H', '1D', '7D'
     @to_format: 'currency' or 'percentage'
     """
+    import pytz
     from app.utils import parse_period
     db = get_db()
     qty, unit, tdelta = parse_period(period)
@@ -160,6 +158,7 @@ def resample(start, end, freq):
     """Resample datetimes from '5M' to given frequency
     @freq: '1H', '1D', '7D'
     """
+    import pytz
     from app.utils import parse_period
     db = get_db()
     qty, unit, tdelta = parse_period(freq)
