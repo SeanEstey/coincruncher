@@ -159,6 +159,8 @@ def get_marketidx_5m():
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):
   """Extract parameters from command line.
+  @currency: full name of asset ("ethereum")
+  @start_date, @end_date: date strings
   """
   currency   = currency.lower()
   #start_date = args.start_date
