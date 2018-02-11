@@ -62,14 +62,13 @@ def show_markets(stdscr):
 
     for mkt in cursor:
         ex = forex.getrate('CAD', mkt["date"])
-        diff = _to(mkt["mktcap_spread_usd"]/mkt["mktcap_low_usd"] * 100, t='pct')
         rows.append([
             mkt["date"].strftime("%b-%d"),
             _to(ex * mkt["mktcap_open_usd"], t='money', d=1, abbr=True),
             _to(ex * mkt["mktcap_high_usd"], t='money', d=1, abbr=True),
             _to(ex * mkt["mktcap_low_usd"], t='money', d=1, abbr=True),
             _to(ex * mkt["mktcap_close_usd"], t='money', d=1, abbr=True),
-            diff,
+            _to(mkt["mktcap_spread_usd"]/mkt["mktcap_low_usd"] * 100, t='pct'),
             _to(ex * mkt["mktcap_std_24h_usd"], t='money', d=1, abbr=True),
             _to(ex * mkt['vol_24h_close_usd'], t="money", d=1, abbr=True),
             _to(ex * mkt['btc_mcap'], t="pct")
@@ -139,7 +138,7 @@ def show_history(stdscr, symbol):
 def show_watchlist(stdscr):
     db = get_db()
     ex = forex.getrate('CAD',utc_dtdate())
-    tickers = list(db.tickers_5m.find())
+    tickers = list(db.tickers_5m.find().sort('date',-1))
 
     if len(tickers) == 0:
         return log.error("coinmktcap collection empty")
@@ -149,13 +148,13 @@ def show_watchlist(stdscr):
 
     for watch in db.watchlist.find():
         for tckr in tickers:
-            if tckr['id'] != watch['id']:
+            if tckr['symbol'] != watch['symbol']:
                 continue
             rows.append([
                 tckr["rank"],
                 tckr["symbol"],
                 pretty(ex * tckr["price_usd"], t='money'),
-                pretty(ex * tckr["mktcap_usd"], t='money', abbr=True),
+                pretty(ex * (tckr["mktcap_usd"] or 0), t='money', abbr=True),
                 pretty(ex * tckr["vol_24h_usd"], t='money', abbr=True),
                 pretty(tckr["pct_1h"], t='pct', f='sign'),
                 pretty(tckr["pct_24h"], t='pct', f='sign'),
@@ -164,6 +163,7 @@ def show_watchlist(stdscr):
             colors.append(
                 [c.WHITE]*5 +\
                 [pnlcolor(rows[-1][5]), pnlcolor(rows[-1][6]), pnlcolor(rows[-1][7])])
+            break
 
     rows = sorted(rows, key=lambda x: int(x[0]))
 
@@ -208,6 +208,7 @@ def show_portfolio(stdscr):
                 tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d,
                 hold['amount'], value, None
             ])
+            break
 
     # Calculate porfolio %
     for datarow in datarows:

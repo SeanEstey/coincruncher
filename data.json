@@ -9,11 +9,11 @@
         { "id":"cardano", "symbol":"ADA"},
         { "id":"iota", "symbol":"IOTA"},
         { "id":"icon", "symbol":"ICX"},
-        { "id":"dragonchain", "symbol":"DRGN"},
-        { "id":"trinity-network-credit", "symbol":"TNC"},
-        { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
-        { "id":"gas", "symbol":"GAS", "amount":0.4178},
-        { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57},
+        { "id":"jibrel-network", "symbol":"JNT"},
+        { "id":"rchain", "symbol":"RHOC"},
+        { "id":"bounty0x", "symbol":"BNTY"},
+        { "id":"latoken", "symbol":"LA"},
+        { "id":"polymath-network", "symbol":"POLY"},
         { "id":"kin", "symbol":"KIN"}
     ],
     "portfolio": [
@@ -32,6 +32,9 @@
         { "id":"walton", "symbol":"WTC", "amount":100.00},
         { "id":"zilliqa", "symbol":"ZIL", "amount":34721.56}
     ],
-    "_comments": [
+    "small_portfolio": [
+        { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
+        { "id":"gas", "symbol":"GAS", "amount":0.4178},
+        { "id":"deepbrain-chain", "symbol":"DBC", "amount":1250.57}
     ]
 }

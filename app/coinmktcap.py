@@ -63,7 +63,7 @@ def next_update(collection):
     else:
         log.debug("%s refresh in %s s.", collection.name, api_refresh-elapsed)
         assert(elapsed >= 0)
-        return api_refresh - elapsed
+        return api_refresh - elapsed + 30
 
 #------------------------------------------------------------------------------
 def get_tickers_5m(start=0, limit=None):
@@ -92,13 +92,13 @@ def get_tickers_5m(start=0, limit=None):
         data = json.loads(r.text)
 
     # Sort by timestamp in descending order
-    data = sorted(data, key=lambda x: int(x["last_updated"]))[::-1]
+    data = sorted(data, key=lambda x: int(x["last_updated"] or 1))[::-1]
 
     # Prune outdated tickers
     ts_range = range(
         int(data[0]["last_updated"]) - 60,
         int(data[0]["last_updated"]) + 1)
-    tickerdata = [ n for n in data if int(n["last_updated"]) in ts_range ]
+    tickerdata = [ n for n in data if n["last_updated"] and int(n["last_updated"]) in ts_range ]
     _dt = to_dt(int(data[0]["last_updated"]))
     updated = _dt - timedelta(seconds=_dt.second, microseconds=_dt.microsecond)
     ops = []
