@@ -10,7 +10,10 @@ from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, parse_period
 from app.coinmktcap import download_data, extract_data
+logging.getLogger("requests").setLevel(logging.ERROR)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger('tickers')
+
 
 #------------------------------------------------------------------------------
 def generate_1d(_date):
@@ -133,7 +136,38 @@ def diff(symbol, price, period, to_format):
 
     return pct if to_format == 'percentage' else diff
 
+#------------------------------------------------------------------------------
+def db_audit():
+    # Verify tickers_1d completeness
+    db = get_db()
 
+    _tickers = db.tickers_1d.aggregate([
+        {"$group":{
+            "_id":"$id",
+            "date":{"$max":"$date"},
+            "name":{"$last":"$name"},
+            "symbol":{"$last":"$symbol"},
+            "rank":{"$last":"$rank_now"},
+            "count":{"$sum":1}
+        }},
+        {"$sort":{"rank":1}}
+    ])
+    _tickers = list(_tickers)
+
+    log.debug("%s aggregated ticker_1d assets", len(_tickers))
+
+    for tckr in _tickers:
+        last_update = utc_dtdate() - delta(days=1) - tckr["date"]
+        if last_update.total_seconds() < 1:
+            log.debug("%s up-to-date.", tckr["symbol"])
+            continue
+
+        log.debug("updating %s (%s out-of-date)", tckr["symbol"], last_update)
+        update_historical(tckr["_id"], tckr["name"], tckr["symbol"], tckr["rank"],
+            tckr["date"], utc_dtdate())
+
+    #log.debug("DB: tickers_1d size: {:,}".format(tickers_1d.count()))
+    log.debug("DB: verified")
 
 #------------------------------------------------------------------------------
 def update_all_historical():
@@ -147,7 +181,7 @@ def update_all_historical():
         update_historical(ticker, start, end)
 
 #------------------------------------------------------------------------------
-def update_historical(ticker, start, end):
+def update_historical(_id, name, symbol, rank, start, end):
     """Scrape coinmarketcap.com for historical ticker data
     """
     db = get_db()
@@ -155,16 +189,15 @@ def update_historical(ticker, start, end):
     t1 = Timer()
 
     # Scrape data
-    html = download_data(ticker["id"], start.strftime("%Y%m%d"),
-        end.strftime("%Y%m%d"))
+    html = download_data(_id, start.strftime("%Y%m%d"), end.strftime("%Y%m%d"))
     header, rows = extract_data(html)
 
     for row in rows:
         # ["date", "open", "high", "low", "close", "vol_24h_usd", "mktcap_usd"]
         document = {
-            "symbol":ticker["symbol"],
-            "id":ticker["id"],
-            "name":ticker["name"],
+            "symbol":symbol,
+            "id":_id,
+            "name":name,
             "date":parse(row[0]).replace(tzinfo=pytz.utc),
             "open":float(row[1]),
             "high":float(row[2]),
@@ -173,20 +206,20 @@ def update_historical(ticker, start, end):
             "spread":float(row[2]) - float(row[3]),
             "vol_24h_usd":to_int(row[5]),
             "mktcap_usd":to_int(row[6]),
-            "rank_now":ticker["rank"]
+            "rank_now":rank
         }
         bulkops.append(ReplaceOne(
-            {"symbol":ticker["symbol"], "date":document["date"]},
+            {"symbol":symbol, "date":document["date"]},
             document,
             upsert=True))
 
     if len(bulkops) < 1:
         log.info("No results for symbol=%s, start=%s, end=%s",
-            ticker["symbol"], start, end)
+            symbol, start, end)
         return True
 
     result = db.tickers_1d.bulk_write(bulkops)
 
     log.info("upd_hist_tckr: sym=%s, scraped=%s, mod=%s, upsert=%s (%s ms)",
-        ticker["symbol"], len(rows), result.modified_count, result.upserted_count,
+        symbol, len(rows), result.modified_count, result.upserted_count,
         t1.clock(t='ms'))

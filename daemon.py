@@ -8,34 +8,9 @@ logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
-def verify_db():
-    """Verifies the completeness of the db collections, generates any
-    necessary documents to fill gaps if possible.
-    """
-    from app.utils import utc_dtdate
-    from datetime import timedelta
-
-    db = get_db()
-    log.debug("DB: verifying...")
-
-    # Verify market_idx_1d completeness
-    market_1d = db.market_idx_1d.find().sort('date',-1).limit(1)
-    last_date = list(market_1d)[0]["date"]
-
-    n_days = utc_dtdate() - timedelta(days=1) - last_date
-    log.debug("DB: market_idx_1d size: {:,}".format(market_1d.count()))
-
-    for n in range(0,n_days.days):
-        markets.generate_1d(last_date + timedelta(days=n+1))
-
-    # Verify tickers_1d completeness
-    tickers_1d = db.tickers_1d.find().sort('date',-1)
-    log.debug("DB: tickers_1d size: {:,}".format(tickers_1d.count()))
-    log.debug("DB: verified")
-
-#---------------------------------------------------------------------------
 def main():
-    verify_db()
+    #tickers.db_audit()
+    markets.db_audit()
 
     while True:
         t = 500

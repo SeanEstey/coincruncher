@@ -25,6 +25,24 @@ def next_update():
         assert(elapsed >= 0)
         return api_refresh - elapsed
 
+#---------------------------------------------------------------------------
+def db_audit():
+    """Verifies the completeness of the db collections, generates any
+    necessary documents to fill gaps if possible.
+    """
+    db = get_db()
+    log.debug("DB: verifying...")
+
+    # Verify market_idx_1d completeness
+    market_1d = db.market_idx_1d.find().sort('date',-1).limit(1)
+    last_date = list(market_1d)[0]["date"]
+
+    n_days = utc_dtdate() - timedelta(days=1) - last_date
+    log.debug("DB: market_idx_1d size: {:,}".format(market_1d.count()))
+
+    for n in range(0,n_days.days):
+        generate_1d(last_date + timedelta(days=n+1))
+
 #------------------------------------------------------------------------------
 def generate_1d(_date):
     """Generate '1d' market index on given date from '5m' data (~236 datapoints).
@@ -183,11 +201,6 @@ def mcap_avg_diff(freq):
         return 0.0
     diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
     return diff
-
-#-------------------------------------------------------------------------------
-def update_hist_mkt():
-    # Fill in missing historical market data w/ recent data
-    pass
 
 #------------------------------------------------------------------------------
 def gen_hist_mkts():
