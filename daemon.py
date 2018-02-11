@@ -9,7 +9,7 @@ log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
 def main():
-    tickers.db_audit()
+    #tickers.db_audit()
     markets.db_audit()
 
     while True:

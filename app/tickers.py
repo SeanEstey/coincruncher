@@ -15,6 +15,7 @@ logging.getLogger("requests").setLevel(logging.ERROR)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 log = logging.getLogger('tickers')
 
+
 #------------------------------------------------------------------------------
 def corr(symbols):
     db = get_db()
