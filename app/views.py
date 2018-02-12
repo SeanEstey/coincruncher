@@ -2,9 +2,9 @@
 
 import logging
 import pandas as pd
-from datetime import timedelta
+from datetime import timedelta, datetime
 from app import get_db, forex, markets, tickers
-from app.utils import utc_dtdate, to_relative_str, utc_datetime
+from app.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
 from app.screen import c, print_table, pretty, pnlcolor
 from app.timer import Timer
 from config import CURRENCY
@@ -138,38 +138,35 @@ def show_history(stdscr, symbol):
 def show_watchlist(stdscr):
     db = get_db()
     ex = forex.getrate('CAD',utc_dtdate())
-    tickers = list(db.tickers_5m.find().sort('date',-1))
-
-    if len(tickers) == 0:
-        return log.error("coinmktcap collection empty")
-
     rows, colors = [], []
     hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1 Hour", "24 Hour", "7d"]
+    updated = []
 
     for watch in db.watchlist.find():
-        for tckr in tickers:
-            if tckr['symbol'] != watch['symbol']:
-                continue
-            rows.append([
-                tckr["rank"],
-                tckr["symbol"],
-                pretty(ex * tckr["price_usd"], t='money'),
-                pretty(ex * (tckr["mktcap_usd"] or 0), t='money', abbr=True),
-                pretty(ex * tckr["vol_24h_usd"], t='money', abbr=True),
-                pretty(tckr["pct_1h"], t='pct', f='sign'),
-                pretty(tckr["pct_24h"], t='pct', f='sign'),
-                pretty(tckr["pct_7d"], t='pct', f='sign')
-            ])
-            colors.append(
-                [c.WHITE]*5 +\
-                [pnlcolor(rows[-1][5]), pnlcolor(rows[-1][6]), pnlcolor(rows[-1][7])])
-            break
+        cursor = db.tickers_5m.find({"symbol":watch["symbol"]}).sort("date",-1).limit(1)
+        if cursor.count() < 1:
+            continue
+        tckr = cursor.next()
+        rows.append([
+            tckr["rank"],
+            tckr["symbol"],
+            pretty(ex * tckr["price_usd"], t='money'),
+            pretty(ex * to_int(tckr["mktcap_usd"]), t='money', abbr=True),
+            pretty(ex * to_int(tckr["vol_24h_usd"]), t='money', abbr=True),
+            pretty(tckr["pct_1h"], t='pct', f='sign'),
+            pretty(tckr["pct_24h"], t='pct', f='sign'),
+            pretty(tckr["pct_7d"], t='pct', f='sign')
+        ])
+        colors.append(
+            [c.WHITE]*5 +\
+            [pnlcolor(rows[-1][5]), pnlcolor(rows[-1][6]), pnlcolor(rows[-1][7])])
+        updated.append(tckr["date"].timestamp())
 
     rows = sorted(rows, key=lambda x: int(x[0]))
 
     # Print
     stdscr.clear()
-    updated = to_relative_str(utc_datetime() - tickers[0]["date"])
+    updated = to_relative_str(utc_datetime() - to_dt(max(updated)))
     stdscr.addstr(0, 2, "Updated %s" % updated)
     stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
     stdscr.addstr(1, 0, "")

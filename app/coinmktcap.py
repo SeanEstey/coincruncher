@@ -227,7 +227,8 @@ def download_data(currency, start_date, end_date):
       print("Error message: " + e.message)
     else:
       print(e)
-      sys.exit(1)
+
+    raise Exception("Error scraping data for %s" % currency)
 
   return html
 

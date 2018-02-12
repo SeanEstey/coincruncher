@@ -92,7 +92,7 @@ def generate_1d(_date):
     })
 
     log.info("market_idx_1d generated.")
-    log.debug(pformat(db.market_idx_1d.find_one({"date":_date})))
+    #log.debug(pformat(db.market_idx_1d.find_one({"date":_date})))
 
     return 75000
 
@@ -201,28 +201,3 @@ def mcap_avg_diff(freq):
         return 0.0
     diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
     return diff
-
-#------------------------------------------------------------------------------
-def gen_hist_mkts():
-    """Initialize market_idx_1d data with aggregate tickers_1d data
-    """
-    db = get_db()
-    results = list(db.tickers_1d.aggregate([
-        {"$group": {
-          "_id": "$date",
-          "mktcap_usd": {"$sum":"$mktcap_usd"},
-          "vol_24h_usd": {"$sum":"$vol_24h_usd"},
-          "n_symbols": {"$sum":1}
-        }},
-        {"$sort": {"_id":-1}}
-    ]))
-
-    print("generated %s results" % len(results))
-
-    for r in results:
-        r.update({'date':r['_id']})
-        del r['_id']
-
-    # Remove all documents within date range of aggregate results
-    db.market_idx_1d.delete_many({"date":{"$lte":results[0]["date"]}})
-    db.market_idx_1d.insert_many(results)
