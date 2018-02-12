@@ -1,11 +1,12 @@
 # app.tickers
 
 import logging, pytz, json
-from pprint import pformat
+from pprint import pformat, pprint
 from datetime import datetime, timedelta as delta, date
 from dateutil import tz
 from dateutil.parser import parse
 from pymongo import ReplaceOne, UpdateOne
+import pandas as pd
 from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, parse_period
@@ -99,6 +100,43 @@ def get_history(_id, name, symbol, rank, start, end):
     log.info("upd_hist_tckr: sym=%s, scraped=%s, mod=%s, upsert=%s (%s ms)",
         symbol, len(rows), result.modified_count, result.upserted_count,
         t1.clock(t='ms'))
+
+#------------------------------------------------------------------------------
+def corr(symbols):
+    db = get_db()
+    t1 = Timer()
+    cursor = db.tickers_1d.aggregate([
+        {"$group":{
+            "_id":"$symbol",
+            "date":{"$push":"$date"},
+            "price":{"$push":"$close"}
+        }}
+    ])
+
+    t_aggr = t1.clock(t='ms')
+    t1.restart()
+    df = pd.DataFrame(list(cursor))
+    df.index = df["_id"]
+    t_df = t1.clock(t='ms')
+    t1.restart()
+
+    log.debug("tickers aggregated in %s ms, dataframe built in %s ms",
+        t_aggr, t_df)
+
+    dfs = []
+    for sym in symbols:
+        dfs.append(
+            pd.DataFrame(
+                columns=[sym],
+                index=df.loc[sym]["date"],
+                data=df.loc[sym]["price"]
+            ).sort_index()
+        )
+
+    joined = pd.concat(dfs, axis=1)
+    corr = joined.corr()
+    log.debug("concat + corr calculated in %s ms", t1.clock(t='ms'))
+    pprint(corr)
 
 #------------------------------------------------------------------------------
 def generate_1d(_date):
