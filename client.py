@@ -42,7 +42,11 @@ def update_db(collection, data):
 def process_input(stdscr, ch):
     global scrollpos, scrollscr, scrollremain, timer, view
 
-    if ch == ord('p'):
+    if ch == ord(','):
+        log.debug("hit menu key")
+        view = views.show_home
+        view(stdscr)
+    elif ch == ord('p'):
         log.info("switching to portfolio view")
         view = views.show_portfolio
         view(stdscr)
@@ -117,7 +121,8 @@ def main(stdscr):
     screen.setup(stdscr)
     n_lines = screen.get_n_lines()
     n_cols = screen.get_n_cols()
-    view = views.show_markets
+
+    view = views.show_home
     view(stdscr)
     ch = None
 

@@ -77,11 +77,11 @@ def print_table(stdscr, titles, hdr, datarows, colors, div=True):
         x = tbl_sp + tbl_width - len(titles[1])
         stdscr.addstr(y, x, titles[1])
 
-    # Print header row (white)
-    printrow(stdscr,getyx()[0]+2,hdr,col_wdt,[c.WHITE for n in hdr],col_sp,x=tbl_sp)
-
     if div:
         divider(stdscr, getyx()[0]+1, col_wdt, col_sp, x=tbl_sp)
+
+    # Print header row (white)
+    printrow(stdscr,getyx()[0]+1,hdr,col_wdt,[c.WHITE for n in hdr],col_sp,x=tbl_sp)
 
     # Print data rows (custom colors)
     for n in range(0, len(datarows)):
@@ -209,7 +209,7 @@ def _colsizes(hdr, rows):
 #----------------------------------------------------------------------
 def divider(stdscr, y, colwidths, colspace, x=None):
     x = x if x is not None else 2
-    stdscr.hline(y, x, '-', sum(colwidths) + (len(colwidths)-1)*colspace)
+    stdscr.hline(y, x, '-', sum(colwidths) + (len(colwidths)-1)*colspace )
 
 #----------------------------------------------------------------------
 def navmenu(stdscr):

@@ -11,6 +11,46 @@ from config import CURRENCY
 log = logging.getLogger('views')
 
 #-----------------------------------------------------------------------------
+def show_home(stdscr):
+    db = get_db()
+
+
+    n_indexed = db.tickers_1d.count() + db.tickers_5m.count() +\
+        db.market_idx_1d.count() + db.market_idx_5m.count()
+    #log.debug('n_indexed=%s', n_indexed)
+    stdscr.clear()
+    stdscr.addstr(0, 2, "%s datapoints indexed" % pretty(n_indexed, abbr=True))
+
+    updated = "Updated 1 min ago" # + to_relative_str(utc_datetime() - mktdata[0]["date"])
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-len(updated) - 2, updated)
+    stdscr.addstr(3, 0, "")
+
+    title=\
+        [" ██████╗ ██████╗ ██╗███╗   ██╗ ██████╗██████╗ ██╗   ██╗███╗   ██╗ ██████╗██╗  ██╗███████╗██████╗ "]+\
+        ["██╔════╝██╔═══██╗██║████╗  ██║██╔════╝██╔══██╗██║   ██║████╗  ██║██╔════╝██║  ██║██╔════╝██╔══██╗"]+\
+        ["██║     ██║   ██║██║██╔██╗ ██║██║     ██████╔╝██║   ██║██╔██╗ ██║██║     ███████║█████╗  ██████╔╝"]+\
+        ["██║     ██║   ██║██║██║╚██╗██║██║     ██╔══██╗██║   ██║██║╚██╗██║██║     ██╔══██║██╔══╝  ██╔══██╗"]+\
+        ["╚██████╗╚██████╔╝██║██║ ╚████║╚██████╗██║  ██║╚██████╔╝██║ ╚████║╚██████╗██║  ██║███████╗██║  ██║"]+\
+        [" ╚═════╝ ╚═════╝ ╚═╝╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═══╝ ╚═════╝╚═╝  ╚═╝╚══════╝╚═╝  ╚═╝"]
+
+    for line in title:
+        stdscr.addstr(stdscr.getyx()[0]+1, int(stdscr.getmaxyx()[1]/2-len(line)/2), line)
+
+    # Print menu options
+    width = stdscr.getmaxyx()[1]
+    x = int(width/2) - 10
+    stdscr.addstr(stdscr.getyx()[0]+3, x,  "M    Global Market")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "H    Ticker History")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "D    Data Patterns")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "W    My Watchlist")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "P    My Portfolio")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "Q    Quit")
+
+#-----------------------------------------------------------------------------
+def show_patterns(stdscr):
+    pass
+
+#-----------------------------------------------------------------------------
 def show_markets(stdscr):
     """Global market data.
     """
@@ -19,14 +59,10 @@ def show_markets(stdscr):
     db = get_db()
     stdscr.clear()
 
-    stdscr.addstr(0, 2, "Aggregate Market Data")
-    stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
-    stdscr.addstr(1, 0, "")
-
     # Latest market (table)
     ex = forex.getrate('CAD',utc_dtdate())
-    hdr = ['Mcap', '24h Vol', 'BTC Dominance', 'Markets', 'Currencies',
-           '1 Hour', '24 Hour', '7 Day']
+    hdr = ['Market Cap', '24h Volume', 'BTC Dominance', 'Markets', 'Currencies',
+           '1 Hour', '24 Hour', '7 Day', '30 Day']
     mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
         return log.error("db.market_idx_5m empty")
@@ -40,14 +76,21 @@ def show_markets(stdscr):
             _to(mkt['n_assets'] + mkt['n_currencies'], d=0),
             _to(_diff('1H', to_format='percentage'), t="pct", f="sign"),
             _to(_diff('24H', to_format='percentage'), t="pct", f="sign"),
-            _to(_diff('7D', to_format='percentage'), t="pct", f="sign")
+            _to(_diff('7D', to_format='percentage'), t="pct", f="sign"),
+            "-"
         ])
-        colors.append([c.WHITE]*5 + [pnlcolor(rows[-1][col]) for col in range(5,8)])
+        colors.append([c.WHITE]*5 + [pnlcolor(rows[-1][col]) for col in range(5,9)])
 
-    updated = to_relative_str(utc_datetime() - mktdata[0]["date"])
+    stdscr.addstr(0, 2, "< Home")
+    page_title = "Markets (%s)" % CURRENCY.upper()
+    stdscr.addstr(0, int(stdscr.getmaxyx()[1]/2 - len(page_title)/2), page_title)
+    updated = "Updated " + to_relative_str(utc_datetime() - mktdata[0]["date"])
+    stdscr.addstr(0, stdscr.getmaxyx()[1]-len(updated) - 2, updated)
+    stdscr.addstr(2, 0, "")
+
     print_table(
         stdscr,
-        ["Latest (%s)" % updated],
+        ["Current"],
         hdr, rows, colors, div=True)
 
     # Weekly market (table)
@@ -83,7 +126,7 @@ def show_markets(stdscr):
     colors[df["vol_24h_close_usd"].idxmax()][7] = c.GREEN
 
     stdscr.addstr(stdscr.getyx()[0]+1, 0, "")
-    print_table(stdscr, ["Daily Historic"], hdr, rows, colors, div=True)
+    print_table(stdscr, ["Recent"], hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
 def show_history(stdscr, symbol):
@@ -179,33 +222,32 @@ def show_portfolio(stdscr):
     db = get_db()
     total = 0.0
     profit = 0
-    datarows = []
+    datarows, updated = [], []
     ex = forex.getrate('CAD',utc_dtdate())
-
-    # Build datarows
-
-    _tickers = list(db.tickers_5m.find().sort("date",-1))
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
            '7 Day', '30 Day', 'Amount', 'Value', '/100']
 
+    # Build datarows
     for hold in db.portfolio.find():
-        for tckr in _tickers:
-            if tckr['symbol'] != hold['symbol']:
-                continue
+        cursor = db.tickers_5m.find({"symbol":hold["symbol"]}
+            ).sort("date",-1).limit(1)
 
-            _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
-                to_format="percentage")
-            value = round(hold['amount'] * ex * tckr['price_usd'], 2)
-            profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
-            total += value
+        if cursor.count() < 1: continue
+        tckr = cursor.next()
 
-            datarows.append([
-                tckr['rank'], tckr['symbol'], ex * round(tckr['price_usd'],2),
-                ex * tckr.get('mktcap_usd',0), ex * tckr["vol_24h_usd"],
-                tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d,
-                hold['amount'], value, None
-            ])
-            break
+        _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
+            to_format="percentage")
+        value = round(hold['amount'] * ex * tckr['price_usd'], 2)
+        profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
+        total += value
+        updated.append(tckr["date"].timestamp())
+
+        datarows.append([
+            tckr['rank'], tckr['symbol'], ex * round(tckr['price_usd'],2),
+            ex * tckr.get('mktcap_usd',0), ex * tckr["vol_24h_usd"],
+            tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d,
+            hold['amount'], value, None
+        ])
 
     # Calculate porfolio %
     for datarow in datarows:
@@ -234,7 +276,7 @@ def show_portfolio(stdscr):
 
     # Print title Row
     stdscr.clear()
-    updated = to_relative_str(utc_datetime() - _tickers[0]["date"])
+    updated = to_relative_str(utc_datetime() - to_dt(max(updated)))
     stdscr.addstr(0, 2, "Updated %s" % updated)
     stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
     stdscr.addstr(1, 0, "")

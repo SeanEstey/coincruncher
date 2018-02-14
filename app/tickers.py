@@ -102,43 +102,6 @@ def get_history(_id, name, symbol, rank, start, end):
         t1.clock(t='ms'))
 
 #------------------------------------------------------------------------------
-def corr(symbols):
-    db = get_db()
-    t1 = Timer()
-    cursor = db.tickers_1d.aggregate([
-        {"$group":{
-            "_id":"$symbol",
-            "date":{"$push":"$date"},
-            "price":{"$push":"$close"}
-        }}
-    ])
-
-    t_aggr = t1.clock(t='ms')
-    t1.restart()
-    df = pd.DataFrame(list(cursor))
-    df.index = df["_id"]
-    t_df = t1.clock(t='ms')
-    t1.restart()
-
-    log.debug("tickers aggregated in %s ms, dataframe built in %s ms",
-        t_aggr, t_df)
-
-    dfs = []
-    for sym in symbols:
-        dfs.append(
-            pd.DataFrame(
-                columns=[sym],
-                index=df.loc[sym]["date"],
-                data=df.loc[sym]["price"]
-            ).sort_index()
-        )
-
-    joined = pd.concat(dfs, axis=1)
-    corr = joined.corr()
-    log.debug("concat + corr calculated in %s ms", t1.clock(t='ms'))
-    pprint(corr)
-
-#------------------------------------------------------------------------------
 def generate_1d(_date):
     """Generate '1d' ticker data from stored '5m' datapoints. Alternative to
     scraping data off coinmarketcap.
