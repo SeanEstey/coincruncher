@@ -96,7 +96,7 @@ def get_tickers_5m(start=0, limit=None):
 
     # Prune outdated tickers
     ts_range = range(
-        int(data[0]["last_updated"]) - 60,
+        int(data[0]["last_updated"]) - 180,
         int(data[0]["last_updated"]) + 1)
     tickerdata = [ n for n in data if n["last_updated"] and int(n["last_updated"]) in ts_range ]
     _dt = to_dt(int(data[0]["last_updated"]))

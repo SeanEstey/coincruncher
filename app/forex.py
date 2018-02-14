@@ -1,10 +1,20 @@
 # app.forex
 
-import json, logging, pytz, requests
+import json, logging, pytz, requests, time
 from datetime import datetime, date, timedelta
 from app import get_db
 from app.utils import duration, utc_datetime, utc_dtdate, utc_date
 log = logging.getLogger('forex')
+
+#-------------------------------------------------------------------------------
+def seed():
+    db = get_db()
+    _date = start = datetime(2013,1,1).replace(tzinfo=pytz.utc)
+    end = utc_dtdate()
+
+    while _date <= end:
+        getrate("CAD", _date)
+        _date += timedelta(days=1)
 
 #-------------------------------------------------------------------------------
 def getrate(currency, _date):

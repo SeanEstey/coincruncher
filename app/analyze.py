@@ -12,14 +12,9 @@ def top_symbols(rank):
     """Get list of ticker symbols within given rank.
     """
     db = get_db()
-    cursor = db.tickers_1d.aggregate([
-        {"$match":{"rank_now":{"$lte":rank}}},
-        {"$group":
-              {"_id":"$symbol", "rank":{"$last":"$rank_now"}, "date":{"$max":"$date"}}
-        },
-        {"$sort":{"rank":1}}
-    ])
-    return [n["_id"] for n in list(cursor)]
+    _date = list(db.tickers_5m.find().sort("date",-1).limit(1))[0]["date"]
+    cursor = db.tickers_5m.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
+    return [n["symbol"] for n in list(cursor)]
 
 #------------------------------------------------------------------------------
 def corr(symbols):
