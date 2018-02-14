@@ -13,11 +13,8 @@ log = logging.getLogger('views')
 #-----------------------------------------------------------------------------
 def show_home(stdscr):
     db = get_db()
-
-
     n_indexed = db.tickers_1d.count() + db.tickers_5m.count() +\
         db.market_idx_1d.count() + db.market_idx_5m.count()
-    #log.debug('n_indexed=%s', n_indexed)
     stdscr.clear()
     stdscr.addstr(0, 2, "%s datapoints indexed" % pretty(n_indexed, abbr=True))
 
@@ -193,19 +190,28 @@ def show_watchlist(stdscr):
         rows.append([
             tckr["rank"],
             tckr["symbol"],
-            pretty(ex * tckr["price_usd"], t='money'),
-            pretty(ex * to_int(tckr["mktcap_usd"]), t='money', abbr=True),
-            pretty(ex * to_int(tckr["vol_24h_usd"]), t='money', abbr=True),
-            pretty(tckr["pct_1h"], t='pct', f='sign'),
-            pretty(tckr["pct_24h"], t='pct', f='sign'),
-            pretty(tckr["pct_7d"], t='pct', f='sign')
+            tckr["price_usd"],
+            tckr["mktcap_usd"],
+            tckr["vol_24h_usd"],
+            tckr["pct_1h"],
+            tckr["pct_24h"],
+            tckr["pct_7d"]
         ])
-        colors.append(
-            [c.WHITE]*5 +\
-            [pnlcolor(rows[-1][5]), pnlcolor(rows[-1][6]), pnlcolor(rows[-1][7])])
         updated.append(tckr["date"].timestamp())
 
     rows = sorted(rows, key=lambda x: int(x[0]))
+
+    for row in rows:
+        colors.append(
+            [c.WHITE]*5 +\
+            [pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7])]
+        )
+        row[2] = pretty(ex * row[2], t='money')
+        row[3] = pretty(ex * to_int(row[3]), t='money', abbr=True)
+        row[4] = pretty(ex * to_int(row[4]), t='money', abbr=True)
+        row[5] = pretty(row[5], t='pct', f='sign')
+        row[6] = pretty(row[6], t='pct', f='sign')
+        row[7] = pretty(row[7], t='pct', f='sign')
 
     # Print
     stdscr.clear()

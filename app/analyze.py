@@ -17,12 +17,14 @@ def top_symbols(rank):
     return [n["symbol"] for n in list(cursor)]
 
 #------------------------------------------------------------------------------
-def corr(symbols):
+def corr(symbols, start_date):
     """Generate price correlation matrix for given list of symbols.
     """
     db = get_db()
     t1 = Timer()
+
     cursor = db.tickers_1d.aggregate([
+        {"$match":{"date":{"$gte":start_date}}},
         {"$group":{
             "_id":"$symbol",
             "date":{"$push":"$date"},
@@ -40,9 +42,14 @@ def corr(symbols):
     log.debug("tickers aggregated in %s ms, dataframe built in %s ms",
         t_aggr, t_df)
 
-    dfs = []
-    for sym in symbols:
-        dfs.append(
+    big_df = pd.DataFrame(
+                columns=[symbols[0]],
+                index=df.loc[symbols[0]]["date"],
+                data=df.loc[symbols[0]]["price"]
+            ).sort_index()
+
+    for sym in symbols[1:]:
+        big_df = big_df.join(
             pd.DataFrame(
                 columns=[sym],
                 index=df.loc[sym]["date"],
@@ -50,13 +57,12 @@ def corr(symbols):
             ).sort_index()
         )
 
-    big_df = dfs[0]
-    for _df in dfs[1:]:
-        big_df = big_df.join(_df)
-
-    corr = big_df.corr()
-    log.debug("concat + corr calculated in %s ms", t1.clock(t='ms'))
-    return corr
+    big_df = big_df[::-1]
+    big_df = big_df.dropna().drop_duplicates()
+    #corr = big_df.corr()
+    #log.debug("concat + corr calculated in %s ms", t1.clock(t='ms'))
+    #return corr
+    return big_df
 
 #------------------------------------------------------------------------------
 def corr_min_max(symbol, max_rank):

@@ -1,9 +1,4 @@
-# To install pycurl on Mac OS High Sierra and avoid conflicts, add following lines to ~/.bash_profile:
-# 	CFLAGS="-I$(brew --prefix openssl)/include"
-# 	LDFLAGS="-L$(brew --prefix openssl)/lib"
-# Reload bash. Now install openssh with brew:
-# 	$ brew install openssh
-# Now pip can install pycurl
+bs4
 websocket
 babel
 getch

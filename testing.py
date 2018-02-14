@@ -5,7 +5,7 @@ from pprint import pprint
 import pandas as pd
 import logging
 from app import get_db, set_db
-from app import markets, tickers, coinmktcap, utils
+from app import markets, cryptocompare, analyze, tickers, coinmktcap, utils
 from app.timer import Timer
 log = logging.getLogger("testing")
 
