@@ -51,6 +51,11 @@ def process_input(stdscr, ch):
         view = views.show_portfolio
         view(stdscr)
         stdscr.refresh()
+    elif ch == ord('d'):
+        log.info("switching to pattern view")
+        view = views.show_patterns
+        view(stdscr)
+        stdscr.refresh()
     elif ch == ord('m'):
         log.info("switching to market view")
         view = views.show_markets
@@ -121,6 +126,10 @@ def main(stdscr):
     screen.setup(stdscr)
     n_lines = screen.get_n_lines()
     n_cols = screen.get_n_cols()
+
+    #screen._print_color_palette(stdscr)
+    #stdscr.refresh()
+    #time.sleep(30)
 
     view = views.show_home
     view(stdscr)

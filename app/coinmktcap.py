@@ -18,7 +18,7 @@ parser.add_argument("end_date", help="", type=str)
 parser.add_argument("--dataframe", help="", action='store_true')
 
 
-api_refresh = 350
+api_refresh = 400
 market_f = [
     {"from":"last_updated", "to":"date", "type":to_dt},
     {"from":"total_market_cap_usd", "to":"mktcap_usd", "type":to_int},
@@ -163,15 +163,10 @@ def parse_options(currency, start_date, end_date):
   @start_date, @end_date: date strings
   """
   currency   = currency.lower()
-  #start_date = args.start_date
-  #end_date   = args.end_date
-
   start_date_split = start_date.split('-')
   end_date_split   = end_date.split('-')
-
   start_year = int(start_date_split[0])
   end_year   = int(end_date_split[0])
-
   # String validation
   pattern    = re.compile('[2][0][1][0-9]-[0-1][0-9]-[0-3][0-9]')
 

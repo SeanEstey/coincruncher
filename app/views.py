@@ -5,7 +5,7 @@ import pandas as pd
 from datetime import timedelta, datetime
 from app import get_db, forex, markets, tickers
 from app.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
-from app.screen import c, print_table, pretty, pnlcolor
+from app.screen import c, print_table, pretty, pnlcolor, coeff_color
 from app.timer import Timer
 from config import CURRENCY
 log = logging.getLogger('views')
@@ -45,7 +45,27 @@ def show_home(stdscr):
 
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):
-    pass
+    from app.analyze import corr
+    df = corr(
+        ["ETH","LTC","BTC","XRB","EOS","ODN","ICX","DRGN","NEO"],
+        utc_dtdate() - timedelta(days=90),
+        utc_dtdate())
+
+    hdr=["   "] + df.index.tolist()
+    rows, colors = [], []
+    for idx in df.index:
+        rows.append([idx] + df[idx].tolist())
+        colors.append([c.WHITE] + [coeff_color(n) for n in df[idx].tolist()])
+
+    from pprint import pformat
+    log.debug(hdr)
+    log.debug(pformat(rows))
+
+    stdscr.clear()
+    print_table(
+        stdscr,
+        ["Price Coefficients in Last 90 Days"],
+        hdr, rows, colors, div=True)
 
 #-----------------------------------------------------------------------------
 def show_markets(stdscr):

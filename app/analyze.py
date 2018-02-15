@@ -5,6 +5,7 @@ from pprint import pprint
 import pandas as pd
 from app import get_db
 from app.timer import Timer
+from app.utils import parse_period, utc_dtdate
 log = logging.getLogger('analyze')
 
 #------------------------------------------------------------------------------
@@ -17,14 +18,14 @@ def top_symbols(rank):
     return [n["symbol"] for n in list(cursor)]
 
 #------------------------------------------------------------------------------
-def corr(symbols, start_date):
+def corr(symbols, start, end):
     """Generate price correlation matrix for given list of symbols.
     """
     db = get_db()
     t1 = Timer()
 
     cursor = db.tickers_1d.aggregate([
-        {"$match":{"date":{"$gte":start_date}}},
+        {"$match":{"date":{"$gte":start, "$lt":end}}},
         {"$group":{
             "_id":"$symbol",
             "date":{"$push":"$date"},
@@ -39,16 +40,17 @@ def corr(symbols, start_date):
     t_df = t1.clock(t='ms')
     t1.restart()
 
-    log.debug("tickers aggregated in %s ms, dataframe built in %s ms",
-        t_aggr, t_df)
+    log.debug("queried %s results in %s ms.", t_aggr, len(df))
 
     big_df = pd.DataFrame(
-                columns=[symbols[0]],
-                index=df.loc[symbols[0]]["date"],
-                data=df.loc[symbols[0]]["price"]
-            ).sort_index()
+        columns=[symbols[0]],
+        index=df.loc[symbols[0]]["date"],
+        data=df.loc[symbols[0]]["price"]
+    ).sort_index()
 
     for sym in symbols[1:]:
+        if sym not in df.index:
+            continue
         big_df = big_df.join(
             pd.DataFrame(
                 columns=[sym],
@@ -59,30 +61,48 @@ def corr(symbols, start_date):
 
     big_df = big_df[::-1]
     big_df = big_df.dropna().drop_duplicates()
-    #corr = big_df.corr()
+    corr = big_df.corr().round(2)
     #log.debug("concat + corr calculated in %s ms", t1.clock(t='ms'))
-    #return corr
-    return big_df
+    return corr
+    #return big_df
 
 #------------------------------------------------------------------------------
-def corr_min_max(symbol, max_rank):
+def corr_minmax(symbol, start, end, max_rank):
     """Find lowest & highest price correlation symbols (within max_rank) with
     given ticker symbol.
     """
     db = get_db()
     symbols = top_symbols(max_rank)
-    df = corr(symbols)
+    df = corr(symbols, start, end)
+
+    log.debug("df.length=%s", len(df))
+
     col = df[symbol]
     del col[symbol]
+    df = df.dropna()
+
+    if len(df) < 1:
+        return {"min":None,"max":None}
+
+    #df = df.round(2)
+    col = col.round(2)
+
     return {
         "symbol":symbol,
-        "min_correlation": {
-            col.idxmin(): col[col.idxmin()]
-        },
-        "max_correlation": {
-            col.idxmax(): col[col.idxmax()]
-        }
+        "start":start,
+        "end":end,
+        "corr":col,
+        "min": {col.idxmin(): col[col.idxmin()]},
+        "max": {col.idxmax(): col[col.idxmax()]}
     }
 
+#------------------------------------------------------------------------------
+def corr_minmax_history(symbol, start, freq, max_rank):
+    delta = parse_period(freq)[2]
+    _date = start
+    results=[]
+    while _date < utc_dtdate():
+        results.append(corr_minmax(symbol, _date, _date+delta, max_rank))
+        _date += delta
 
-
+    return results

@@ -177,9 +177,36 @@ def get_width(val):
 def _print_color_palette(stdscr):
     try:
         for i in range(0, 255):
-            stdscr.addstr(str(i), color_pair(i))
+            stdscr.addstr(str(i)+",", color_pair(i))
     except curses.ERR:
         pass
+
+#----------------------------------------------------------------------
+def coeff_color(value):
+    colormap = {
+        -10: c.RED,
+        -9:  c.RED9,
+        -8:  c.RED8,
+        -7:  c.RED7,
+        -6:  c.RED6,
+        -5:  c.RED1,
+        -4:  c.RED1,
+        -3:  c.RED1,
+        -2:  c.RED1,
+        -1:  c.RED1,
+         0:  c.GREEN1,
+         1:  c.GREEN1,
+         2:  c.GREEN2,
+         3:  c.GREEN3,
+         4:  c.GREEN4,
+         5:  c.GREEN5,
+         6:  c.GREEN6,
+         7:  c.GREEN7,
+         8:  c.GREEN8,
+         9:  c.GREEN9,
+         10: c.WHITE
+    }
+    return colormap[int(value*10)]
 
 #----------------------------------------------------------------------
 def set_colors(stdscr):
@@ -194,9 +221,29 @@ def set_colors(stdscr):
 
     c.WHITE = color_pair(0)
     c.ORANGE = color_pair(2)
-    c.GREEN = color_pair(4)
     c.BLUE = color_pair(5)
-    c.RED = color_pair(10)
+
+    c.GREEN1 = color_pair(79)
+    c.GREEN2 = color_pair(79)
+    c.GREEN3 = color_pair(79)
+    c.GREEN4 = color_pair(79)
+    c.GREEN5 = color_pair(79)
+    c.GREEN6 = color_pair(78)
+    c.GREEN7 = color_pair(77)
+    c.GREEN8 = color_pair(49)
+    c.GREEN9 = color_pair(48)
+    c.GREEN = color_pair(47)
+
+    c.RED1 = color_pair(2)
+    c.RED2 = color_pair(2)
+    c.RED3 = color_pair(2)
+    c.RED4 = color_pair(2)
+    c.RED5 = color_pair(125)
+    c.RED6 = color_pair(126)
+    c.RED7 = color_pair(162)
+    c.RED8 = color_pair(161)
+    c.RED9 = color_pair(198)
+    c.RED = color_pair(197)
 
 #-----------------------------------------------------------------------------
 def _colsizes(hdr, rows):
@@ -210,18 +257,3 @@ def _colsizes(hdr, rows):
 def divider(stdscr, y, colwidths, colspace, x=None):
     x = x if x is not None else 2
     stdscr.hline(y, x, '-', sum(colwidths) + (len(colwidths)-1)*colspace )
-
-#----------------------------------------------------------------------
-def navmenu(stdscr):
-    stdscr.move(0,30)
-    printrow(
-        stdscr,
-        0, #stdscr.getyx()[0]+3,
-        ["M", "=markets ",
-        "P", "=portfolio ",
-        "W", "=watchlist ",
-        "H", "=history"],
-        [0,0,0,0,0,0,0,0],
-        [c.BOLD, c.WHITE, c.BOLD, c.WHITE, c.BOLD, c.WHITE, c.BOLD, c.WHITE],
-        0,
-        usecurspos=False)

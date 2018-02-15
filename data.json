@@ -1,5 +1,6 @@
 {
     "watchlist": [
+        { "id":"airswap", "symbol":"AST"},
         { "id":"bitcoin", "symbol":"BTC"},
         { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"litecoin", "symbol":"LTC"},
@@ -27,7 +28,7 @@
         { "id":"jibrel-network", "symbol":"JNT", "amount":749.25},
         { "id":"neo", "symbol":"NEO", "amount":100.00},
         { "id":"omisego", "symbol":"OMG", "amount":77.2},
-        { "id":"polymath-network", "symbol":"POLY", "amount":1920.21},
+        { "id":"polymath-network", "symbol":"POLY", "amount":3906.21},
         { "id":"raiblocks", "symbol":"XRB", "amount":6877.50},
         { "id":"request-network", "symbol":"REQ", "amount":2529.44},
         { "id":"singularitynet", "symbol":"AGI", "amount":4735.75},
