@@ -60,7 +60,10 @@ def corr(symbols, start, end):
         )
 
     big_df = big_df[::-1]
+    s1 = len(big_df)
     big_df = big_df.dropna().drop_duplicates()
+    s2 = len(big_df)
+    log.debug("df size pre-dropna=%s, post=%s", s1, s2)
     corr = big_df.corr().round(2)
     #log.debug("concat + corr calculated in %s ms", t1.clock(t='ms'))
     return corr

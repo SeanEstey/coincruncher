@@ -191,21 +191,22 @@ def coeff_color(value):
         -6:  c.RED6,
         -5:  c.RED1,
         -4:  c.RED1,
-        -3:  c.RED1,
-        -2:  c.RED1,
-        -1:  c.RED1,
-         0:  c.GREEN1,
-         1:  c.GREEN1,
-         2:  c.GREEN2,
-         3:  c.GREEN3,
-         4:  c.GREEN4,
-         5:  c.GREEN5,
-         6:  c.GREEN6,
-         7:  c.GREEN7,
-         8:  c.GREEN8,
-         9:  c.GREEN9,
-         10: c.WHITE
-    }
+        -3:  color_pair(250),
+        -2:  color_pair(249),
+        -1:  color_pair(248),
+         0:  color_pair(247),
+         1:  color_pair(248),
+         2:  color_pair(249),
+         3:  color_pair(250),
+         4:  color_pair(66),
+         5:  color_pair(23),
+         6:  color_pair(29),
+         7:  color_pair(35),
+         8:  color_pair(41),
+         9:  color_pair(47),
+         10: c.BOLD
+     }
+
     return colormap[int(value*10)]
 
 #----------------------------------------------------------------------

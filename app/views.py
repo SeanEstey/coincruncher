@@ -46,8 +46,10 @@ def show_home(stdscr):
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):
     from app.analyze import corr
+    sm_symbols = ["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS",
+        "XMR","NEO","GAS","OMG","ICX","AST","ODN"]
     df = corr(
-        ["ETH","LTC","BTC","XRB","EOS","ODN","ICX","DRGN","NEO"],
+        sm_symbols,
         utc_dtdate() - timedelta(days=90),
         utc_dtdate())
 
@@ -56,10 +58,6 @@ def show_patterns(stdscr):
     for idx in df.index:
         rows.append([idx] + df[idx].tolist())
         colors.append([c.WHITE] + [coeff_color(n) for n in df[idx].tolist()])
-
-    from pprint import pformat
-    log.debug(hdr)
-    log.debug(pformat(rows))
 
     stdscr.clear()
     print_table(
