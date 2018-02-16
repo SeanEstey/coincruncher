@@ -2,11 +2,13 @@
 # Establish connection to remote DB
 from importlib import reload
 from pprint import pprint
+from datetime import datetime, timedelta
 import pandas as pd
 import logging
 from app import get_db, set_db
 from app import markets, cryptocompare, analyze, tickers, coinmktcap, utils
 from app.timer import Timer
+from app.utils import *
 log = logging.getLogger("testing")
 
 pd.set_option("display.max_columns", 10)

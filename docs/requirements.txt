@@ -5,3 +5,5 @@ getch
 money
 pymongo
 pandas
+scipy
+#matplotlib

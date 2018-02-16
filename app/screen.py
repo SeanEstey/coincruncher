@@ -185,19 +185,19 @@ def _print_color_palette(stdscr):
 def coeff_color(value):
     colormap = {
         -10: c.RED,
-        -9:  c.RED9,
-        -8:  c.RED8,
-        -7:  c.RED7,
-        -6:  c.RED6,
-        -5:  c.RED1,
-        -4:  c.RED1,
-        -3:  color_pair(250),
-        -2:  color_pair(249),
-        -1:  color_pair(248),
-         0:  color_pair(247),
-         1:  color_pair(248),
-         2:  color_pair(249),
-         3:  color_pair(250),
+        -9:  color_pair(52),
+        -8:  color_pair(34),
+        -7:  color_pair(28),
+        -6:  color_pair(27),
+        -5:  color_pair(26),
+        -4:  color_pair(26),
+        -3:  color_pair(26),
+        -2:  color_pair(26),
+        -1:  color_pair(26),
+         0:  color_pair(66),
+         1:  color_pair(66),
+         2:  color_pair(66),
+         3:  color_pair(66),
          4:  color_pair(66),
          5:  color_pair(23),
          6:  color_pair(29),
@@ -223,27 +223,7 @@ def set_colors(stdscr):
     c.WHITE = color_pair(0)
     c.ORANGE = color_pair(2)
     c.BLUE = color_pair(5)
-
-    c.GREEN1 = color_pair(79)
-    c.GREEN2 = color_pair(79)
-    c.GREEN3 = color_pair(79)
-    c.GREEN4 = color_pair(79)
-    c.GREEN5 = color_pair(79)
-    c.GREEN6 = color_pair(78)
-    c.GREEN7 = color_pair(77)
-    c.GREEN8 = color_pair(49)
-    c.GREEN9 = color_pair(48)
     c.GREEN = color_pair(47)
-
-    c.RED1 = color_pair(2)
-    c.RED2 = color_pair(2)
-    c.RED3 = color_pair(2)
-    c.RED4 = color_pair(2)
-    c.RED5 = color_pair(125)
-    c.RED6 = color_pair(126)
-    c.RED7 = color_pair(162)
-    c.RED8 = color_pair(161)
-    c.RED9 = color_pair(198)
     c.RED = color_pair(197)
 
 #-----------------------------------------------------------------------------

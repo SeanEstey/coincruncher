@@ -3,7 +3,9 @@
 import logging
 import pandas as pd
 from datetime import timedelta, datetime
+from pprint import pformat
 from app import get_db, forex, markets, tickers
+from app.analyze import price_matrix
 from app.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
 from app.screen import c, print_table, pretty, pnlcolor, coeff_color
 from app.timer import Timer
@@ -43,27 +45,41 @@ def show_home(stdscr):
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "P    My Portfolio")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "Q    Quit")
 
+
+def midx(stdscr):
+    return stdscr.getmaxyx()[1]
+def midy(stdscr):
+    return stdscr.getmaxyx()[0]
+
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):
-    from app.analyze import corr
-    sm_symbols = ["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS",
-        "XMR","NEO","GAS","OMG","ICX","AST","ODN"]
-    df = corr(
-        sm_symbols,
-        utc_dtdate() - timedelta(days=90),
-        utc_dtdate())
+    """Ticker correlation matrix data table.
+    """
+    freq='5T'
+    n_days=7
+    symbols=["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS","XMR",
+             "NEO","GAS","OMG","XRB","ICX","ZCL","DRGN","AST","ODN"]
 
-    hdr=["   "] + df.index.tolist()
+    df = price_matrix(
+        symbols,
+        utc_dtdate() - timedelta(days=n_days),
+        utc_datetime() - timedelta(seconds=1000),
+        freq)
+    corr = df.corr().round(2)
+    headers = [" "] + corr.index.tolist()
     rows, colors = [], []
-    for idx in df.index:
-        rows.append([idx] + df[idx].tolist())
-        colors.append([c.WHITE] + [coeff_color(n) for n in df[idx].tolist()])
+
+    for idx in corr.index.tolist():
+        row = corr[idx].tolist()
+        rows.append([idx] + row)
+        colors.append([c.WHITE] + [coeff_color(n) for n in row])
+
+    title = "Ticker Correlation Matrix in Past %s Days" % n_days
+    footer = "Dataset frequency: %s, Datapoints: %s" %(freq,len(df))
 
     stdscr.clear()
-    print_table(
-        stdscr,
-        ["Price Coefficients in Last 90 Days"],
-        hdr, rows, colors, div=True)
+    print_table(stdscr, [title], headers, rows, colors)
+    stdscr.addstr(stdscr.getyx()[0]+1, int(midx(stdscr)/2 - len(footer)/2), footer)
 
 #-----------------------------------------------------------------------------
 def show_markets(stdscr):
@@ -194,10 +210,12 @@ def show_history(stdscr, symbol):
 
 #-----------------------------------------------------------------------------
 def show_watchlist(stdscr):
+    diff = tickers.diff
     db = get_db()
     ex = forex.getrate('CAD',utc_dtdate())
     rows, colors = [], []
-    hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1 Hour", "24 Hour", "7d"]
+    hdr = ["Rank", "Sym", "Price", "Market Cap", "24h Vol", "1 Hour", "24 Hour",
+        "7 Days", "30 Days", "1 Year"]
     updated = []
 
     for watch in db.watchlist.find():
@@ -213,7 +231,9 @@ def show_watchlist(stdscr):
             tckr["vol_24h_usd"],
             tckr["pct_1h"],
             tckr["pct_24h"],
-            tckr["pct_7d"]
+            tckr["pct_7d"],
+            diff(tckr["symbol"], tckr["price_usd"], "30D", to_format="percentage"),
+            diff(tckr["symbol"], tckr["price_usd"], "1Y", to_format="percentage")
         ])
         updated.append(tckr["date"].timestamp())
 
@@ -222,7 +242,8 @@ def show_watchlist(stdscr):
     for row in rows:
         colors.append(
             [c.WHITE]*5 +\
-            [pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7])]
+            [pnlcolor(row[5]), pnlcolor(row[6]), pnlcolor(row[7]),
+            pnlcolor(row[8]), pnlcolor(row[9])]
         )
         row[2] = pretty(ex * row[2], t='money')
         row[3] = pretty(ex * to_int(row[3]), t='money', abbr=True)
@@ -230,6 +251,8 @@ def show_watchlist(stdscr):
         row[5] = pretty(row[5], t='pct', f='sign')
         row[6] = pretty(row[6], t='pct', f='sign')
         row[7] = pretty(row[7], t='pct', f='sign')
+        row[8] = pretty(row[8], t='pct', f='sign')
+        row[9] = pretty(row[9], t='pct', f='sign')
 
     # Print
     stdscr.clear()
@@ -249,7 +272,7 @@ def show_portfolio(stdscr):
     datarows, updated = [], []
     ex = forex.getrate('CAD',utc_dtdate())
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
-           '7 Day', '30 Day', 'Amount', 'Value', '/100']
+           '7 Day', '30 Days','1 Year', 'Amount', 'Value', '/100']
 
     # Build datarows
     for hold in db.portfolio.find():
@@ -259,30 +282,37 @@ def show_portfolio(stdscr):
         if cursor.count() < 1: continue
         tckr = cursor.next()
 
-        _30d = diff(tckr["symbol"], tckr["price_usd"], "30D",
-            to_format="percentage")
         value = round(hold['amount'] * ex * tckr['price_usd'], 2)
         profit += (tckr['pct_24h']/100) * value if tckr['pct_24h'] else 0.0
         total += value
         updated.append(tckr["date"].timestamp())
 
         datarows.append([
-            tckr['rank'], tckr['symbol'], ex * round(tckr['price_usd'],2),
-            ex * tckr.get('mktcap_usd',0), ex * tckr["vol_24h_usd"],
-            tckr["pct_1h"], tckr["pct_24h"], tckr["pct_7d"], _30d,
-            hold['amount'], value, None
+            tckr['rank'],
+            tckr['symbol'],
+            ex * round(tckr['price_usd'],2),
+            ex * tckr.get('mktcap_usd',0),
+            ex * tckr["vol_24h_usd"],
+            tckr["pct_1h"],
+            tckr["pct_24h"],
+            tckr["pct_7d"],
+            diff(tckr["symbol"], tckr["price_usd"], "30D", to_format="percentage"),
+            diff(tckr["symbol"], tckr["price_usd"], "1Y", to_format="percentage"),
+            hold['amount'],
+            value,
+            None
         ])
 
     # Calculate porfolio %
     for datarow in datarows:
-        datarow[11] = round((float(datarow[10]) / total)*100, 2)
+        datarow[12] = round((float(datarow[11]) / total)*100, 2)
     # Sort by value
-    datarows = sorted(datarows, key=lambda x: int(x[10]))[::-1]
+    datarows = sorted(datarows, key=lambda x: int(x[11]))[::-1]
 
     rows, colors = [], []
     for datarow in datarows:
         colors.append(
-            [c.WHITE]*5 + [pnlcolor(datarow[n]) for n in range(5,9)] + [c.WHITE]*3)
+            [c.WHITE]*5 + [pnlcolor(datarow[n]) for n in range(5,10)] + [c.WHITE]*3)
         rows.append([
             datarow[0],
             datarow[1],
@@ -293,9 +323,10 @@ def show_portfolio(stdscr):
             pretty(datarow[6], t='pct', f='sign'),
             pretty(datarow[7], t='pct', f='sign'),
             pretty(datarow[8], t='pct', f='sign'),
-            pretty(datarow[9], abbr=True),
-            pretty(datarow[10], t='money'),
-            pretty(datarow[11], t='pct')
+            pretty(datarow[9], t='pct', f='sign'),
+            pretty(datarow[10], abbr=True),
+            pretty(datarow[11], t='money'),
+            pretty(datarow[12], t='pct')
         ])
 
     # Print title Row
