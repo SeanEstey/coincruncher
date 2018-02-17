@@ -39,33 +39,39 @@ def teardown(stdscr):
     curses.endwin()
 
 #----------------------------------------------------------------------
-def printrow(stdscr, y, datarow, colsizes, colors, colspace=2, x=None, usecurspos=True):
+def printrow(stdscr, y, datarow, colsizes, colors,
+             align=None, colsp=None, x=None, usecurspos=True):
     x = x if x is not None else 2
+    justify = align if align else str.ljust
+    colspace = colsp if colsp else 2
+
     if usecurspos:
         stdscr.move(y,x)
     for idx in range(0, len(datarow)):
         stdscr.addstr(
             y,
-            stdscr.getyx()[1],# + colspace, #+1,
-            str(datarow[idx]).ljust(colsizes[idx]+colspace),
+            stdscr.getyx()[1],
+            justify(str(datarow[idx]), colsizes[idx]+colspace),
             colors[idx])
 
 #-----------------------------------------------------------------------------
-def print_table(stdscr, titles, hdr, datarows, colors, div=True):
+def print_table(stdscr, titles, hdr, datarows, colors,
+                align=None, colsp=None, div=True):
     """Print justified datatable w/ header row.
     @hdr: list of column headers
     @datarows: list of rows, each row a list of column print values
     @colors: list of rows, each row a list of column print colors
     """
-    col_sp=3  # Column spacing
+    justify = str.ljust if align is None else str.rjust
+    colspace = colsp or 3  # Column spacing
     col_wdt = _colsizes(hdr, datarows) # Justified column widths
-    tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
+    tbl_width = sum(col_wdt) + len(col_wdt)*colspace
     tbl_sp = int((stdscr.getmaxyx()[1] - tbl_width)/2) # Tablespacing
     getyx = stdscr.getyx
 
     if len(titles) == 1:
         # Centered
-        tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
+        tbl_width = sum(col_wdt) + len(col_wdt)*colspace
         x = int(tbl_width/2 - len(titles[0])/2)
         stdscr.addstr(getyx()[0]+1, tbl_sp + x, titles[0])
     elif len(titles) == 2:
@@ -73,19 +79,21 @@ def print_table(stdscr, titles, hdr, datarows, colors, div=True):
         # Left-aligned
         stdscr.addstr(y, tbl_sp, titles[0])
         # Right-aligned
-        tbl_width = sum(col_wdt) + len(col_wdt)*col_sp
+        tbl_width = sum(col_wdt) + len(col_wdt)*colspace
         x = tbl_sp + tbl_width - len(titles[1])
         stdscr.addstr(y, x, titles[1])
 
     if div:
-        divider(stdscr, getyx()[0]+1, col_wdt, col_sp, x=tbl_sp)
+        divider(stdscr, getyx()[0]+1, col_wdt, colspace, x=tbl_sp)
 
     # Print header row (white)
-    printrow(stdscr,getyx()[0]+1,hdr,col_wdt,[c.WHITE for n in hdr],col_sp,x=tbl_sp)
+    printrow(stdscr, getyx()[0]+1,hdr, col_wdt, [c.WHITE for n in hdr],
+        align=justify, colsp=colspace, x=tbl_sp)
 
     # Print data rows (custom colors)
     for n in range(0, len(datarows)):
-        printrow(stdscr, getyx()[0]+1, datarows[n], col_wdt, colors[n], col_sp, x=tbl_sp)
+        printrow(stdscr, getyx()[0]+1, datarows[n], col_wdt, colors[n],
+            align=justify, colsp=colspace, x=tbl_sp)
 
 #----------------------------------------------------------------------
 def input_char(stdscr):

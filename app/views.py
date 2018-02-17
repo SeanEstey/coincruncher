@@ -2,6 +2,7 @@
 
 import logging
 import pandas as pd
+from decimal import Decimal
 from datetime import timedelta, datetime
 from pprint import pformat
 from app import get_db, forex, markets, tickers
@@ -56,30 +57,41 @@ def show_patterns(stdscr):
     """Ticker correlation matrix data table.
     """
     freq='5T'
-    n_days=7
+    n_days=1
     symbols=["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS","XMR",
              "NEO","GAS","OMG","XRB","ICX","ZCL","DRGN","AST","ODN"]
 
     df = price_matrix(
         symbols,
         utc_dtdate() - timedelta(days=n_days),
-        utc_datetime() - timedelta(seconds=1000),
+        utc_datetime(),
         freq)
     corr = df.corr().round(2)
+
     headers = [" "] + corr.index.tolist()
     rows, colors = [], []
 
     for idx in corr.index.tolist():
-        row = corr[idx].tolist()
+        row = [str(round(Decimal(n),2)) for n in corr[idx].tolist()]
         rows.append([idx] + row)
-        colors.append([c.WHITE] + [coeff_color(n) for n in row])
+        colors.append([c.WHITE] + [coeff_color(n) for n in corr[idx].tolist()])
 
     title = "Ticker Correlation Matrix in Past %s Days" % n_days
     footer = "Dataset frequency: %s, Datapoints: %s" %(freq,len(df))
 
     stdscr.clear()
-    print_table(stdscr, [title], headers, rows, colors)
+    print_table(stdscr, [title], headers, rows, colors,
+        align=str.rjust, colsp=2)
     stdscr.addstr(stdscr.getyx()[0]+1, int(midx(stdscr)/2 - len(footer)/2), footer)
+
+    maxes=[]
+    for n in range(len(corr)):
+        maxes.append([
+            corr.iloc[n].name,
+            sorted(list(corr.iloc[n]))[-2]
+        ])
+
+    log.debug(maxes)
 
 #-----------------------------------------------------------------------------
 def show_markets(stdscr):

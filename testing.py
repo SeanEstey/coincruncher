@@ -18,3 +18,7 @@ t1 = Timer()
 set_db(hosts[0])
 log.debug("Set db in %s ms", t1.clock(t='ms'))
 db = get_db()
+
+symbols=["ETC","LTC","NEO","GAS","ODN"]
+start=utc_dtdate() - timedelta(days=7)
+end=utc_datetime()

@@ -23,7 +23,7 @@
         { "id":"dragonchain", "symbol":"DRGN", "amount":1319.65},
         { "id":"enjincoin", "symbol":"ENJ", "amount":19948.00},
         { "id":"eos", "symbol":"EOS", "amount":247.29},
-        { "id":"ethereum", "symbol":"ETH", "amount":105.00},
+        { "id":"ethereum", "symbol":"ETH", "amount":85.00},
         { "id":"gas", "symbol":"GAS", "amount":0.8556},
         { "id":"icon", "symbol":"ICX", "amount":1260.03},
         { "id":"jibrel-network", "symbol":"JNT", "amount":749.25},
@@ -38,7 +38,7 @@
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"walton", "symbol":"WTC", "amount":100.00},
         { "id":"zilliqa", "symbol":"ZIL", "amount":34721.56},
-        { "id":"zclassic", "symbol":"ZCL", "amount":51.67}
+        { "id":"zclassic", "symbol":"ZCL", "amount":125.55}
     ],
     "small_portfolio": [
         { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
