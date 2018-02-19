@@ -1,0 +1,9 @@
+bs4
+websocket
+babel
+getch
+money
+pymongo
+pandas
+scipy
+#matplotlib
