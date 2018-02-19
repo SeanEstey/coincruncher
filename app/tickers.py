@@ -151,7 +151,6 @@ def generate_1d(_date):
 
     log.info("tickers_1d updated. %s modified, %s upserted.",
         result.modified_count, result.upserted_count)
-
     return 300
 
 #------------------------------------------------------------------------------
@@ -164,15 +163,19 @@ def diff(symbol, price, period, to_format):
     db = get_db()
     qty, unit, tdelta = parse_period(period)
     compare_dt = parse(str(date.today())) - tdelta
-
     ticker = db.tickers_1d.find({"symbol":symbol, "date":compare_dt})
 
     if ticker.count() < 1:
         return None
 
     ticker = list(ticker)[0]
-
     diff = price - ticker["close"]
     pct = round((diff / ticker["close"]) * 100, 2)
-
     return pct if to_format == 'percentage' else diff
+
+#------------------------------------------------------------------------------
+def volatile_24h():
+    cursor = get_db().tickers_5m.find({"rank":{"$lte":500}}).sort("date",-1).limit(500)
+    tckrs = list(cursor)
+    descend = sorted(tckrs, key=lambda x: float(x["pct_24h"] or 0.0), reverse=True)
+    return descend[0:5] + descend[::-1][0:5]

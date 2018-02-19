@@ -82,14 +82,24 @@ def show_patterns(stdscr):
         align=str.rjust, colsp=2)
     stdscr.addstr(stdscr.getyx()[0]+1, int(midx(stdscr)/2 - len(footer)/2), footer)
 
-    maxes=[]
-    for n in range(len(corr)):
-        maxes.append([
-            corr.iloc[n].name,
-            sorted(list(corr.iloc[n]))[-2]
-        ])
-
-    log.debug(maxes)
+    # Biggest winners/losers datatable
+    ex = forex.getrate('CAD',utc_dtdate())
+    stdscr.addstr(stdscr.getyx()[0]+1, stdscr.getyx()[1], "")
+    deviants = tickers.volatile_24h()
+    print_table(stdscr,
+        ["Winners & Losers in Top 500"],
+        ["Coin","Rank","Price","Market Cap","24 Hour"],
+        [   [n["symbol"],
+            n["rank"],
+            pretty(ex * to_int(n["price_usd"]), t='money', abbr=True),
+            pretty(ex * to_int(n["mktcap_usd"]), t='money', abbr=True),
+            format(n["pct_24h"],"+.2f")+"%"
+            ] for n in deviants
+        ],
+        [   [c.WHITE, c.WHITE, c.WHITE, c.WHITE, pnlcolor(n["pct_24h"])
+            ] for n in deviants
+        ],
+        align=str.rjust, colsp=2)
 
 #-----------------------------------------------------------------------------
 def show_markets(stdscr):
