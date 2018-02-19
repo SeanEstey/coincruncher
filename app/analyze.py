@@ -2,6 +2,7 @@
 
 import logging
 from pprint import pprint
+from datetime import timedelta
 import pandas as pd
 import numpy as np
 from scipy import stats
@@ -10,78 +11,82 @@ from app.timer import Timer
 from app.utils import parse_period, utc_dtdate
 log = logging.getLogger('analyze')
 
-#------------------------------------------------------------------------------
-def top_symbols(rank):
-    """Get list of ticker symbols within given rank.
-    """
-    db = get_db()
-    _date = list(db.tickers_5m.find().sort("date",-1).limit(1))[0]["date"]
-    cursor = db.tickers_5m.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
-    return [n["symbol"] for n in list(cursor)]
+_1DAY = timedelta(days=1)
+
+#-----------------------------------------------------------------------------
+def maxcorr(df, cols=None):
+    maxdf = pd.concat(
+        [df.replace(1.00,0).idxmax(), df.replace(1.00,0).max()], axis=1)
+    maxdf.index.name="SYM1"
+    maxdf.columns=cols or ["SYM2","CORR"]
+    return maxdf
+
+#-----------------------------------------------------------------------------
+def maxcorr(coins, dt_rng):
+    results=[]
+    for ts in dt_rang:
+        results.append(corr_5m(coins, ts.to_datetime().date()))
+    pass
+
+#-----------------------------------------------------------------------------
+def corr_hourly(coins, _date):
+    rng = pd.date_range(_date, periods=24, freq='1H')
+    price_df(coins, rng).pct_change().corr().round(2)
+    #_date-_1DAY, _date, '1H')
+
+#-----------------------------------------------------------------------------
+def corr_close(coins, date_rng):
+    df = price_df(coins, date_rng, '1D').pct_change().corr().round(2)
 
 #------------------------------------------------------------------------------
-def price_matrix(symbols, start, end, freq):
-    """Build price dataframe for list of symbols within date period.
+def price_df(coins, date_rng):
+    """Build price dataframe for list of coins within date period.
     Returns the timeseries subset where all columns have price data. i.e. newly
-    listed symbols with short price histories will force the entire subset to
+    listed coins with short price histories will force the entire subset to
     shrink significantly.
     """
     db = get_db()
-    t0 = Timer()
-    t1 = Timer()
-
-    if freq == '1D':
-        collname = 'tickers_1d'
-        price = "$close"
-    elif freq == '5T':
-        collname = 'tickers_5m'
-        price = "$price_usd"
+    t0,t1 = Timer(), Timer()
+    freq = date_rng.freq
+    dt0 = date_rng[0].to_datetime()
+    dt1 = date_rng[-1].to_datetime()
+    collname = "tickers_1d" if freq in ['D','M','Y'] else "tickers_5m"
+    field = "$close" if freq in ['D','M','Y'] else "$price_usd"
 
     cursor = db[collname].aggregate([
-        {"$match":{"symbol":{"$in":symbols}, "date":{"$gte":start, "$lt":end}}},
+        {"$match":{
+            "symbol":{"$in":coins},
+            "date":{"$gte":dt0, "$lt":dt1}}},
         {"$group":{
             "_id":"$symbol",
             "date":{"$push":"$date"},
-            "price":{"$push":price}
-        }}
-    ])
-
+            "price":{"$push":field}}}])
     if not cursor:
-        log.error("empty dataframe!")
-        return []
-    else:
-        results = list(cursor)
-        log.debug("queried %s results in %s ms.", t1.clock(t='ms'), len(results))
-        t1.restart()
+        return log.error("empty dataframe!")
 
-    # Empty dataframe w/ datetimeindex
-    df = pd.DataFrame(index=pd.date_range(start=start, end=end, freq=freq))
+    coindata = list(cursor)
+    log.debug("price_df: queried %s matches in %s ms.", t1, len(coindata))
 
-    for result in results:
-        _df = pd.DataFrame(
-            columns=[result['_id']],
-            index=result['date'],
-            data=result['price'])
-        _df = _df.resample(freq).mean().sort_index()
-        df = df.join(_df)
+    df = pd.DataFrame(index=date_rng)
+    for coin in coindata:
+        df = df.join(
+            pd.DataFrame(coin['price'], columns=[coin['_id']], index=coin['date']
+            ).resample(freq).mean().sort_index())
 
-    log.debug("isnull().sum(): %s", df.isnull().sum())
-
+    n_drop = sum(df.isnull().sum())
     df = df.dropna().round(2)
-
-    log.debug("result dimensions: [{:,} rows x {:,} columns], t={:,}ms".format(
-        len(df), len(df.columns), t0.clock(t='ms')))
-
+    log.debug("price_df: frame=[{:,} x {:,}], dropped={:,}, t={}ms".format(
+        len(df), len(df.columns), n_drop, t0))
     return df
 
 #------------------------------------------------------------------------------
-def corr_minmax(symbol, start, end, max_rank):
-    """Find lowest & highest price correlation symbols (within max_rank) with
+def corr_minmax(symbol, start, end, maxrank):
+    """Find lowest & highest price correlation coins (within max_rank) with
     given ticker symbol.
     """
     db = get_db()
-    symbols = top_symbols(max_rank)
-    df = price_matrix(symbols, start, end, '5T')
+    coins = topcoins(maxrank)
+    df = price_matrix(coins, start, end, '5T')
 
     if len(df) < 1:
         return {"min":None,"max":None}
@@ -113,7 +118,7 @@ def corr_minmax_history(symbol, start, freq, max_rank):
 #------------------------------------------------------------------------------
 def pca(df):
     """Run Principal Component Analysis (PCA) to identify time-lagged
-    price correlations between symbols. Code from:
+    price correlations between coins. Code from:
     http://www.quantatrisk.com/2017/03/31/cryptocurrency-portfolio-correlation-pca-python/
     """
     m = df.mean(axis=0)
@@ -189,3 +194,13 @@ def pca(df):
                     ktau, kpvalue = stats.kendalltau(ts1, ts2)
                     print(r2, pvalue)
                     print(ktau, kpvalue)
+
+#------------------------------------------------------------------------------
+def topcoins(rank):
+    """Get list of ticker symbols within given rank.
+    """
+    db = get_db()
+    _date = list(db.tickers_5m.find().sort("date",-1).limit(1))[0]["date"]
+    cursor = db.tickers_5m.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
+    return [n["symbol"] for n in list(cursor)]
+

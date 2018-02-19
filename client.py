@@ -8,7 +8,7 @@ from app import screen, set_db, get_db, views
 from app.screen import KEY_UP, KEY_DOWN
 
 log = logging.getLogger("client")
-refresh_delay = 30
+refresh_delay = 30000
 scrollspeed = 5
 scrollpos = scrollremain = 0
 padheight = 200
@@ -91,11 +91,10 @@ def process_input(stdscr, ch):
         log.debug('DOWN scroll, pos=%s, remain=%s', scrollpos, scrollremain)
         scrollscr.refresh(scrollpos, 0, 0, 0, n_lines-1, n_cols-1)
 
-    if timer.clock(stop=False) < refresh_delay or view is None:
+    if timer.elapsed() < refresh_delay or view is None:
         return False
 
-    timer.restart()
-    #log.debug("refresh timer reset")
+    timer.reset()
 
     if view != views.show_history:
         view(stdscr)

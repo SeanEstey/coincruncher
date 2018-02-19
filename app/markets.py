@@ -48,7 +48,6 @@ def generate_1d(_date):
     """Generate '1d' market index on given date from '5m' data (~236 datapoints).
     Source data is from coinmarketcap API global data.
     """
-
     db = get_db()
 
     # Already generated?

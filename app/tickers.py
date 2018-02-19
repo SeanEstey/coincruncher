@@ -98,8 +98,7 @@ def get_history(_id, name, symbol, rank, start, end):
     result = db.tickers_1d.bulk_write(bulkops)
 
     log.info("upd_hist_tckr: sym=%s, scraped=%s, mod=%s, upsert=%s (%s ms)",
-        symbol, len(rows), result.modified_count, result.upserted_count,
-        t1.clock(t='ms'))
+        symbol, len(rows), result.modified_count, result.upserted_count, t1)
 
 #------------------------------------------------------------------------------
 def generate_1d(_date):
@@ -114,7 +113,7 @@ def generate_1d(_date):
         return 75000
 
     # Gather source data
-    cursor = db.tickers_5m.find({"date":{"$gte":_date, "$lt":_date+timedelta(days=1)}})
+    cursor = db.tickers_5m.find({"date":{"$gte":_date, "$lt":_date+delta(days=1)}})
 
     if cursor.count() < 1:
         log.error("no '5m' source data found on '%s'", _date.date())
@@ -124,13 +123,13 @@ def generate_1d(_date):
 
     for ticker in cursor:
         operations.append(UpdateOne(
-            {"symbol":ticker["symbol"], "date":today},
+            {"symbol":ticker["symbol"], "date":_date},
             {
                 "$set": {
                     "symbol":ticker["symbol"],
                     "id":ticker["id"],
                     "name":ticker["name"],
-                    "date":today,
+                    "date":_date,
                     "close":ticker["price_usd"],
                     "mktcap_usd":ticker["mktcap_usd"],
                     "vol_24h_usd":ticker["vol_24h_usd"],

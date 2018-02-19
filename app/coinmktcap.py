@@ -88,7 +88,7 @@ def get_tickers_5m(start=0, limit=None):
         if r.status_code != 200:
             log.error("API error %s", r.status_code)
             return 60
-        log.debug("recd {:,} bytes in {:,} ms.".format(getsize(r.text), t.clock(t='ms')))
+        log.debug("recd {:,} bytes in {:,} ms.".format(getsize(r.text), t))
         data = json.loads(r.text)
 
     # Sort by timestamp in descending order
@@ -124,7 +124,7 @@ def get_tickers_5m(start=0, limit=None):
         len(data)-len(tickerdata))
     log.info("%s tickers saved, updated at %s",
         len(tickerdata), updated.time())
-    return 60 #next_update(get_db().tickers_5m)
+    return 60
 
 #---------------------------------------------------------------------------
 def get_marketidx_5m():
@@ -152,9 +152,8 @@ def get_marketidx_5m():
 
         db.market_idx_5m.replace_one({'date':store['date']}, store, upsert=True)
 
-    log.info("received %s bytes in %s ms.", getsize(response.text), t1.clock(t='ms'))
-
-    return 60 #next_update(get_db().market_idx_5m)
+    log.info("received %s bytes in %s ms.", getsize(response.text), t1)
+    return 60
 
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):

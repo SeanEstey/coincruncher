@@ -6,7 +6,7 @@ from decimal import Decimal
 from datetime import timedelta, datetime
 from pprint import pformat
 from app import get_db, forex, markets, tickers
-from app.analyze import price_matrix
+from app.analyze import price_df
 from app.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
 from app.screen import c, print_table, pretty, pnlcolor, coeff_color
 from app.timer import Timer
@@ -39,7 +39,8 @@ def show_home(stdscr):
     # Print menu options
     width = stdscr.getmaxyx()[1]
     x = int(width/2) - 10
-    stdscr.addstr(stdscr.getyx()[0]+3, x,  "M    Global Market")
+    stdscr.addstr(stdscr.getyx()[0]+3, x,  "G    Global Market")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "M    Mooning")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "H    Ticker History")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "D    Data Patterns")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "W    My Watchlist")
@@ -56,17 +57,14 @@ def midy(stdscr):
 def show_patterns(stdscr):
     """Ticker correlation matrix data table.
     """
-    freq='5T'
-    n_days=1
-    symbols=["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS","XMR",
+    freq='1D'
+    n_days=30
+    coins=["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS","XMR",
              "NEO","GAS","OMG","XRB","ICX","ZCL","DRGN","AST","ODN"]
-
-    df = price_matrix(
-        symbols,
-        utc_dtdate() - timedelta(days=n_days),
-        utc_datetime(),
-        freq)
-    corr = df.corr().round(2)
+    rng = pd.date_range(utc_dtdate()-timedelta(days=n_days),
+        periods=n_days, freq=freq)
+    df = price_df(coins, rng)
+    corr = df.pct_change().corr().round(2)
 
     headers = [" "] + corr.index.tolist()
     rows, colors = [], []
@@ -76,7 +74,7 @@ def show_patterns(stdscr):
         rows.append([idx] + row)
         colors.append([c.WHITE] + [coeff_color(n) for n in corr[idx].tolist()])
 
-    title = "Ticker Correlation Matrix in Past %s Days" % n_days
+    title = "Price Correlation Matrix (CORR30)"
     footer = "Dataset frequency: %s, Datapoints: %s" %(freq,len(df))
 
     stdscr.clear()
@@ -186,8 +184,7 @@ def show_history(stdscr, symbol):
     tickerdata = db.tickers_1d.find({"symbol":symbol}
         ).sort('date',-1).limit(n_display)
     n_datarows = tickerdata.count()
-    log.debug("%s tickers queried in %sms",
-        tickerdata.count(), t1.clock(t='ms'))
+    log.debug("%s tickers queried in %sms", tickerdata.count(), t1)
 
     if tickerdata.count() == 0:
         log.info("No ticker history found for %s", symbol)
@@ -284,7 +281,7 @@ def show_portfolio(stdscr):
     datarows, updated = [], []
     ex = forex.getrate('CAD',utc_dtdate())
     hdr = ['Rank', 'Sym', 'Price', 'Mcap', 'Vol 24h', '1 Hour', '24 Hour',
-           '7 Day', '30 Days','1 Year', 'Amount', 'Value', '/100']
+           '7 Day', '30 Days','3 Months', 'Amount', 'Value', '/100']
 
     # Build datarows
     for hold in db.portfolio.find():
@@ -309,7 +306,7 @@ def show_portfolio(stdscr):
             tckr["pct_24h"],
             tckr["pct_7d"],
             diff(tckr["symbol"], tckr["price_usd"], "30D", to_format="percentage"),
-            diff(tckr["symbol"], tckr["price_usd"], "1Y", to_format="percentage"),
+            diff(tckr["symbol"], tckr["price_usd"], "90D", to_format="percentage"),
             hold['amount'],
             value,
             None
@@ -349,7 +346,7 @@ def show_portfolio(stdscr):
     stdscr.addstr(1, 0, "")
 
     # Portfolio datatable
-    print_table(stdscr, ["Portfolio"], hdr, rows, colors, div=True)
+    print_table(stdscr, ["Portfolio"], hdr, rows, colors, align='right',colsp=2,div=True)
     stdscr.addstr(stdscr.getyx()[0]+1, 0, "")
 
     # Summary table
@@ -365,4 +362,4 @@ def show_portfolio(stdscr):
         [[c.WHITE, pnlcolor(profit), c.WHITE]],
         div=True)
 
-    log.debug("portfolio rendered in %s ms", t1.clock(t='ms'))
+    log.debug("portfolio rendered in %s ms", t1)

@@ -9,6 +9,10 @@ from dateutil import tz
 from dateutil.parser import parse
 
 #------------------------------------------------------------------------------
+def to_ts(_datetime):
+    return int(_datetime.timestamp())
+
+#------------------------------------------------------------------------------
 def utc_date():
     """current date in UTC timezone"""
     return datetime.utcnow().replace(tzinfo=pytz.utc).date()

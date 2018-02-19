@@ -212,7 +212,7 @@ def coeff_color(value):
          7:  color_pair(35),
          8:  color_pair(41),
          9:  color_pair(47),
-         10: c.BOLD
+         10: c.WHITE
      }
 
     return colormap[int(value*10)]
