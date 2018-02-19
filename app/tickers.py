@@ -179,3 +179,11 @@ def volatile_24h():
     tckrs = list(cursor)
     descend = sorted(tckrs, key=lambda x: float(x["pct_24h"] or 0.0), reverse=True)
     return descend[0:5] + descend[::-1][0:5]
+
+#------------------------------------------------------------------------------
+def ath(symbol):
+    cursor = get_db().tickers_1d.find({"symbol":symbol}).sort("high",-1).limit(1)
+    if cursor.count() < 1:
+        return None
+    return list(cursor)[0]
+

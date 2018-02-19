@@ -6,4 +6,3 @@ money
 pymongo
 pandas
 scipy
-#matplotlib
