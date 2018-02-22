@@ -126,10 +126,6 @@ def main(stdscr):
     n_lines = screen.get_n_lines()
     n_cols = screen.get_n_cols()
 
-    #screen._print_color_palette(stdscr)
-    #stdscr.refresh()
-    #time.sleep(30)
-
     view = views.show_home
     view(stdscr)
     ch = None
