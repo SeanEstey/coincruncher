@@ -13,6 +13,11 @@ from app.timer import Timer
 from config import CURRENCY
 log = logging.getLogger('views')
 
+def midx(stdscr):
+    return stdscr.getmaxyx()[1]
+def midy(stdscr):
+    return stdscr.getmaxyx()[0]
+
 #-----------------------------------------------------------------------------
 def show_home(stdscr):
     db = get_db()
@@ -47,22 +52,17 @@ def show_home(stdscr):
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "P    My Portfolio")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "Q    Quit")
 
-
-def midx(stdscr):
-    return stdscr.getmaxyx()[1]
-def midy(stdscr):
-    return stdscr.getmaxyx()[0]
-
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):
     """Ticker correlation matrix data table.
     """
-    freq='1D'
-    n_days=30
     coins=["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS","XMR",
-             "NEO","GAS","OMG","XRB","ICX","ZCL","DRGN","AST","ODN"]
-    rng = pd.date_range(utc_dtdate()-timedelta(days=n_days),
-        periods=n_days, freq=freq)
+             "NEO","GAS","OMG","NANO","ICX","ZCL","DRGN","AST","ODN"]
+    rng = pd.date_range(
+        utc_dtdate()-timedelta(days=1),
+        periods=24,
+        freq='1H')
+
     df = price_df(coins, rng)
     corr = df.pct_change().corr().round(2)
 
@@ -75,7 +75,7 @@ def show_patterns(stdscr):
         colors.append([c.WHITE] + [coeff_color(n) for n in corr[idx].tolist()])
 
     title = "Price Correlation Matrix (CORR30)"
-    footer = "Dataset frequency: %s, Datapoints: %s" %(freq,len(df))
+    footer = "Dataset frequency: %s, Datapoints: %s" %('?',len(df))
 
     stdscr.clear()
     print_table(stdscr, [title], headers, rows, colors,

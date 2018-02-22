@@ -13,6 +13,66 @@ log = logging.getLogger('analyze')
 
 _1DAY = timedelta(days=1)
 
+#------------------------------------------------------------------------------
+def signal(coin, start, end):
+    """It’s simple supply and demand: a sudden increase in the number of buyers
+    over sellers in a short space of time. In this scenario, certain phenomena
+    can be observed such as:
+        -An acceleration of volume within a short period of time.
+        -An increase in price volatility over historic averages.
+        -An increase in the ratio of volume traded on bid/ask versus normal.
+    Each of these phenomena can be quantified by tracking the following factors:
+        -Volume traded over an hourly period.
+        -Change in price over an hourly period.
+        -Volume of the coin traded on the offer divided by the volume of the
+        coin traded on the bid over an hourly period.
+
+    Every factor is stored by CoinFi (in this case hourly) and plotted on a
+    normal distribution. When the latest hourly data is updated, the model
+    reruns comparing the current factor value versus the historical factor
+    values. The data is plotted on a normal distribution and any current
+    factor value that is 2 standard deviations above the mean triggers an alert.
+
+    When there are multiple factors triggering alerts, they indicate more
+    confidence in the signal.
+
+    For example if:
+
+    Volume traded in the last hour was 3 standard deviations above the mean; AND
+    Change in price over the last hour is 2 standard deviations above the mean; AND
+    Volume ratio of offer/bid is 2 standard deviations above the mean.
+    we will have greater confidence in the signal.
+
+    The model will take in factors over multiple time periods (i.e. minute,
+    hourly, daily, weekly) and will also compare against multiple historical
+    time periods (i.e. volume over last 24 hours, 48 hours, 72 hours)
+
+    Furthermore CoinFi stores these factors across a selected universe of coins
+    and the model is continuously run, outputting alerts when a factor or a
+    series of factors has a positive signal.
+
+    Good buy signal:
+        vol_24h_pct >= 2%
+        pct_1h > 0%
+        pct_7d < -10%
+      Sell signal:
+        vol_24h_pct <= -2%
+        pct_1h > 10%
+        pct_7d > 0%
+    """
+    db = get_db()
+    cursor = db.tickers_5m.find(
+        {"symbol":coin, "date":{"$gte":start,"$lt":end}},
+        {"_id":0,"name":0,"total_supply":0,"circulating_supply":0,"max_supply":0,
+        "rank":0,"id":0, "symbol":0}
+        ).sort("date",1)
+    coin = list(cursor)
+    df = pd.DataFrame(coin)
+    df.index = df["date"]
+    del df["date"]
+    df["vol_24h_pct"] = df["vol_24h_usd"].pct_change().round(2) * 100
+    return df
+
 #-----------------------------------------------------------------------------
 def maxcorr(df, cols=None):
     maxdf = pd.concat(
@@ -50,8 +110,12 @@ def price_df(coins, date_rng):
     freq = date_rng.freq
     dt0 = date_rng[0].to_datetime()
     dt1 = date_rng[-1].to_datetime()
-    collname = "tickers_1d" if freq in ['D','M','Y'] else "tickers_5m"
-    field = "$close" if freq in ['D','M','Y'] else "$price_usd"
+    if freq.freqstr[-1] in ['D','M','Y']:
+        collname = "tickers_1d"
+        field = "$close"
+    elif freq.freqstr[-1] in ['T','H']:
+        collname = "tickers_5m"
+        field = "$price_usd"
 
     cursor = db[collname].aggregate([
         {"$match":{
@@ -65,13 +129,13 @@ def price_df(coins, date_rng):
         return log.error("empty dataframe!")
 
     coindata = list(cursor)
-    log.debug("price_df: queried %s matches in %s ms.", t1, len(coindata))
 
     df = pd.DataFrame(index=date_rng)
+
     for coin in coindata:
-        df = df.join(
-            pd.DataFrame(coin['price'], columns=[coin['_id']], index=coin['date']
-            ).resample(freq).mean().sort_index())
+        df2 = pd.DataFrame(coin['price'], columns=[coin['_id']],index=coin['date']
+            ).resample(freq).mean().sort_index()
+        df = df.join(df2) #.resample(freq).mean().sort_index()
 
     n_drop = sum(df.isnull().sum())
     df = df.dropna().round(2)

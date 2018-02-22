@@ -1,9 +1,8 @@
+BitEx==2.0.0
 bs4
-websocket
 babel
 getch
 money
 pymongo
 pandas
 scipy
-#matplotlib
