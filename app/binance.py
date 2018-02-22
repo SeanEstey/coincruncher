@@ -1,6 +1,6 @@
 # app.binance
 
-import logging, json
+import dateparser, logging, json, time, pytz
 from pprint import pformat, pprint
 from datetime import datetime, timedelta as delta, date
 import pandas as pd
@@ -9,38 +9,166 @@ from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, to_dt
 log = logging.getLogger('binance')
 
-from bitex import Binance
+from binance.client import Client
 
-def pairs(obj):
-    return sorted(obj.supported_pairs)
+#------------------------------------------------------------------------------
+def date_to_milliseconds(date_str):
+    """Convert UTC date to milliseconds
+    If using offset strings add "UTC" to date string e.g. "now UTC", "11 hours ago UTC"
+    See dateparse docs for formats http://dateparser.readthedocs.io/en/latest/
+    :param date_str: date in readable format, i.e. "January 01, 2018", "11 hours ago UTC", "now UTC"
+    :type date_str: str
+    """
+    # get epoch value in UTC
+    epoch = datetime.utcfromtimestamp(0).replace(tzinfo=pytz.utc)
+    # parse our date string
+    d = dateparser.parse(date_str)
+    # if the date is not timezone aware apply UTC timezone
+    if d.tzinfo is None or d.tzinfo.utcoffset(d) is None:
+        d = d.replace(tzinfo=pytz.utc)
 
-def init():
-    log.debug("creating binance auth api")
-    api = get_db().api_keys.find_one({"name":"Binance"})
-    binance = Binance(key=api["key"], secret=api["secret"])
-    return binance
+    # return the difference in time
+    return int((d - epoch).total_seconds() * 1000.0)
 
-def ticker(obj, pair):
-    log.debug("retrieving %s ticker", pair)
-    data = json.loads(obj.ticker(pair).text)
+#------------------------------------------------------------------------------
+def interval_to_milliseconds(interval):
+    """Convert a Binance interval string to milliseconds
+    :param interval: Binance interval string 1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w
+    :type interval: str
+    :return:
+         None if unit not one of m, h, d or w
+         None if string not in correct format
+         int value of interval in milliseconds
+    """
+    ms = None
+    seconds_per_unit = {
+        "m": 60,
+        "h": 60 * 60,
+        "d": 24 * 60 * 60,
+        "w": 7 * 24 * 60 * 60
+    }
 
-    data.update({
-        "askPrice": float(data["askPrice"]),
-        "askQty": float(data["askQty"]),
-        "bidPrice": float(data["bidPrice"]),
-        "bidQty": float(data["bidQty"]),
-        "closeTime": to_dt(data["closeTime"]/1000), #datetime.utcfromtimestamp(data["closeTime"]/1000),
-        "highPrice": float(data["highPrice"]),
-        "lastPrice": float(data["lastPrice"]),
-        "lastQty": float(data["lastQty"]),
-        "lowPrice": float(data["lowPrice"]),
-        "openPrice": float(data["openPrice"]),
-        "openTime":  to_dt(data["openTime"]/1000), #datetime.utcfromtimestamp(data["openTime"]/1000),
-        "prevClosePrice": float(data["prevClosePrice"]),
-        "priceChange": float(data["priceChange"]),
-        "priceChangePercent": float(data["priceChangePercent"]),
-        "quoteVolume": float(data["quoteVolume"]),
-        "volume": float(data["volume"]),
-        "weightedAvgPrice": float(data["weightedAvgPrice"])
-    })
-    return data
+    unit = interval[-1]
+    if unit in seconds_per_unit:
+        try:
+            ms = int(interval[:-1]) * seconds_per_unit[unit] * 1000
+        except ValueError:
+            pass
+    return ms
+
+#------------------------------------------------------------------------------
+def get_historical_klines(symbol, interval, start_str, end_str=None):
+    """Get Historical Klines from Binance
+    See dateparse docs for valid start and end string formats http://dateparser.readthedocs.io/en/latest/
+    If using offset strings for dates add "UTC" to date string e.g. "now UTC", "11 hours ago UTC"
+    :param symbol: Name of symbol pair e.g BNBBTC
+    :type symbol: str
+    :param interval: Biannce Kline interval
+    :type interval: str
+    :param start_str: Start date string in UTC format
+    :type start_str: str
+    :param end_str: optional - end date string in UTC format
+    :type end_str: str
+    :return: list of OHLCV values
+
+    Examples:
+    # fetch 30 minute klines for the last month of 2017
+    klines = get_historical_klines("ETHBTC", Client.KLINE_INTERVAL_30MINUTE, "1 Dec, 2017", "1 Jan, 2018")
+
+    # fetch weekly klines since it listed
+    klines = get_historical_klines("NEOBTC", Client.KLINE_INTERVAL_1WEEK, "1 Jan, 2017")
+    """
+    # create the Binance client, no need for api key
+    client = Client("", "")
+
+    # init our list
+    output_data = []
+
+    # setup the max limit
+    limit = 500
+
+    # convert interval to useful value in seconds
+    timeframe = interval_to_milliseconds(interval)
+
+    # convert our date strings to milliseconds
+    start_ts = date_to_milliseconds(start_str)
+
+    # if an end time was passed convert it
+    end_ts = None
+    if end_str:
+        end_ts = date_to_milliseconds(end_str)
+
+    idx = 0
+    # it can be difficult to know when a symbol was listed on Binance so allow start time to be before list date
+    symbol_existed = False
+    while True:
+        # fetch the klines from start_ts up to max 500 entries or the end_ts if set
+        temp_data = client.get_klines(
+            symbol=symbol,
+            interval=interval,
+            limit=limit,
+            startTime=start_ts,
+            endTime=end_ts
+        )
+
+        # handle the case where our start date is before the symbol pair listed on Binance
+        if not symbol_existed and len(temp_data):
+            symbol_existed = True
+
+        if symbol_existed:
+            # append this loops data to our output data
+            output_data += temp_data
+
+            # update our start timestamp using the last value in the array and add the interval timeframe
+            start_ts = temp_data[len(temp_data) - 1][0] + timeframe
+        else:
+            # it wasn't listed yet, increment our start date
+            start_ts += timeframe
+
+        idx += 1
+        # check if we received less than the required limit and exit the loop
+        if len(temp_data) < limit:
+            # exit the while loop
+            break
+
+        # sleep after every 3rd call to be kind to the API
+        if idx % 3 == 0:
+            time.sleep(1)
+
+    return output_data
+
+#------------------------------------------------------------------------------
+def format_klines(data):
+    """[
+    1499040000000,      # Open time
+    "0.01634790",       # Open
+    "0.80000000",       # High
+    "0.01575800",       # Low
+    "0.01577100",       # Close
+    "148976.11427815",  # Volume
+    1499644799999,      # Close time
+    "2434.19055334",    # Quote asset volume
+    308,                # Number of trades
+    "1756.87402397",    # Taker buy base asset volume
+    "28.46694368",      # Taker buy quote asset volume
+    "17928899.62484339" # Ignore
+    ]"""
+    candles = []
+    for candle in data:
+        candles.append({
+            "open_date": to_dt(candle[0]/1000),
+            "open": float(candle[1]),
+            "high": float(candle[2]),
+            "low": float(candle[3]),
+            "close": float(candle[4]),
+            "buy_volume": float(candle[9]),
+            "volume": float(candle[5]),
+            "trades": candle[8]
+            #"close_date": to_dt(candle[6]/1000),
+            #"quote_volume": float(candle[7]),
+            #"ask_qvolume": float(candle[10])
+       })
+    df = pd.DataFrame(candles)
+    df.index = df["open_date"]
+    del df["open_date"]
+    return df
