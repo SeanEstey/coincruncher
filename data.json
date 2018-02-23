@@ -9,6 +9,7 @@
         { "id":"cardano", "symbol":"ADA"},
         { "id":"iota", "symbol":"IOTA"},
         { "id":"rchain", "symbol":"RHOC"},
+        { "id":"request-network", "symbol":"REQ"},
         { "id":"bounty0x", "symbol":"BNTY"},
         { "id":"latoken", "symbol":"LA"}
     ],
@@ -36,7 +37,7 @@
         { "id":"vechain", "symbol":"VEN", "amount":481.00},
         { "id":"walton", "symbol":"WTC", "amount":100.00},
         { "id":"zilliqa", "symbol":"ZIL", "amount":34721.56},
-        { "id":"zclassic", "symbol":"ZCL", "amount":121}
+        { "id":"zclassic", "symbol":"ZCL", "amount":137}
     ],
     "small_portfolio": [
         { "id":"safex", "symbol":"SAFEX", "amount":17707.00},
