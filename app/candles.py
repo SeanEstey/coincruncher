@@ -1,45 +1,36 @@
 # app.candles
-
 import dateparser, logging, json, time, pytz
 from pprint import pformat, pprint
 from datetime import datetime, timedelta as delta, date
 import pandas as pd
+from pymongo import ReplaceOne
 from binance.client import Client
 from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, to_dt
-log = logging.getLogger('binance')
+log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
 def historical(pair, interval, start_str, end_str=None):
-    """Get Historical Klines from Binance
-    If using offset strings for dates add "UTC" to date string e.g. "now UTC",
-    "11 hours ago UTC"
-    :param symbol: Name of symbol pair e.g BNBBTC
-    :type symbol: str
-    :param interval: Binance Kline interval
-    :type interval: str
-        e.g.: Client.KLINE_INTERVAL_30MINUTE, Client.KLINE_INTERVAL_1WEEK
-    :param start_str: Start date string in UTC format
-    :type start_str: str
-        e.g: "1 Dec, 2017", "1 day ago UTC"
-    :param end_str: optional - end date string in UTC format
-    :type end_str: str
-    :return: list of OHLCV value
+    """Get Historical Klines (candles) from Binance.
+    @interval: Binance Kline interval
+        i.e Client.KLINE_INTERVAL_30MINUTE, Client.KLINE_INTERVAL_1WEEK
+    Return: list of OHLCV value
     """
-    client = Client("", "")
-    result = []
     limit = 500
+    idx = 0
+    results = []
     timeframe = intrvl_to_ms(interval)
     start_ts = date_to_ms(start_str)
     end_ts = date_to_ms(end_str) if end_str else None
-    idx = 0
+
+    client = Client("", "")
 
     while True:
         data = client.get_klines(symbol=pair, interval=interval, limit=limit,
             startTime=start_ts, endTime=end_ts)
         if len(data) > 0:
-            result += data
+            results += data
             start_ts = data[len(data) - 1][0] + timeframe
         else:
             start_ts += timeframe
@@ -50,11 +41,33 @@ def historical(pair, interval, start_str, end_str=None):
             break
         if idx % 3 == 0:
             time.sleep(1)
-    return result
+    return results
 
 #------------------------------------------------------------------------------
-def to_dict(data):
-    """Convert each serial candle list->dict. List format:
+def store(candles_df):
+    tmr = Timer()
+    pair = candles_df.ix[0]["pair"]
+    bulk=[]
+    for index, row in candles_df.iterrows():
+        record = row.to_dict()
+        record.update({"date":index.to_pydatetime()})
+        bulk.append(
+            ReplaceOne({"date":index.to_pydatetime(), "pair":pair}, record,
+                upsert=True
+            )
+        )
+
+    if len(bulk) < 1:
+        return log.info("No candles to store in DB")
+
+    result = get_db().candles_5t.bulk_write(bulk)
+    log.info("store_db: pair=%s, df.length=%s,  mod=%s, upsert=%s (%s ms)",
+        pair, len(candles_df), result.modified_count, result.upserted_count, tmr)
+
+#------------------------------------------------------------------------------
+def to_df(pair, rawdata):
+    """Convert candle data to pandas DataFrame.
+    List format:
         [0]: open time (timestamp): str
         [1]: open price: str
         [2]: high price: str
@@ -68,30 +81,32 @@ def to_dict(data):
         [10]: taker sell vol (ask order executed, give r-pair sym): str
         [11]: (ignore)
     """
-    candles = []
-    for candle in data:
-        candles.append({
-            "date": to_dt(candle[0]/1000),
-            "open": float(candle[1]),
-            "high": float(candle[2]),
-            "low": float(candle[3]),
-            "close": float(candle[4]),
-            "base_ob_vol": float(candle[5]),
-            "quote_ob_vol": float(candle[7]),
-            "trades": candle[8],
-            "base_buy_vol": float(candle[9]),
-            "quote_sell_vol": float(candle[10])
-        })
-    return candles
-
-#------------------------------------------------------------------------------
-def to_df(pair, rawdata):
     df = pd.DataFrame(
-        index=[ to_dt(n[0]/1000) for n in rawdata ],
-        data=[[pair, float(x[1]),float(x[2]),float(x[3]),float(x[4]),x[8],float(x[5]),
-                float(x[9]), float(x[10]), float(x[7])] for x in rawdata],
-        columns=["pair", "open","high","low","close","trades","base_ob_vol",
-                 "base_buy_vol", "quote_sell_vol", "quote_ob_vol"]
+        index=[to_dt(n[0]/1000) for n in rawdata],
+        data=[[
+            pair,
+            round(float(x[1]), 4),
+            round(float(x[2]), 4),
+            round(float(x[3]), 4),
+            round(float(x[4]), 4),
+            x[8],
+            round(float(x[5]), 4),
+            round(float(x[9]), 4),
+            round(float(x[10]), 4),
+            round(float(x[7]), 4)
+        ] for x in rawdata],
+        columns=[
+            "pair",
+            "open",
+            "high",
+            "low",
+            "close",
+            "trades",
+            "base_ob_vol",
+            "base_buy_vol",
+            "quote_sell_vol",
+            "quote_ob_vol"
+        ]
     )
     df.index.name = "date"
     return df

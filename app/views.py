@@ -21,8 +21,8 @@ def midy(stdscr):
 #-----------------------------------------------------------------------------
 def show_home(stdscr):
     db = get_db()
-    n_indexed = db.tickers_1d.count() + db.tickers_5m.count() +\
-        db.market_idx_1d.count() + db.market_idx_5m.count()
+    n_indexed = db.tickers_1d.count() + db.tickers_5t.count() +\
+        db.market_idx_1d.count() + db.market_idx_5t.count()
     stdscr.clear()
     stdscr.addstr(0, 2, "%s datapoints indexed" % pretty(n_indexed, abbr=True))
 
@@ -114,9 +114,9 @@ def show_markets(stdscr):
     ex = forex.getrate('CAD',utc_dtdate())
     hdr = ['Market Cap', '24h Volume', 'BTC Dominance', 'Markets', 'Currencies',
            '1 Hour', '24 Hour', '7 Day', '30 Day']
-    mktdata = list(db.market_idx_5m.find().limit(1).sort('date',-1))
+    mktdata = list(db.market_idx_5t.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
-        return log.error("db.market_idx_5m empty")
+        return log.error("db.market_idx_5t empty")
     rows, colors = [], []
     for mkt in mktdata:
         rows.append([
@@ -238,7 +238,7 @@ def show_watchlist(stdscr):
     updated = []
 
     for watch in db.watchlist.find():
-        cursor = db.tickers_5m.find({"symbol":watch["symbol"]}).sort("date",-1).limit(1)
+        cursor = db.tickers_5t.find({"symbol":watch["symbol"]}).sort("date",-1).limit(1)
         if cursor.count() < 1:
             continue
         tckr = cursor.next()
@@ -295,7 +295,7 @@ def show_portfolio(stdscr):
 
     # Build datarows
     for hold in db.portfolio.find():
-        cursor = db.tickers_5m.find({"symbol":hold["symbol"]}
+        cursor = db.tickers_5t.find({"symbol":hold["symbol"]}
             ).sort("date",-1).limit(1)
 
         if cursor.count() < 1: continue

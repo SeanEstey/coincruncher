@@ -54,7 +54,7 @@ def price_df(coins, date_rng):
         collname = "tickers_1d"
         field = "$close"
     elif freq.freqstr[-1] in ['T','H']:
-        collname = "tickers_5m"
+        collname = "tickers_5t"
         field = "$price_usd"
 
     cursor = db[collname].aggregate([
@@ -124,7 +124,7 @@ def topcoins(rank):
     """Get list of ticker symbols within given rank.
     """
     db = get_db()
-    _date = list(db.tickers_5m.find().sort("date",-1).limit(1))[0]["date"]
-    cursor = db.tickers_5m.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
+    _date = list(db.tickers_5t.find().sort("date",-1).limit(1))[0]["date"]
+    cursor = db.tickers_5t.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
     return [n["symbol"] for n in list(cursor)]
 

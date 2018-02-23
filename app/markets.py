@@ -56,7 +56,7 @@ def generate_1d(_date):
         return 75000
 
     # Gather source data
-    cursor = db.market_idx_5m.find({"date":{"$gte":_date, "$lt":_date+timedelta(days=1)}})
+    cursor = db.market_idx_5t.find({"date":{"$gte":_date, "$lt":_date+timedelta(days=1)}})
 
     if cursor.count() < 1:
         log.error("no '5m' source data found on '%s'", _date.date())
@@ -104,7 +104,7 @@ def update_1d_series(start, end):
     dt = start
     while dt <= end:
         # Build market analysis for yesterday's data
-        results = db.market_idx_5m.find(
+        results = db.market_idx_5t.find(
             {"date": {"$gte":dt, "$lt":dt + timedelta(days=1)}},
             {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
 
@@ -148,8 +148,8 @@ def diff(period, to_format):
     dt = datetime.now(tz=pytz.UTC) - tdelta
 
     mkts = [
-        list(db.market_idx_5m.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
-        list(db.market_idx_5m.find({}).sort("date", -1).limit(1))
+        list(db.market_idx_5t.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
+        list(db.market_idx_5t.find({}).sort("date", -1).limit(1))
     ]
 
     for m in  mkts:
@@ -181,7 +181,7 @@ def resample(start, end, freq):
     qty, unit, tdelta = parse_period(freq)
     dt = datetime.now(tz=pytz.UTC) - tdelta
 
-    results = db.market_idx_5m.find(
+    results = db.market_idx_5t.find(
         {'date':{'$gte':from_dt}},
         {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
 

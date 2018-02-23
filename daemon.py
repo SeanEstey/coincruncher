@@ -1,9 +1,7 @@
 # app.daemon
-
 import logging, time, threading, getopt, os, sys
 from datetime import timedelta
-from config import *
-from app import get_db, set_db, tickers, coinmktcap, forex, markets
+from app import get_db, set_db, candles, tickers, coinmktcap, forex, markets
 from app.timer import Timer
 from app.utils import utc_dtdate, utc_datetime
 logging.getLogger("requests").setLevel(logging.ERROR)
@@ -22,23 +20,31 @@ def eod_tasks():
 
 #---------------------------------------------------------------------------
 def main():
+    from config import TICKER_LIMIT
+    from binance.client import Client
+    from app.candles import historical, to_df, store
+
     #tickers.db_audit()
     markets.db_audit()
-    t_eod = Timer(expire=utc_dtdate()+timedelta(days=1))
+    tmr_eod = Timer(expire=utc_dtdate()+timedelta(days=1))
 
     while True:
-        t = 500
-        t = min(t, forex.update_1d()) # Once a day
-        t = min(t, coinmktcap.get_tickers_5m())
-        t = min(t, coinmktcap.get_marketidx_5m())
+        waitfor=[500]
+        waitfor.append(coinmktcap.get_tickers_5t(limit=TICKER_LIMIT))
+        waitfor.append(coinmktcap.get_marketidx_5t())
 
-        if t_eod.remaining() == 0:
+        for pair in ["BTCUSDT","NANOETH"]:
+            df = to_df(pair, historical(pair, Client.KLINE_INTERVAL_5MINUTE,
+                "10 minutes ago UTC"))
+            store(df)
+
+        if tmr_eod.remaining() == 0:
             eod_tasks()
-            t_eod.set_expiry(utc_dtdate() + timedelta(days=1))
+            tmr_eod.set_expiry(utc_dtdate() + timedelta(days=1))
 
-        log.debug("sleeping %s sec...", t)
-        time.sleep(max(t,0))
-
+        t_nap = min([n for n in waitfor if type(n) is int])
+        log.debug("sleeping %s sec...", t_nap)
+        time.sleep(t_nap)
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':

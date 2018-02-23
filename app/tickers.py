@@ -113,7 +113,7 @@ def generate_1d(_date):
         return 75000
 
     # Gather source data
-    cursor = db.tickers_5m.find({"date":{"$gte":_date, "$lt":_date+delta(days=1)}})
+    cursor = db.tickers_5t.find({"date":{"$gte":_date, "$lt":_date+delta(days=1)}})
 
     if cursor.count() < 1:
         log.error("no '5m' source data found on '%s'", _date.date())
@@ -175,7 +175,7 @@ def diff(symbol, price, period, to_format):
 
 #------------------------------------------------------------------------------
 def volatile_24h():
-    cursor = get_db().tickers_5m.find({"rank":{"$lte":500}}).sort("date",-1).limit(500)
+    cursor = get_db().tickers_5t.find({"rank":{"$lte":500}}).sort("date",-1).limit(500)
     tckrs = list(cursor)
     descend = sorted(tckrs, key=lambda x: float(x["pct_24h"] or 0.0), reverse=True)
     return descend[0:5] + descend[::-1][0:5]

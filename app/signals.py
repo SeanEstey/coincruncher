@@ -55,7 +55,7 @@ def custom(coin, start, end):
         pct_1h > 10%
         pct_7d > 0%
     """
-    cursor = get_db().tickers_5m.find(
+    cursor = get_db().tickers_5t.find(
         {"symbol":coin, "date":{"$gte":start,"$lt":end}},
         {"_id":0,"name":0,"total_supply":0,"circulating_supply":0,"max_supply":0,
         "rank":0,"id":0, "symbol":0}
