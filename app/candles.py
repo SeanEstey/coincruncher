@@ -12,7 +12,30 @@ from app.utils import to_float, to_dt
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
-def historical(pair, interval, start_str, end_str=None):
+def get_new(pair):
+    c = get_db().candles_5t.find({"pair":pair}).sort("date",-1).limit(1)
+    return list(c)[0]
+
+#------------------------------------------------------------------------------
+def get_historic(pair, start, end):
+    cursor = get_db().candles_5t.find(
+        {"pair":pair, "date":{"$gte":start, "$lt":end}}
+    ).sort("date",-1)
+    df = pd.DataFrame(list(cursor))
+    df.index = df["date"]
+    del df["_id"]
+    del df["date"]
+    df_sum = df[["buy_vol", "trades", "volume"]].resample("1H").mean()
+    print(df_sum.tail())
+    df_mean = df[["close","high","low","open"]].resample("1H").mean()
+    print(df_mean.tail())
+
+    df_result = df_sum.join(df_mean)
+    #df_hourly = df.resample("1H").mean().round(4).dropna()
+    return df_result
+
+#------------------------------------------------------------------------------
+def query(pair, interval, start_str, end_str=None):
     """Get Historical Klines (candles) from Binance.
     @interval: Binance Kline interval
         i.e Client.KLINE_INTERVAL_30MINUTE, Client.KLINE_INTERVAL_1WEEK
@@ -56,9 +79,7 @@ def store(candles_df):
         record.update({"date":index.to_pydatetime()})
         bulk.append(
             ReplaceOne({"date":index.to_pydatetime(), "pair":pair}, record,
-                upsert=True
-            )
-        )
+                upsert=True))
 
     if len(bulk) < 1:
         return log.info("No candles to store in DB")
@@ -73,25 +94,26 @@ def store(candles_df):
 #------------------------------------------------------------------------------
 def to_df(pair, rawdata):
     """Convert candle data to pandas DataFrame.
+    Unused:
+       idx_6: close timestamp in ms (str)
+       idx_7: total (quote) volume (str)
+       idx_10: taker sell vol (quote pair)
+       idx_11: (ignore)
     """
     df = pd.DataFrame(
         index=[to_dt(x[0]/1000) for x in rawdata], # idx_0: open timestamp in ms (str)
         data=[[
             pair,
-            to_float(x[1],4),  # idx_1: open (str)
-            to_float(x[2],4),  # idx_2: high (str)
-            to_float(x[3],4),  # idx_3: low (str)
-            to_float(x[4],4),  # idx_4: close (str)
-            x[8],              # idx_8: num trades (int)
-            to_float(x[5],4),  # idx_5: base ob vol (str)
-                               # idx_6: close timestamp in ms (str)
-            to_float(x[9],4),  # idx_9: taker buy vol (base pair)
-            to_float(x[10],4), # idx_10: taker sell vol (quote pair)
-            to_float(x[7],4)   # idx_7: quote ob vol (str)
-                               # idx_11: (ignore)
+            to_float(x[1],4),   # idx_1: open (str)
+            to_float(x[2],4),   # idx_2: high (str)
+            to_float(x[3],4),   # idx_3: low (str)
+            to_float(x[4],4),   # idx_4: close (str)
+            x[8],               # idx_8: num trades (int)
+            to_float(x[9],4),   # idx_9: buy volume (base)
+            to_float(x[5],4)    # idx_5: total volume (base)
+
         ] for x in rawdata],
-        columns=["pair", "open", "high", "low", "close", "trades", "base_ob_vol",
-            "base_buy_vol", "quote_sell_vol", "quote_ob_vol"]
+        columns=["pair", "open", "high", "low", "close", "trades", "buy_vol", "volume"]
     )
     df.index.name = "date"
     return df

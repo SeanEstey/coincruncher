@@ -5,6 +5,38 @@ import pandas as pd
 from app import get_db
 log = logging.getLogger('signals')
 
+#-----------------------------------------------------------------------------
+def sigstr(candle, hist_df):
+    """Compare candle fields to historical averages. Measure magnitude in
+    number of standard deviations from the mean.
+    """
+    print("\n\tCANDLE PAIR: %s" % candle["pair"])
+    print("\tCANDLE DATE: %s\n" % candle["date"])
+
+    for field in ["buy_vol","volume","close"]:
+        desc = hist_df.describe()
+        _min = desc[field]["min"]
+        std = desc[field]["std"]
+        _max = desc[field]["max"]
+        value = candle[field]
+        ratio = value/std
+
+        print("\tFIELD: \"%s\"" % field)
+        print("\tVALUE: %s" % value)
+        print("\tHISTORIC MIN: %.5f" % _min)
+        print("\tHISTORIC STD: %.5f" % std)
+        print("\tHISTORIC MAX: %.5f" % _max)
+        print("\tVALUE/STD: %+.2fx" % ratio)
+
+        if ratio < 1:
+            print("\tSIGNAL: WEAK")
+        elif ratio > 1 and ratio < 3:
+            print("\tSIGNAL: AVERAGE")
+        elif ratio >= 3:
+            print("\tSIGNAL: STRONG")
+
+        print("")
+
 #------------------------------------------------------------------------------
 def coinfi(coin, start, end):
     """It’s simple supply and demand: a sudden increase in the number of buyers
