@@ -1,79 +1,85 @@
+# app
 import logging
+import textwrap
 from logging import DEBUG, INFO, WARNING
-from .mongo import create_client, authenticate
 from config import *
-
-logging.getLogger("requests").setLevel(logging.ERROR)
+from app.utils import colors
 log = logging.getLogger('app')
-
-class colors:
-    BLUE = '\033[94m'
-    GRN = '\033[92m'
-    YLLW = '\033[93m'
-    RED = '\033[91m'
-    WHITE = '\033[37m'
-    ENDC = '\033[0m'
-    HEADER = '\033[95m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-class DebugFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == DEBUG
-class InfoFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == INFO
-class WarningFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == WARNING
 
 #---------------------------------------------------------------------------
 def set_db(host):
+    from .mongo import create_client
     global db, client
-    client = create_client(host=host, port=27017, connect=True, auth=True)
+    client = create_client(
+        host=host,
+        port=27017,
+        connect=True,
+        auth=True)
     db = client[DB]
     return db
 
 #---------------------------------------------------------------------------
 def get_db():
     global db
-    if db:
-        return db
-    else:
-        log.error("db host not set!")
-        return None
+    return db if db else log.error("DB host not set!")
 
 #---------------------------------------------------------------------------
-def file_handler(level, file_path,
-                 filt=None, fmt=None, datefmt=None, color=None, name=None):
-    handler = logging.FileHandler(file_path)
+class DebugFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == DEBUG
+
+#---------------------------------------------------------------------------
+class InfoFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == INFO
+
+#---------------------------------------------------------------------------
+class WarningFilter(logging.Filter):
+    def filter(self, record):
+        return record.levelno == WARNING
+
+#---------------------------------------------------------------------------
+class WrappedFixedIndentingLog(logging.Formatter):
+    def __init__(self,
+                 fmt=None,
+                 datefmt=None,
+                 style='%',
+                 width=MAX_LOG_LINE_WIDTH,
+                 indent=LOG_NEWL_INDENT):
+        super().__init__(fmt=fmt, datefmt=datefmt, style=style)
+
+        self.wrapper = textwrap.TextWrapper(
+            width=width,
+            subsequent_indent=' '*indent)
+
+    def format(self, record):
+        return self.wrapper.fill(super().format(record))
+
+#---------------------------------------------------------------------------
+def file_handler(level, path, filt=None):
+    """Custom log handler.
+    left-align "-8s" for 8 spaces on right, "8s" for left
+    """
+    handler = logging.FileHandler(path)
     handler.setLevel(level)
-
-    if name is not None:
-        handler.name = name
-    else:
-        handler.name = 'lvl_%s_file_handler' % str(level or '')
-
-    if filt == DEBUG:
-        handler.addFilter(DebugFilter())
-    elif filt == INFO:
-        handler.addFilter(InfoFilter())
-    elif filt == WARNING:
-        handler.addFilter(WarningFilter())
-
-    # To show thread: %(threadName)s
-    formatter = logging.Formatter(
-        colors.BLUE + (fmt or '%(asctime)s %(name)s: '\
-        + colors.ENDC + color + '%(message)s') + colors.ENDC,
-        (datefmt or '%m-%d %H:%M:%S'))
-    handler.setFormatter(formatter)
+    handler.setFormatter(WrappedFixedIndentingLog(
+        colors.BLUE+'[%(asctime)-3s,%(name)8s]: '+colors.ENDC+'%(message)s',
+        '%b-%d %H:%M'
+    ))
+    handler.addFilter(DebugFilter()) if filt==DEBUG else\
+    handler.addFilter(InfoFilter()) if filt==INFO else\
+    handler.addFilter(WarningFilter()) if filt==WARNING else None
     return handler
 
+#---------------------------------------------------------------------------
 
-logging.basicConfig(level=DEBUG, handlers=[
-    file_handler(DEBUG, DEBUGFILE, filt=DEBUG, color=colors.WHITE),
-    file_handler(INFO, LOGFILE, color=colors.WHITE)
-    #file_handler(WARNING, LOGFILE, filt=WARNING, color=colors.WHITE),
-    #file_handler(ERROR, LOGFILE, filt=WARNING, color=colors.WHITE),
-])
 client = None
 db = None
+logging.basicConfig(
+    level=DEBUG,
+    handlers=[
+        file_handler(DEBUG, DEBUGFILE, filt=DEBUG),
+        file_handler(INFO, LOGFILE)
+    ]
+)
+

@@ -2,6 +2,18 @@ import inspect, logging, re, unicodedata
 from pprint import pformat
 log = logging.getLogger(__name__)
 
+#---------------------------------------------------------------------------
+class colors:
+    BLUE = '\033[94m'
+    GRN = '\033[92m'
+    YLLW = '\033[93m'
+    RED = '\033[91m'
+    WHITE = '\033[37m'
+    ENDC = '\033[0m'
+    HEADER = '\033[95m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
 # Datetime methods
 import pytz
 from datetime import datetime, timedelta, time, date

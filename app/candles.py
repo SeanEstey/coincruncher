@@ -1,13 +1,14 @@
 # app.candles
 import dateparser, logging, json, time, pytz
+import textwrap
 from pprint import pformat, pprint
-from datetime import datetime, timedelta as delta, date
+from datetime import datetime
 import pandas as pd
 from pymongo import ReplaceOne
 from binance.client import Client
 from app import get_db
 from app.timer import Timer
-from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, to_dt
+from app.utils import to_float, to_dt
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
@@ -23,7 +24,6 @@ def historical(pair, interval, start_str, end_str=None):
     timeframe = intrvl_to_ms(interval)
     start_ts = date_to_ms(start_str)
     end_ts = date_to_ms(end_str) if end_str else None
-
     client = Client("", "")
 
     while True:
@@ -41,6 +41,9 @@ def historical(pair, interval, start_str, end_str=None):
             break
         if idx % 3 == 0:
             time.sleep(1)
+
+    log.debug("%s %s candles retrieved (binance api)",
+        len(results[0]) if len(results) > 0 else 0, pair.lower())
     return results
 
 #------------------------------------------------------------------------------
@@ -60,53 +63,35 @@ def store(candles_df):
     if len(bulk) < 1:
         return log.info("No candles to store in DB")
 
-    result = get_db().candles_5t.bulk_write(bulk)
-    log.info("store_db: pair=%s, df.length=%s,  mod=%s, upsert=%s (%s ms)",
-        pair, len(candles_df), result.modified_count, result.upserted_count, tmr)
+    result = (get_db().candles_5t.bulk_write(bulk)
+        ).bulk_api_result
+    del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
+    log.debug("bulk_write completed (%sms)", tmr)
+    log.debug(result)
+    return result
 
 #------------------------------------------------------------------------------
 def to_df(pair, rawdata):
     """Convert candle data to pandas DataFrame.
-    List format:
-        [0]: open time (timestamp): str
-        [1]: open price: str
-        [2]: high price: str
-        [3]: low price: str
-        [4]: close price: str
-        [5]: base orderbook vol (lpair): str
-        [6]: close time (timestamp): str
-        [7]: quote orderbook vol (rpair): str
-        [8]: n_trades: int
-        [9]: taker buy vol (ask order executed, gain l-pair sym): str
-        [10]: taker sell vol (ask order executed, give r-pair sym): str
-        [11]: (ignore)
     """
     df = pd.DataFrame(
-        index=[to_dt(n[0]/1000) for n in rawdata],
+        index=[to_dt(x[0]/1000) for x in rawdata], # idx_0: open timestamp in ms (str)
         data=[[
             pair,
-            round(float(x[1]), 4),
-            round(float(x[2]), 4),
-            round(float(x[3]), 4),
-            round(float(x[4]), 4),
-            x[8],
-            round(float(x[5]), 4),
-            round(float(x[9]), 4),
-            round(float(x[10]), 4),
-            round(float(x[7]), 4)
+            to_float(x[1],4),  # idx_1: open (str)
+            to_float(x[2],4),  # idx_2: high (str)
+            to_float(x[3],4),  # idx_3: low (str)
+            to_float(x[4],4),  # idx_4: close (str)
+            x[8],              # idx_8: num trades (int)
+            to_float(x[5],4),  # idx_5: base ob vol (str)
+                               # idx_6: close timestamp in ms (str)
+            to_float(x[9],4),  # idx_9: taker buy vol (base pair)
+            to_float(x[10],4), # idx_10: taker sell vol (quote pair)
+            to_float(x[7],4)   # idx_7: quote ob vol (str)
+                               # idx_11: (ignore)
         ] for x in rawdata],
-        columns=[
-            "pair",
-            "open",
-            "high",
-            "low",
-            "close",
-            "trades",
-            "base_ob_vol",
-            "base_buy_vol",
-            "quote_sell_vol",
-            "quote_ob_vol"
-        ]
+        columns=["pair", "open", "high", "low", "close", "trades", "base_ob_vol",
+            "base_buy_vol", "quote_sell_vol", "quote_ob_vol"]
     )
     df.index.name = "date"
     return df

@@ -1,5 +1,4 @@
 # app.analyze
-
 import logging
 from pprint import pprint
 from datetime import timedelta

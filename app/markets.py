@@ -1,5 +1,4 @@
 # app.markets
-
 import logging
 from datetime import datetime, timedelta
 from pprint import pformat
@@ -30,6 +29,7 @@ def db_audit():
     """Verifies the completeness of the db collections, generates any
     necessary documents to fill gaps if possible.
     """
+    return False
     db = get_db()
     log.debug("DB: verifying...")
 

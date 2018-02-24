@@ -1,15 +1,24 @@
-# app.daemon
-import logging, time, threading, getopt, os, sys
+# daemon
+import logging, time, signal
 from datetime import timedelta
-from app import get_db, set_db, candles, tickers, coinmktcap, forex, markets
-from app.timer import Timer
-from app.utils import utc_dtdate, utc_datetime
-logging.getLogger("requests").setLevel(logging.ERROR)
-logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+from app import forex
+from app.utils import utc_dtdate
 log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
+class GracefulKiller:
+    kill_now = False
+    def __init__(self):
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+
+    def exit_gracefully(self,signum, frame):
+        self.kill_now = True
+
+#---------------------------------------------------------------------------
 def eod_tasks():
+    import os
+
     forex.update_1d()
     yday = utc_dtdate() - timedelta(days=1)
     #tickers.generate_1d(yday)
@@ -23,6 +32,8 @@ def main():
     from config import TICKER_LIMIT
     from binance.client import Client
     from app.candles import historical, to_df, store
+    from app import candles, coinmktcap, markets
+    from app.timer import Timer
 
     #tickers.db_audit()
     markets.db_audit()
@@ -36,20 +47,33 @@ def main():
         for pair in ["BTCUSDT","NANOETH"]:
             df = to_df(pair, historical(pair, Client.KLINE_INTERVAL_5MINUTE,
                 "10 minutes ago UTC"))
-            store(df)
+            result = store(df)
+            if result["nUpserted"] > 0:
+                log.info("%s %s candle(s) updated (Binance)", result["nUpserted"], pair)
 
         if tmr_eod.remaining() == 0:
             eod_tasks()
             tmr_eod.set_expiry(utc_dtdate() + timedelta(days=1))
 
         t_nap = min([n for n in waitfor if type(n) is int])
-        log.debug("sleeping %s sec...", t_nap)
+        log.debug("sleeping (%ss)", t_nap)
         time.sleep(t_nap)
 
 #---------------------------------------------------------------------------
 if __name__ == '__main__':
-    log.info("---------- starting daemon ----------")
-    log.debug("---------- starting daemon ----------")
+    import getopt
+    import threading
+    import sys
+    from app import set_db
+
+    # STFU
+    logging.getLogger("requests").setLevel(logging.ERROR)
+    logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+
+    divstr = "##### %s #####"
+    log.info(divstr % "restarted")
+    log.debug(divstr % "restarted")
+    killer = GracefulKiller()
 
     try:
         opts, args = getopt.getopt(sys.argv[1:], "h:", ['dbhost='])
@@ -65,7 +89,11 @@ if __name__ == '__main__':
     data_thread.start()
 
     while True:
+        if killer.kill_now:
+            break
         time.sleep(0.1)
 
-    log.info("---------- terminating daemon ----------")
-    exit()
+    log.debug(divstr % "sys.exit()")
+    log.info(divstr % "exiting")
+    sys.exit()
+

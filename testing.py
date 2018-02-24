@@ -17,7 +17,6 @@ hosts = ["localhost", "45.79.176.125"]
 set_db(hosts[0])
 db = get_db()
 t1 = Timer()
-log.debug("Set db in %s ms", t1)
 
 def do():
     symbols=["ETC","LTC","NEO","GAS","BTC","ICX","DRGN","BTC","OMG","BCH","NANO","LINK","XMR"]
@@ -28,22 +27,12 @@ def do():
 ####### TEST CANDLES #########
 from binance.client import Client
 from app.candles import historical, to_df, store
-pair = "BTCUSDT"
+pair = "NANOETH"
 interval = Client.KLINE_INTERVAL_5MINUTE
-start_str = "1 day ago UTC"
+start_str = "7 days ago UTC"
 df = to_df(pair, historical(pair, interval, start_str))
-
-
-def test_soup():
-    import json
-    from bs4 import BeautifulSoup
-    import requests
-    file = open("html.html", "r")
-    buf = file.read()
-    log.debug("buf.len=%s", len(buf))
-    soup = BeautifulSoup(buf) #, "xml")#"html.parser")
-    log.debug(soup.findall("title")[0])
-    #data = json.loads(soup.prettify())
-    #data = data['Data']
-
-    return soup
+df2 = df.resample("1H").mean()
+print("***** %s Last 7 Days *****" % pair)
+print(df2.ix[len(df2)-30::])
+print("\n***** %s Summary *****\n" % pair)
+print(df2.describe())

@@ -1,17 +1,13 @@
 # client
-
-import curses, getopt, json, logging, sys, time
-from curses import wrapper
+import curses, logging
 from config import *
 from app.timer import Timer
-from app import screen, set_db, get_db, views
+from app import set_db, get_db, screen, views
 from app.screen import KEY_UP, KEY_DOWN
-
 log = logging.getLogger("client")
-refresh_delay = 30000
-scrollspeed = 5
+
+# Globals
 scrollpos = scrollremain = 0
-padheight = 200
 scrollscr = None
 view = None
 timer = Timer()
@@ -71,7 +67,7 @@ def process_input(stdscr, ch):
         stdscr.clear()
         byte_input = screen.input_prompt(stdscr, 10, int(curses.COLS/2), "Enter Symbol")
         symbol = byte_input.decode('utf-8').upper()
-        scrollscr = curses.newpad(padheight, curses.COLS-1)
+        scrollscr = curses.newpad(DISP_PAD_HEIGHT, curses.COLS-1)
         scrollpos = 0
         scrollremain = views.show_history(scrollscr, symbol)
         scrollscr.refresh(scrollpos, 0, 0, 0, curses.LINES-1, curses.COLS-1)
@@ -79,19 +75,19 @@ def process_input(stdscr, ch):
     elif ch == KEY_UP:
         if view != views.show_history:
             return False
-        scrollremain += min(scrollspeed, scrollpos)
-        scrollpos -= min(scrollspeed, scrollpos)
+        scrollremain += min(DISP_SCROLL_SP, scrollpos)
+        scrollpos -= min(DISP_SCROLL_SP, scrollpos)
         log.debug('UP scroll, pos=%s, remain=%s', scrollpos, scrollremain)
         scrollscr.refresh(scrollpos, 0, 0, 0, n_lines-1, n_cols-1)
     elif ch == KEY_DOWN:
         if view != views.show_history:
             return False
-        scrollpos += min(scrollspeed, scrollremain)
-        scrollremain -= min(scrollspeed, scrollremain)
+        scrollpos += min(DISP_SCROLL_SP, scrollremain)
+        scrollremain -= min(DISP_SCROLL_SP, scrollremain)
         log.debug('DOWN scroll, pos=%s, remain=%s', scrollpos, scrollremain)
         scrollscr.refresh(scrollpos, 0, 0, 0, n_lines-1, n_cols-1)
 
-    if timer.elapsed() < refresh_delay or view is None:
+    if timer.elapsed() < DISP_REFRESH_DELAY or view is None:
         return False
 
     timer.reset()
@@ -101,6 +97,10 @@ def process_input(stdscr, ch):
 
 #----------------------------------------------------------------------
 def main(stdscr):
+    import json
+    import getopt
+    import sys
+    import time
     global view
 
     try:
@@ -140,5 +140,6 @@ def main(stdscr):
     exit()
 
 if __name__ == "__main__":
+    from curses import wrapper
     # Curses wrapper to take care of setup/teardown
     wrapper(main)

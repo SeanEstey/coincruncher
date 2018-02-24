@@ -1,5 +1,4 @@
 # app.views
-
 import logging
 import pandas as pd
 from decimal import Decimal
@@ -372,4 +371,4 @@ def show_portfolio(stdscr):
         [[c.WHITE, pnlcolor(profit), c.WHITE]],
         div=True)
 
-    log.debug("portfolio rendered in %s ms", t1)
+    #log.debug("portfolio rendered in %s ms", t1)
