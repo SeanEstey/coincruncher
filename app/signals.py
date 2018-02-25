@@ -6,36 +6,53 @@ from app import get_db
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def sigstr(candle, hist_df):
-    """Compare candle fields to historical averages. Measure magnitude in
+def sigstr(candle, dfh):
+    """
+    SINGLE CANDLE ONLY! Compare 1 5min candle to historical average.
+
+    Compare candle fields to historical averages. Measure magnitude in
     number of standard deviations from the mean.
     """
-    print("\n\tCANDLE PAIR: %s" % candle["pair"])
-    print("\tCANDLE DATE: %s\n" % candle["date"])
+    print("\n\tPAIR: %s" % candle["pair"])
+    print("\tOPEN TIME: %s" % candle["open_date"])
+    print("\tCLOSE TIME: %s" % candle["close_date"])
 
-    for field in ["buy_vol","volume","close"]:
-        desc = hist_df.describe()
-        _min = desc[field]["min"]
-        std = desc[field]["std"]
-        _max = desc[field]["max"]
-        value = candle[field]
-        ratio = value/std
+    desc = dfh.describe()[1::]
+    results=[]
+    varlist = ["buy_ratio","buy_vol","close","trades","volume"]
+    total_score=0
 
-        print("\tFIELD: \"%s\"" % field)
+    for col in varlist:
+        if candle.get(col) is None:
+            continue
+
+        value = candle[col]
+        _min =  desc[col]["min"]
+        std =   desc[col]["std"]
+        _max =  desc[col]["max"]
+        score = value/std
+        total_score += score
+
+        print("\tFIELD: \"%s\"" % col)
         print("\tVALUE: %s" % value)
-        print("\tHISTORIC MIN: %.5f" % _min)
+        """print("\tHISTORIC MIN: %.5f" % _min)
         print("\tHISTORIC STD: %.5f" % std)
-        print("\tHISTORIC MAX: %.5f" % _max)
-        print("\tVALUE/STD: %+.2fx" % ratio)
+        print("\tHISTORIC MAX: %.5f" % _max)"""
+        print("\tVALUE/STD: %+.2fx" % score)
 
-        if ratio < 1:
+        if score < 1:
             print("\tSIGNAL: WEAK")
-        elif ratio > 1 and ratio < 3:
+        elif score > 1 and score < 3:
             print("\tSIGNAL: AVERAGE")
-        elif ratio >= 3:
+        elif score >= 3:
             print("\tSIGNAL: STRONG")
 
-        print("")
+        results.append([col, value, _min, std, _max, score])
+
+    print("\n\tTOTAL SCORE: %.5f" % total_score)
+
+    results.append({"total_score":total_score})
+    return results
 
 #------------------------------------------------------------------------------
 def coinfi(coin, start, end):

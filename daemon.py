@@ -29,7 +29,7 @@ def eod_tasks():
 
 #---------------------------------------------------------------------------
 def main():
-    from config import TICKER_LIMIT
+    from config import TICKER_LIMIT, BINANCE_CANDLE_PAIRS
     from binance.client import Client
     from app import candles, coinmktcap, markets
     from app.timer import Timer
@@ -39,16 +39,18 @@ def main():
     tmr_eod = Timer(expire=utc_dtdate()+timedelta(days=1))
 
     while True:
-        waitfor=[500]
+        waitfor=[300]
         waitfor.append(coinmktcap.get_tickers_5t(limit=TICKER_LIMIT))
         waitfor.append(coinmktcap.get_marketidx_5t())
 
-        for pair in ["BTCUSDT","NANOETH"]:
-            df = candles.to_df(pair, candles.query(pair, Client.KLINE_INTERVAL_5MINUTE,
-                "10 minutes ago UTC"))
-            result = candles.store(df)
-            if result["nUpserted"] > 0:
-                log.info("%s %s candle(s) updated (Binance)", result["nUpserted"], pair)
+        for pair in BINANCE_CANDLE_PAIRS:
+            df = candles.to_df(
+                pair,
+                candles.api_get(pair, "5m", "10 minutes ago UTC"),
+                store_db=True
+            )
+
+            log.info("%s %s candle(s) updated (Binance)", len(df), pair)
 
         if tmr_eod.remaining() == 0:
             eod_tasks()

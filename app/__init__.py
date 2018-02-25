@@ -82,4 +82,6 @@ logging.basicConfig(
         file_handler(INFO, LOGFILE)
     ]
 )
-
+# STFU
+logging.getLogger("requests").setLevel(logging.ERROR)
+logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
