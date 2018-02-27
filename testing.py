@@ -15,16 +15,26 @@ db = get_db()
 t1 = Timer()
 
 #------------------------------------------------------------------------------
+def sigstrfrom(pair, n_days):
+    dfh = db_get(pair, now()-tdelta(days=n_days), now()-tdelta(minutes=5))
+    dfc = db_get(pair, now()-tdelta(minutes=10))
+    print(dfc)
+    candle = dfc.pct_change() #.to_dict('records')[1]
+    print(candle)
+    return signals.sigstr(candle, dfh)
+
+#------------------------------------------------------------------------------
 from app import signals
 from pprint import pprint
-from app.candles import db_get
+from app.candles import db_get, api_get, to_df
 from app.utils import utc_datetime as now
 
-pair = "NANOBTC"
-dfh = db_get(pair, now()-tdelta(days=7), now()-tdelta(minutes=5))
-dfc = db_get(pair, now()-tdelta(minutes=5))
-candle = dfc.to_dict('records')[0]
-res = signals.sigstr(candle, dfh)
+sigstrfrom("NANOBTC", 7)
+sigstrfrom("NANOBTC", 3)
+
+
+
+
 
 #------------------------------------------------------------------------------
 def test1():
@@ -36,4 +46,3 @@ def test1():
     candle["date"] = df_new.index[0].to_pydatetime()
     candle["pair"] = pair
     signals.sigstr(candle, df_hst)
-#------------------------------------------------------------------------------

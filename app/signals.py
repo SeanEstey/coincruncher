@@ -1,62 +1,19 @@
 # app.signals
 import logging
+from datetime import timedelta
 from pprint import pprint
 import pandas as pd
 from app import get_db
+from app.candles import db_get
+from app.utils import utc_datetime as now
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def sigstr(candle, dfh):
-    """
-    SINGLE CANDLE ONLY! Compare 1 5min candle to historical average.
-
-    Compare candle fields to historical averages. Measure magnitude in
+def sigstr(pair, n_days_havg):
+    """Compare candle fields to historical averages. Measure magnitude in
     number of standard deviations from the mean.
-    """
-    print("\n\tPAIR: %s" % candle["pair"])
-    print("\tOPEN TIME: %s" % candle["open_date"])
-    print("\tCLOSE TIME: %s" % candle["close_date"])
 
-    desc = dfh.describe()[1::]
-    results=[]
-    varlist = ["buy_ratio","buy_vol","close","trades","volume"]
-    total_score=0
-
-    for col in varlist:
-        if candle.get(col) is None:
-            continue
-
-        value = candle[col]
-        _min =  desc[col]["min"]
-        std =   desc[col]["std"]
-        _max =  desc[col]["max"]
-        score = value/std
-        total_score += score
-
-        print("\tFIELD: \"%s\"" % col)
-        print("\tVALUE: %s" % value)
-        """print("\tHISTORIC MIN: %.5f" % _min)
-        print("\tHISTORIC STD: %.5f" % std)
-        print("\tHISTORIC MAX: %.5f" % _max)"""
-        print("\tVALUE/STD: %+.2fx" % score)
-
-        if score < 1:
-            print("\tSIGNAL: WEAK")
-        elif score > 1 and score < 3:
-            print("\tSIGNAL: AVERAGE")
-        elif score >= 3:
-            print("\tSIGNAL: STRONG")
-
-        results.append([col, value, _min, std, _max, score])
-
-    print("\n\tTOTAL SCORE: %.5f" % total_score)
-
-    results.append({"total_score":total_score})
-    return results
-
-#------------------------------------------------------------------------------
-def coinfi(coin, start, end):
-    """It’s simple supply and demand: a sudden increase in the number of buyers
+    It’s simple supply and demand: a sudden increase in the number of buyers
     over sellers in a short space of time. In this scenario, certain phenomena
     can be observed such as:
         -An acceleration of volume within a short period of time.
@@ -90,28 +47,69 @@ def coinfi(coin, start, end):
     and the model is continuously run, outputting alerts when a factor or a
     series of factors has a positive signal.
     """
-    pass
+    dfc = db_get(pair, now()-timedelta(minutes=10), end=now()-timedelta(minutes=5))
+    dfc = dfc.to_dict('record')[0]
 
-#------------------------------------------------------------------------------
-def custom(coin, start, end):
-    """Feb-2018 NANO bull run:
-    Bull signals:
-        vol_24h_pct >= 2%
-        pct_1h > 0%
-        pct_7d < -10%
-    Bear signals:
-        vol_24h_pct <= -2%
-        pct_1h > 10%
-        pct_7d > 0%
+    dfh = db_get(pair, now()-timedelta(days=n_days_havg), now()-timedelta(minutes=60))
+    havg = dfh.describe()[1::]
+
+    data = []
+
+    print("\n\tPAIR: %s" % pair)
+    print("\tHIST START DATE: %s" % dfh["close_date"][0].date())
+    print("\tHIST END DATE: %s" % dfh["close_date"][-1].date())
+    print("\tCANDLE CLOSE TIME: %s\n" % dfc["close_date"])
+
+    # Price diff in past hour
+    close_1h = dfc["close"] - dfh["close"].ix[-1]
+
+    # Price vs hist. mean/std
+    close_diff = dfc["close"] - havg["close"]["mean"]
+    close_score = max(0, close_diff / havg["close"]["std"])
+    data.append([dfc["close"], havg["close"]["mean"], close_diff, havg["close"]["std"], close_score])
+
+    # Volume vs hist. mean/std
+    vol_diff = dfc["volume"] - havg["volume"]["mean"]
+    vol_score = max(0, vol_diff / havg["volume"]["std"])
+    data.append([dfc["volume"], havg["volume"]["mean"], vol_diff, havg["volume"]["std"], vol_score])
+
+    # Buy volume vs hist. mean/std
+    bvol_diff = dfc["buy_vol"] - havg["buy_vol"]["mean"]
+    bvol_score = max(0, bvol_diff / havg["buy_vol"]["std"])
+    data.append([dfc["buy_vol"], havg["buy_vol"]["mean"], bvol_diff, havg["buy_vol"]["std"], bvol_score])
+
+    # Buy/sell volume ratio vs hist. mean/std
+    buyratio_diff = dfc["buy_ratio"] - havg["buy_ratio"]["mean"]
+    buyratio_score = max(0, buyratio_diff / havg["buy_ratio"]["std"])
+    data.append([dfc["buy_ratio"], havg["buy_ratio"]["mean"], buyratio_diff, havg["buy_ratio"]["std"], buyratio_score])
+
+    # Number trades vs hist. mean/std
+    trade_diff = dfc["trades"] - havg["trades"]["mean"]
+    trade_score = max(0,trade_diff / havg["trades"]["std"])
+    data.append([dfc["trades"], havg["trades"]["mean"], trade_diff, havg["trades"]["std"], trade_score])
+
+    score = close_score + vol_score + bvol_score + buyratio_score + trade_score
+    score = round(score, 2)
+
+    df = pd.DataFrame(
+        data,
+        index=["CLOSE", "VOLUME", "BUY_VOL", "BUY_RATIO", "TRADES"],
+        columns=["Candle", "Hist. Mean", "Diff", "Hist. Std", "Score"]
+    ).astype(float).round(7)
+
+    print("%s" % df)
+    print("\n\tSCORE: %s" % score)
+
+    del dfh["close_date"], dfh["open_date"], dfh["pair"]
+    havg_pct = dfh.pct_change().describe()
+
+    return {"havg":havg, "havg_pct":havg_pct, "df":df, "score":score}
+
     """
-    cursor = get_db().tickers_5t.find(
-        {"symbol":coin, "date":{"$gte":start,"$lt":end}},
-        {"_id":0,"name":0,"total_supply":0,"circulating_supply":0,"max_supply":0,
-        "rank":0,"id":0, "symbol":0}
-        ).sort("date",1)
-    coin = list(cursor)
-    df = pd.DataFrame(coin)
-    df.index = df["date"]
-    del df["date"]
-    df["vol_24h_pct"] = df["vol_24h_usd"].pct_change().round(2) * 100
-    return df
+    if score < 1:
+        print("\tSIGNAL: WEAK")
+    elif score > 1 and score < 3:
+        print("\tSIGNAL: AVERAGE")
+    elif score >= 3:
+        print("\tSIGNAL: STRONG")
+    """

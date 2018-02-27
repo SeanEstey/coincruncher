@@ -1,7 +1,7 @@
 # daemon
 import logging, time, signal
 from datetime import timedelta
-from app import forex
+from app import forex, markets
 from app.utils import utc_dtdate
 log = logging.getLogger("daemon")
 
@@ -31,7 +31,7 @@ def eod_tasks():
 def main():
     from config import TICKER_LIMIT, BINANCE_CANDLE_PAIRS
     from binance.client import Client
-    from app import candles, coinmktcap, markets
+    from app import candles, coinmktcap
     from app.timer import Timer
 
     #tickers.db_audit()
@@ -46,7 +46,11 @@ def main():
         for pair in BINANCE_CANDLE_PAIRS:
             df = candles.to_df(
                 pair,
-                candles.api_get(pair, "5m", "10 minutes ago UTC"),
+                candles.api_get(pair,
+                    "5m",
+                    "10 minutes ago UTC",
+                    end_str="5 minutes ago UTC"
+                ),
                 store_db=True
             )
 

@@ -56,6 +56,7 @@ def api_get(pair, interval, start_str, end_str=None):
     start_ts = date_to_ms(start_str)
     end_ts = date_to_ms(end_str) if end_str else None
     client = Client("", "")
+    log.debug('start_ts=%s', start_ts)
 
     while True:
         data = client.get_klines(
@@ -79,7 +80,7 @@ def api_get(pair, interval, start_str, end_str=None):
             time.sleep(1)
 
     log.debug("%s %s candles retrieved (binance api)",
-        len(results[0]) if len(results) > 0 else 0, pair.lower())
+        len(results) if len(results) > 0 else 0, pair.lower())
     return results
 
 #------------------------------------------------------------------------------
