@@ -25,17 +25,24 @@ def resample(df):
     pass
 
 #------------------------------------------------------------------------------
-def db_get(pair, start, end=None):
+def db_get(pair, freq, start, end=None):
     """Return historical average candle data from DB as dataframe.
     """
-    _end = end if end else utc_datetime()
+    if start is None and end is None:
+        # Get most closed candle
+        cursor = get_db().candles.find(
+            {"pair":pair, "freq":freq, "close_date":{"$lt":utc_datetime()}}, {"_id":0}
+        ).sort("close_date",-1).limit(1)
+    else:
+        _end = end if end else utc_datetime()
+        cursor = get_db().candles.find(
+            {"pair":pair,
+             "freq":freq,
+             "close_date":{"$gte":start, "$lt":_end}},
+            {"_id":0} #"pair":0}
+        ).sort("close_date",1)
 
-    cursor = get_db().candles_5t.find(
-        {"pair":pair, "close_date":{"$gte":start, "$lt":_end}},
-        {"_id":0} #"pair":0}
-    ).sort("close_date",1)
-
-    log.debug("%s candle db records found", cursor.count())
+    log.debug("%s %s %s candle DB records found", cursor.count(), pair, freq)
 
     df = pd.DataFrame(list(cursor))
     df.index = df["close_date"]
@@ -43,7 +50,7 @@ def db_get(pair, start, end=None):
     return df
 
 #------------------------------------------------------------------------------
-def api_get(pair, interval, start_str, end_str=None):
+def api_get(pair, interval, start_str, end_str=None, store_db=True):
     """Get Historical Klines (candles) from Binance.
     @interval: Binance kline values: [1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h,
     12h, 1d, 3d, 1w, 1M]
@@ -81,6 +88,10 @@ def api_get(pair, interval, start_str, end_str=None):
 
     log.debug("%s %s candles retrieved (binance api)",
         len(results) if len(results) > 0 else 0, pair.lower())
+
+    if store_db:
+        store(to_df(pair, interval, results))
+
     return results
 
 #------------------------------------------------------------------------------
@@ -99,7 +110,7 @@ def store(candles_df):
     if len(bulk) < 1:
         return log.info("No candles to store in DB")
 
-    result = (get_db().candles_5t.bulk_write(bulk)).bulk_api_result
+    result = (get_db().candles.bulk_write(bulk)).bulk_api_result
     del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
 
     log.debug("bulk_write completed (%sms)", tmr)
@@ -108,8 +119,9 @@ def store(candles_df):
     return result
 
 #------------------------------------------------------------------------------
-def to_df(pair, rawdata, store_db=False):
+def to_df(pair, freq, rawdata, store_db=False):
     """Convert candle data to pandas DataFrame.
+    @freq: Binance interval (NOT pandas frequency format!)
     """
     columns=["open_date","open","high","low","close","volume","close_date",
         "quote_vol", "trades", "buy_vol", "sell_vol", "ignore"]
@@ -123,6 +135,7 @@ def to_df(pair, rawdata, store_db=False):
     df.index.name="date"
     del df["ignore"]
     df["pair"] = pair
+    df["freq"] = freq
     df["close_date"] = pd.to_datetime(df["close_date"],unit='ms',utc=True)
     df["open_date"] = pd.to_datetime(df["open_date"],unit='ms',utc=True)
     df["buy_ratio"] = (df["buy_vol"] / df["volume"]).round(5)

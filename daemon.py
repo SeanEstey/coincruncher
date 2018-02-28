@@ -2,7 +2,7 @@
 import logging, time, signal
 from datetime import timedelta
 from app import forex, markets
-from app.utils import utc_dtdate
+from app.utils import utc_dtdate, utc_datetime
 log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
@@ -29,36 +29,42 @@ def eod_tasks():
 
 #---------------------------------------------------------------------------
 def main():
-    from config import TICKER_LIMIT, BINANCE_CANDLE_PAIRS
+    from config import TICKER_LIMIT, BINANCE_PAIRS
     from binance.client import Client
     from app import candles, coinmktcap
     from app.timer import Timer
+    from datetime import datetime
 
     #tickers.db_audit()
     markets.db_audit()
-    tmr_eod = Timer(expire=utc_dtdate()+timedelta(days=1))
+    daily = Timer(name="DailyTimer", expire=utc_dtdate()+timedelta(days=1))
+    hourly = Timer(name="HourTimer", expire="next hour change")
+    short = Timer(name="MinTimer", expire="in 5 min utc")
 
     while True:
-        waitfor=[300]
+        waitfor=[10]
         waitfor.append(coinmktcap.get_tickers_5t(limit=TICKER_LIMIT))
         waitfor.append(coinmktcap.get_marketidx_5t())
 
-        for pair in BINANCE_CANDLE_PAIRS:
-            df = candles.to_df(
-                pair,
-                candles.api_get(pair,
-                    "5m",
-                    "10 minutes ago UTC",
-                    end_str="5 minutes ago UTC"
-                ),
-                store_db=True
-            )
+        if short.remain() == 0:
+            for pair in BINANCE_PAIRS:
+                res = candles.api_get(pair, "5m", "1 hour ago UTC")
+                log.info("%s %s 5m candle saved (Binance)", len(res), pair)
+            short.set_expiry("in 5 min utc")
+        else:
+            print("%s: %s" % (short.name, short.remain(unit='str')))
 
-            log.info("%s %s candle(s) updated (Binance)", len(df), pair)
+        if hourly.remain() == 0:
+            for pair in BINANCE_PAIRS:
+                res = candles.api_get(pair, "1h", "24 hours ago UTC")
+                log.info("%s %s 1h candle saved (Binance)", len(res), pair)
+            hourly.set_expiry("next hour change")
+        else:
+            print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
 
-        if tmr_eod.remaining() == 0:
+        if daily.remain() == 0:
             eod_tasks()
-            tmr_eod.set_expiry(utc_dtdate() + timedelta(days=1))
+            daily.set_expiry(utc_dtdate() + timedelta(days=1))
 
         t_nap = min([n for n in waitfor if type(n) is int])
         log.debug("sleeping (%ss)", t_nap)

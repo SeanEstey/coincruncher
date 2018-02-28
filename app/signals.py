@@ -8,8 +8,29 @@ from app.candles import db_get
 from app.utils import utc_datetime as now
 log = logging.getLogger('signals')
 
+#------------------------------------------------------------------------------
+def multisigstr(pair, freq):
+    """Average signal strength from 3 different historical average
+    time spans.
+    """
+    tspan=None
+
+    if freq == "1h":
+        tspan = timedelta(days=1)
+    elif freq == "5m":
+        tspan = timedelta(hours=1)
+
+    scores = [
+        sigstr(pair, freq, now() - tspan*3, end=now())["score"],
+        sigstr(pair, freq, now() - tspan*2, end=now())["score"],
+        sigstr(pair, freq, now() - tspan*1, end=now())["score"]
+    ]
+
+    avg_score = round(sum(scores) / len(scores), 2)
+    print("\nAVERAGE SCORE: %s" % avg_score)
+
 #-----------------------------------------------------------------------------
-def sigstr(pair, n_days_havg):
+def sigstr(pair, freq, start, end):
     """Compare candle fields to historical averages. Measure magnitude in
     number of standard deviations from the mean.
 
@@ -47,18 +68,11 @@ def sigstr(pair, n_days_havg):
     and the model is continuously run, outputting alerts when a factor or a
     series of factors has a positive signal.
     """
-    dfc = db_get(pair, now()-timedelta(minutes=10), end=now()-timedelta(minutes=5))
+    dfc = db_get(pair, freq, None)
     dfc = dfc.to_dict('record')[0]
-
-    dfh = db_get(pair, now()-timedelta(days=n_days_havg), now()-timedelta(minutes=60))
+    dfh = db_get(pair, freq, start, end=end)
     havg = dfh.describe()[1::]
-
     data = []
-
-    print("\n\tPAIR: %s" % pair)
-    print("\tHIST START DATE: %s" % dfh["close_date"][0].date())
-    print("\tHIST END DATE: %s" % dfh["close_date"][-1].date())
-    print("\tCANDLE CLOSE TIME: %s\n" % dfc["close_date"])
 
     # Price diff in past hour
     close_1h = dfc["close"] - dfh["close"].ix[-1]
@@ -89,27 +103,24 @@ def sigstr(pair, n_days_havg):
     data.append([dfc["trades"], havg["trades"]["mean"], trade_diff, havg["trades"]["std"], trade_score])
 
     score = close_score + vol_score + bvol_score + buyratio_score + trade_score
-    score = round(score, 2)
+    score = round(float(score), 2)
 
-    df = pd.DataFrame(
-        data,
-        index=["CLOSE", "VOLUME", "BUY_VOL", "BUY_RATIO", "TRADES"],
+    df = pd.DataFrame(data,
+        index=["Close", "Volume", "Buy Vol", "Buy Ratio", "Trades"],
         columns=["Candle", "Hist. Mean", "Diff", "Hist. Std", "Score"]
     ).astype(float).round(7)
 
-    print("%s" % df)
-    print("\n\tSCORE: %s" % score)
+    print("\nPAIR: %s" % pair)
+    print("FREQ: %s" % freq)
+    print("HIST: %s to %s" %(
+        dfh["close_date"][0].date().strftime("%b-%d %H:%M"),
+        dfh["close_date"][-1].date().strftime("%b-%d %H:%M")))
+    print("CANDLE TIME: %s to %s UTC" % (
+        dfc["open_date"].time().strftime("%H:%M"),
+        dfc["close_date"].time().strftime("%H:%M")))
+    print("SCORE: %s" % score)
+    print("\n%s" % df)
 
-    del dfh["close_date"], dfh["open_date"], dfh["pair"]
-    havg_pct = dfh.pct_change().describe()
-
-    return {"havg":havg, "havg_pct":havg_pct, "df":df, "score":score}
-
-    """
-    if score < 1:
-        print("\tSIGNAL: WEAK")
-    elif score > 1 and score < 3:
-        print("\tSIGNAL: AVERAGE")
-    elif score >= 3:
-        print("\tSIGNAL: STRONG")
-    """
+    return {"havg":havg,
+            "df":df,
+            "score":score}
