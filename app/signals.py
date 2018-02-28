@@ -9,6 +9,16 @@ from app.utils import utc_datetime as now
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
+def gsigstr(pair):
+    s5m = multisigstr(pair, "5m")
+    s1h = multisigstr(pair, "1h")
+
+    print("%s RESULTS\n" % pair.upper())
+    print("72h: {:<7} 48h: {:<7} 24h: {:<7} 3h: {:<7} 2h: {:<7} 1h: {:<7}".format(
+        s1h[0], s1h[1], s1h[2], s5m[0], s5m[1], s5m[2]))
+    print("")
+
+#------------------------------------------------------------------------------
 def multisigstr(pair, freq):
     """Average signal strength from 3 different historical average
     time spans.
@@ -16,7 +26,7 @@ def multisigstr(pair, freq):
     tspan=None
 
     if freq == "1h":
-        tspan = timedelta(days=1)
+        tspan = timedelta(hours=24)
     elif freq == "5m":
         tspan = timedelta(hours=1)
 
@@ -26,8 +36,11 @@ def multisigstr(pair, freq):
         sigstr(pair, freq, now() - tspan*1, end=now())["score"]
     ]
 
-    avg_score = round(sum(scores) / len(scores), 2)
-    print("\nAVERAGE SCORE: %s" % avg_score)
+    return scores
+
+    #avg_score = round(sum(scores) / len(scores), 2)
+    #print("\n%s %s Avg Signal Score: %s" %(pair, freq, avg_score))
+    #return avg_score
 
 #-----------------------------------------------------------------------------
 def sigstr(pair, freq, start, end):
@@ -78,31 +91,41 @@ def sigstr(pair, freq, start, end):
     close_1h = dfc["close"] - dfh["close"].ix[-1]
 
     # Price vs hist. mean/std
-    close_diff = dfc["close"] - havg["close"]["mean"]
-    close_score = max(0, close_diff / havg["close"]["std"])
-    data.append([dfc["close"], havg["close"]["mean"], close_diff, havg["close"]["std"], close_score])
+    c_c = dfc["close"]
+    h_c = havg["close"]
+    cd = c_c - h_c["mean"]
+    cs = max(0, cd / h_c["std"])
+    data.append([c_c, h_c["mean"], cd, h_c["std"], cs])
 
     # Volume vs hist. mean/std
-    vol_diff = dfc["volume"] - havg["volume"]["mean"]
-    vol_score = max(0, vol_diff / havg["volume"]["std"])
-    data.append([dfc["volume"], havg["volume"]["mean"], vol_diff, havg["volume"]["std"], vol_score])
+    c_v = dfc["volume"]
+    h_v = havg["volume"]
+    vd = c_v - h_v["mean"]
+    vs = max(0, vd / h_v["std"])
+    data.append([c_v, h_v["mean"], vd, h_v["std"], vs])
 
     # Buy volume vs hist. mean/std
-    bvol_diff = dfc["buy_vol"] - havg["buy_vol"]["mean"]
-    bvol_score = max(0, bvol_diff / havg["buy_vol"]["std"])
-    data.append([dfc["buy_vol"], havg["buy_vol"]["mean"], bvol_diff, havg["buy_vol"]["std"], bvol_score])
+    c_bv = dfc["buy_vol"]
+    h_bv = havg["buy_vol"]
+    bvd = c_bv - h_bv["mean"]
+    bvs = max(0, bvd / h_bv["std"])
+    data.append([c_bv, h_bv["mean"], bvd, h_bv["std"], bvs])
 
     # Buy/sell volume ratio vs hist. mean/std
-    buyratio_diff = dfc["buy_ratio"] - havg["buy_ratio"]["mean"]
-    buyratio_score = max(0, buyratio_diff / havg["buy_ratio"]["std"])
-    data.append([dfc["buy_ratio"], havg["buy_ratio"]["mean"], buyratio_diff, havg["buy_ratio"]["std"], buyratio_score])
+    c_br = dfc["buy_ratio"]
+    h_br = havg["buy_ratio"]
+    brd = c_br - h_br["mean"]
+    brs = max(0, brd / h_br["std"])
+    data.append([c_br, h_br["mean"], brd, h_br["std"], brs])
 
     # Number trades vs hist. mean/std
-    trade_diff = dfc["trades"] - havg["trades"]["mean"]
-    trade_score = max(0,trade_diff / havg["trades"]["std"])
-    data.append([dfc["trades"], havg["trades"]["mean"], trade_diff, havg["trades"]["std"], trade_score])
+    c_t = dfc["trades"]
+    h_t = havg["trades"]
+    td = c_t - h_t["mean"]
+    ts = max(0, td / h_t["std"])
+    data.append([c_t, h_t["mean"], td, h_t["std"], ts])
 
-    score = close_score + vol_score + bvol_score + buyratio_score + trade_score
+    score = cs + vs + bvs + brs + ts
     score = round(float(score), 2)
 
     df = pd.DataFrame(data,
@@ -110,16 +133,17 @@ def sigstr(pair, freq, start, end):
         columns=["Candle", "Hist. Mean", "Diff", "Hist. Std", "Score"]
     ).astype(float).round(7)
 
-    print("\nPAIR: %s" % pair)
-    print("FREQ: %s" % freq)
-    print("HIST: %s to %s" %(
-        dfh["close_date"][0].date().strftime("%b-%d %H:%M"),
-        dfh["close_date"][-1].date().strftime("%b-%d %H:%M")))
-    print("CANDLE TIME: %s to %s UTC" % (
-        dfc["open_date"].time().strftime("%H:%M"),
-        dfc["close_date"].time().strftime("%H:%M")))
-    print("SCORE: %s" % score)
+    print("Pair: %s" % pair)
+    print("Freq: %s" % freq)
+    print("Hist: %s to %s" %(
+        dfh["close_date"].ix[0].strftime("%b-%d %H:%M"),
+        dfh["close_date"].ix[-1].strftime("%b-%d %H:%M")))
+    print("Candle: %s to %s UTC" % (
+        dfc["open_date"].time().strftime("%H:%M:%S"),
+        dfc["close_date"].time().strftime("%H:%M:%S")))
     print("\n%s" % df)
+    print("\nSignal: %s" % score)
+    print("%s" % ("-"*75))
 
     return {"havg":havg,
             "df":df,

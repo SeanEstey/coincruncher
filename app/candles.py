@@ -31,8 +31,9 @@ def db_get(pair, freq, start, end=None):
     if start is None and end is None:
         # Get most closed candle
         cursor = get_db().candles.find(
-            {"pair":pair, "freq":freq, "close_date":{"$lt":utc_datetime()}}, {"_id":0}
-        ).sort("close_date",-1).limit(1)
+            {"pair":pair, "freq":freq}, {"_id":0}
+            #"close_date":{"$lt":utc_datetime()}}, {"_id":0}
+        ).sort("close_date",-1).limit(10)
     else:
         _end = end if end else utc_datetime()
         cursor = get_db().candles.find(
@@ -42,11 +43,12 @@ def db_get(pair, freq, start, end=None):
             {"_id":0} #"pair":0}
         ).sort("close_date",1)
 
-    log.debug("%s %s %s candle DB records found", cursor.count(), pair, freq)
-
     df = pd.DataFrame(list(cursor))
     df.index = df["close_date"]
     df.index.name="date"
+
+    log.debug("%s %s %s candle DB records found", len(df), pair, freq)
+
     return df
 
 #------------------------------------------------------------------------------
@@ -61,9 +63,8 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
     results = []
     timeframe = intrvl_to_ms(interval)
     start_ts = date_to_ms(start_str)
-    end_ts = date_to_ms(end_str) if end_str else None
+    end_ts = date_to_ms(end_str) if end_str else int(utc_datetime().timestamp()*1000)
     client = Client("", "")
-    log.debug('start_ts=%s', start_ts)
 
     while True:
         data = client.get_klines(
@@ -80,9 +81,15 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
             start_ts += timeframe
         idx += 1
 
-        # Test limits/prevent API spamming
-        if len(data) < limit:
+        now_ms = int(utc_datetime().timestamp()*1000)
+        if int(results[-1][6]) >= now_ms:
+            print("%s %s close_time (%s) > utcnow (%s)" %(pair, interval, results[-1][6],now_ms))
+            results = results[:-1]
             break
+        # Test limits/prevent API spamming
+        if len(data) >= limit:
+            break
+
         if idx % 3 == 0:
             time.sleep(1)
 
@@ -90,20 +97,20 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
         len(results) if len(results) > 0 else 0, pair.lower())
 
     if store_db:
-        store(to_df(pair, interval, results))
+        store(pair, interval, to_df(pair, interval, results))
 
     return results
 
 #------------------------------------------------------------------------------
-def store(candles_df):
+def store(pair, freq, candles_df):
     tmr = Timer()
-    pair = candles_df.ix[0]["pair"]
+    #pair = candles_df.ix[0]["pair"]
     bulk=[]
 
     for idx, row in candles_df.iterrows():
         record = row.to_dict()
         bulk.append(ReplaceOne(
-            {"close_date":record["close_date"], "pair":pair},
+            {"pair":pair, "freq":freq, "close_date":record["close_date"]},
             record,
             upsert=True))
 
@@ -142,6 +149,6 @@ def to_df(pair, freq, rawdata, store_db=False):
     df = df[sorted(df.columns)]
 
     if store_db:
-        store(df)
+        store(pair, freq, df)
 
     return df
