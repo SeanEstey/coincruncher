@@ -7,7 +7,7 @@ log = logging.getLogger('mongodb')
 #-------------------------------------------------------------------------------
 def create_client(host=None, port=None, connect=True, auth=True):
     tmr = Timer()
-    log.debug("connecting to \"%s:%s\"...", host, port)
+    log.debug("connecting to \"%s:%s\"", host, port)
 
     client = pymongo.MongoClient(
         host = host,
@@ -18,7 +18,7 @@ def create_client(host=None, port=None, connect=True, auth=True):
     if auth:
         authenticate(client)
 
-    log.debug("connection established (%sms)", tmr)
+    log.debug("established connection (%sms)", tmr)
     return client
 
 #-------------------------------------------------------------------------------

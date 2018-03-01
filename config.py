@@ -29,7 +29,9 @@ BINANCE_PAIRS = [
     "NEOBTC",
     "OMGBTC",
     "BLZBTC",
-    "ETCBTC"
+    "ETCBTC",
+    "XMRBTC",
+    "NEBLBTC"
 ]
 
 # Client

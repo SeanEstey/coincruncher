@@ -1,7 +1,7 @@
 '''app.lib.timer'''
 import time, pytz
 import dateparser
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from app.utils import utc_datetime, utc_dtdate
 
 class Timer():
@@ -31,8 +31,8 @@ class Timer():
                 self.start = utc_datetime()
                 self.expire = datetime.combine(
                     utc_dtdate().date(),
-                    time(utc_datetime().time().hour+1)
-                ).replace(tzinfo=pytz.utc)
+                    time(utc_datetime().time().hour)
+                ).replace(tzinfo=pytz.utc) + timedelta(hours=1)
             else:
                 self.start = utc_datetime()
                 self.expire = dateparser.parse(target)

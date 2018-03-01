@@ -1,28 +1,14 @@
 # app.candles
 import logging, time
+from time import sleep
 import pandas as pd
 from pymongo import ReplaceOne
 from binance.client import Client
 from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, to_float, to_dt, intrvl_to_ms, date_to_ms
+from app.utils import dt_to_ms
 log = logging.getLogger('candles')
-
-#------------------------------------------------------------------------------
-def resample(df):
-    """dfsum = df[["buy_vol", "trades", "volume"]
-    #    ].resample(freq).sum()
-    #dfmean = df[["close","high","low","open"]
-    #    ].resample(freq).mean()
-    #dfres = dfsum.join(dfmean).dropna().round(5)
-    dfres = df.resample(freq).mean()
-    dfres = dfres.ix[:, sorted(dfres.columns)]
-    log.debug("%s [%sx%s] dataframe created",
-        pair, len(dfres), len(df.columns))
-
-    return dfres
-    """
-    pass
 
 #------------------------------------------------------------------------------
 def db_get(pair, freq, start, end=None):
@@ -52,6 +38,19 @@ def db_get(pair, freq, start, end=None):
     return df
 
 #------------------------------------------------------------------------------
+def api_get_all():
+    from config import BINANCE_PAIRS
+    for pair in BINANCE_PAIRS:
+        # 3 extra hrs
+        r1 = api_get(pair, "5m", "6 hours ago UTC")
+        sleep(3)
+        # 8 extra hrs
+        r2 = api_get(pair, "1h", "80 hours ago UTC")
+        sleep(1)
+        log.info("%s %s 5m candles updated (Binance)", len(r1), pair)
+        log.info("%s %s 1h candles updated (Binance)", len(r2), pair)
+
+#------------------------------------------------------------------------------
 def api_get(pair, interval, start_str, end_str=None, store_db=True):
     """Get Historical Klines (candles) from Binance.
     @interval: Binance kline values: [1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h,
@@ -61,40 +60,38 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
     limit = 500
     idx = 0
     results = []
-    timeframe = intrvl_to_ms(interval)
+    periodlen = intrvl_to_ms(interval)
     start_ts = date_to_ms(start_str)
-    end_ts = date_to_ms(end_str) if end_str else int(utc_datetime().timestamp()*1000)
+    end_ts = date_to_ms(end_str) if end_str else dt_to_ms(utc_datetime())
     client = Client("", "")
+    log.debug("api_get() target: %s %s items", int((end_ts-start_ts)/periodlen), pair)
 
-    while True:
-        data = client.get_klines(
-            symbol=pair,
-            interval=interval,
-            limit=limit,
-            startTime=start_ts,
-            endTime=end_ts
-        )
-        if len(data) > 0:
-            results += data
-            start_ts = data[len(data) - 1][0] + timeframe
+    while len(results) < 500:
+        try:
+            data = client.get_klines(
+                symbol=pair,
+                interval=interval,
+                limit=limit,
+                startTime=start_ts,
+                endTime=end_ts)
+        except Exception as e:
+            return log.exception("api_get() request error (got %s items)", len(results))
         else:
-            start_ts += timeframe
-        idx += 1
+            if len(data) == 0:
+                start_ts += periodlen
+            else:
+                # close_time > now?
+                if data[-1][6] >= dt_to_ms(utc_datetime()):
+                    results += data[:-1]
+                    break
+                results += data
+                start_ts = data[len(data) - 1][0] + periodlen
 
-        now_ms = int(utc_datetime().timestamp()*1000)
-        if int(results[-1][6]) >= now_ms:
-            print("%s %s close_time (%s) > utcnow (%s)" %(pair, interval, results[-1][6],now_ms))
-            results = results[:-1]
-            break
-        # Test limits/prevent API spamming
-        if len(data) >= limit:
-            break
+            idx += 1
+            if idx % 3==0:
+                sleep(1)
 
-        if idx % 3 == 0:
-            time.sleep(1)
-
-    log.debug("%s %s candles retrieved (binance api)",
-        len(results) if len(results) > 0 else 0, pair.lower())
+    log.debug("api_get() result: %s loops, %s %s items", idx, len(results), pair)
 
     if store_db:
         store(pair, interval, to_df(pair, interval, results))
@@ -103,8 +100,8 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
 
 #------------------------------------------------------------------------------
 def store(pair, freq, candles_df):
+    from app import client
     tmr = Timer()
-    #pair = candles_df.ix[0]["pair"]
     bulk=[]
 
     for idx, row in candles_df.iterrows():
@@ -117,10 +114,18 @@ def store(pair, freq, candles_df):
     if len(bulk) < 1:
         return log.info("No candles to store in DB")
 
-    result = (get_db().candles.bulk_write(bulk)).bulk_api_result
+    if client.is_locked:
+        log.error("store() db is locked!")
+        return False
+
+    try:
+        result = (get_db().candles.bulk_write(bulk)).bulk_api_result
+    except Exception as e:
+        return log.exception("store() error")
+
     del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
 
-    log.debug("bulk_write completed (%sms)", tmr)
+    log.debug("stored to db (%sms)", tmr)
     log.debug(result)
 
     return result

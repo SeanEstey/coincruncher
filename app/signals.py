@@ -1,22 +1,50 @@
 # app.signals
 import logging
+import sys
+from config import BINANCE_PAIRS
 from datetime import timedelta
 from pprint import pprint
 import pandas as pd
+import numpy as np
 from app import get_db
 from app.candles import db_get
 from app.utils import utc_datetime as now
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def gsigstr(pair):
-    s5m = multisigstr(pair, "5m")
-    s1h = multisigstr(pair, "1h")
+def gsigstr(mute=False):
+    if mute:
+        sys.stdout=None
 
-    print("%s RESULTS\n" % pair.upper())
-    print("72h: {:<7} 48h: {:<7} 24h: {:<7} 3h: {:<7} 2h: {:<7} 1h: {:<7}".format(
-        s1h[0], s1h[1], s1h[2], s5m[0], s5m[1], s5m[2]))
+    df = pd.DataFrame(
+        index=BINANCE_PAIRS,
+        columns=[
+            " 5m.vs.60m", " 5m.vs.120m", " 5m.vs.180m",
+            " 1h.vs.24hr", " 1h.vs.48hr", " 1h.vs.72hr",
+        ]
+    ).astype(float).round(2)
+
+    for pair in BINANCE_PAIRS:
+        try:
+            s1h = multisigstr(pair, "1h")
+            s5m = multisigstr(pair, "5m")
+            df.loc[pair] = [ s5m[2], s5m[1], s5m[0], s1h[2], s1h[1], s1h[0] ]
+        except Exception as e:
+            log.exception(str(e))
+            continue
+
+    print(df)
+
+    if mute:
+        sys.stdout = sys.__stdout__
+
+    df = df[df > 0].replace(np.NaN,"-")
+
     print("")
+    print(df)
+    print("")
+
+    return df
 
 #------------------------------------------------------------------------------
 def multisigstr(pair, freq):
@@ -24,16 +52,19 @@ def multisigstr(pair, freq):
     time spans.
     """
     tspan=None
+    periodlen=None
 
     if freq == "1h":
         tspan = timedelta(hours=24)
+        periodlen = timedelta(hours=1)
     elif freq == "5m":
         tspan = timedelta(hours=1)
+        periodlen = timedelta(minutes=5)
 
     scores = [
-        sigstr(pair, freq, now() - tspan*3, end=now())["score"],
-        sigstr(pair, freq, now() - tspan*2, end=now())["score"],
-        sigstr(pair, freq, now() - tspan*1, end=now())["score"]
+        sigstr(pair, freq, now() - tspan*3 - periodlen, end=now()),
+        sigstr(pair, freq, now() - tspan*2 - periodlen, end=now()),
+        sigstr(pair, freq, now() - tspan*1 - periodlen, end=now())
     ]
 
     return scores
@@ -94,35 +125,45 @@ def sigstr(pair, freq, start, end):
     c_c = dfc["close"]
     h_c = havg["close"]
     cd = c_c - h_c["mean"]
-    cs = max(0, cd / h_c["std"])
+    #cs = max(0, cd / h_c["std"])
+    # ALLOW NEGATIVE SCORES
+    cs = cd / h_c["std"]
     data.append([c_c, h_c["mean"], cd, h_c["std"], cs])
 
     # Volume vs hist. mean/std
     c_v = dfc["volume"]
     h_v = havg["volume"]
     vd = c_v - h_v["mean"]
-    vs = max(0, vd / h_v["std"])
+    #vs = max(0, vd / h_v["std"])
+    # ALLOW NEGATIVE SCORES
+    vs = vd / h_v["std"]
     data.append([c_v, h_v["mean"], vd, h_v["std"], vs])
 
     # Buy volume vs hist. mean/std
     c_bv = dfc["buy_vol"]
     h_bv = havg["buy_vol"]
     bvd = c_bv - h_bv["mean"]
-    bvs = max(0, bvd / h_bv["std"])
+    #bvs = max(0, bvd / h_bv["std"])
+    # ALLOW NEGATIVE SCORES
+    bvs = bvd / h_bv["std"]
     data.append([c_bv, h_bv["mean"], bvd, h_bv["std"], bvs])
 
     # Buy/sell volume ratio vs hist. mean/std
     c_br = dfc["buy_ratio"]
     h_br = havg["buy_ratio"]
     brd = c_br - h_br["mean"]
-    brs = max(0, brd / h_br["std"])
+    #brs = max(0, brd / h_br["std"])
+    # ALLOW NEGATIVE SCORES
+    brs = brd / h_br["std"]
     data.append([c_br, h_br["mean"], brd, h_br["std"], brs])
 
     # Number trades vs hist. mean/std
     c_t = dfc["trades"]
     h_t = havg["trades"]
     td = c_t - h_t["mean"]
-    ts = max(0, td / h_t["std"])
+    #ts = max(0, td / h_t["std"])
+    # ALLOW NEGATIVE SCORES
+    ts = td / h_t["std"]
     data.append([c_t, h_t["mean"], td, h_t["std"], ts])
 
     score = cs + vs + bvs + brs + ts
@@ -145,6 +186,9 @@ def sigstr(pair, freq, start, end):
     print("\nSignal: %s" % score)
     print("%s" % ("-"*75))
 
+    return score
+    """
     return {"havg":havg,
             "df":df,
             "score":score}
+    """

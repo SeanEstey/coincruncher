@@ -22,8 +22,12 @@ from dateutil import tz
 from dateutil.parser import parse
 
 #------------------------------------------------------------------------------
-def to_ts(_datetime):
-    return int(_datetime.timestamp())
+def to_ts(dt):
+    return int(dt.timestamp())
+
+#------------------------------------------------------------------------------
+def dt_to_ms(dt):
+    return int(dt.timestamp()*1000)
 
 #------------------------------------------------------------------------------
 def utc_date():

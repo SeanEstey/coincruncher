@@ -57,7 +57,7 @@ def next_update(collection):
     if elapsed >= api_refresh:
         return 0
     else:
-        log.debug("update in %ss", api_refresh-elapsed)
+        #log.debug("update in %ss", api_refresh-elapsed)
         assert(elapsed >= 0)
         return api_refresh - elapsed + 30
 

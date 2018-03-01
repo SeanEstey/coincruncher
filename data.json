@@ -1,17 +1,8 @@
 {
     "watchlist": [
-        { "id":"bitcoin", "symbol":"BTC"},
-        { "id":"bitcoin-cash", "symbol":"BCH"},
         { "id":"litecoin", "symbol":"LTC"},
-        { "id":"chainlink", "symbol":"LINK"},
-        { "id":"ripple", "symbol":"XRP"},
-        { "id":"tether", "symbol":"USDT"},
-        { "id":"cardano", "symbol":"ADA"},
-        { "id":"iota", "symbol":"IOTA"},
-        { "id":"rchain", "symbol":"RHOC"},
-        { "id":"request-network", "symbol":"REQ"},
-        { "id":"bounty0x", "symbol":"BNTY"},
-        { "id":"latoken", "symbol":"LA"}
+        { "id":"monero", "symbol":"XMR"},
+        { "id":"bluzelle", "symbol":"BLZ"}
     ],
     "portfolio": [
         { "id":"binance-coin", "symbol":"BNB", "amount":11.17},
