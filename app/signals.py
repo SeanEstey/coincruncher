@@ -16,34 +16,46 @@ def gsigstr(mute=False):
     if mute:
         sys.stdout=None
 
+    """columns=[
+        " 5m.vs.60m", " 5m.vs.120m", " 5m.vs.180m",
+        " 1h.vs.24hr", " 1h.vs.48hr", " 1h.vs.72hr",
+    ]
+    """
     df = pd.DataFrame(
         index=BINANCE_PAIRS,
         columns=[
-            " 5m.vs.60m", " 5m.vs.120m", " 5m.vs.180m",
-            " 1h.vs.24hr", " 1h.vs.48hr", " 1h.vs.72hr",
+            "5m.t-1", "5m.t-2", "5m.t-3",
+            "1h.t-1", "1h.t-2", "1h.t-3"
         ]
     ).astype(float).round(2)
 
     for pair in BINANCE_PAIRS:
         try:
-            s1h = multisigstr(pair, "1h")
             s5m = multisigstr(pair, "5m")
-            df.loc[pair] = [ s5m[2], s5m[1], s5m[0], s1h[2], s1h[1], s1h[0] ]
+            s1h = multisigstr(pair, "1h")
+            df.loc[pair] = [ s5m[0], s5m[1], s5m[2], s1h[0], s1h[1], s1h[2] ]
         except Exception as e:
             log.exception(str(e))
             continue
 
-    print(df)
+    #print(df)
 
     if mute:
         sys.stdout = sys.__stdout__
 
-    df = df[df > 0].replace(np.NaN,"-")
+    df = df[df > 0]
 
-    print("")
-    print(df)
-    print("")
+    print("SIGMAX")
+    _5m_pair = df["5m.t-1"].idxmax()
+    _5m_max = df["5m.t-1"].max()
+    _5m_sigstr = df.ix[_5m_pair].tolist()[0:3]
+    print("Freq: 5m, Pair: %s, Sigstr: %s" %(_5m_pair, _5m_sigstr))
+    _1h_pair = df["1h.t-1"].idxmax()
+    _1h_max = df["1h.t-1"].max()
+    _1h_sigstr = df.ix[_1h_pair].tolist()[3:6]
+    print("Freq: 1h, Pair: %s, Sigstr: %s" %(_1h_pair, _1h_sigstr))
 
+    df = df.replace(np.NaN,"-")
     return df
 
 #------------------------------------------------------------------------------
@@ -51,21 +63,25 @@ def multisigstr(pair, freq):
     """Average signal strength from 3 different historical average
     time spans.
     """
-    tspan=None
+    freqlen=None
     periodlen=None
+    microsec = timedelta(microseconds=1)
 
     if freq == "1h":
-        tspan = timedelta(hours=24)
-        periodlen = timedelta(hours=1)
+        periodlen = timedelta(hours=24)
+        freqlen = timedelta(hours=1)
     elif freq == "5m":
-        tspan = timedelta(hours=1)
-        periodlen = timedelta(minutes=5)
+        periodlen = timedelta(hours=1)
+        freqlen = timedelta(minutes=5)
 
     scores = [
-        sigstr(pair, freq, now() - tspan*3 - periodlen, end=now()),
-        sigstr(pair, freq, now() - tspan*2 - periodlen, end=now()),
-        sigstr(pair, freq, now() - tspan*1 - periodlen, end=now())
+        sigstr(pair, freq, now()-periodlen, end=now()-microsec),
+        sigstr(pair, freq, now()-(2*periodlen), end=now()-periodlen-microsec),
+        sigstr(pair, freq, now()-(3*periodlen), end=now()-(2*periodlen)-microsec)
     ]
+
+    # sigstr(pair, freq, now() - tspan*2 - periodlen, end=now()),
+    # sigstr(pair, freq, now() - tspan*1 - periodlen, end=now())
 
     return scores
 

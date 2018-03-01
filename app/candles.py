@@ -25,7 +25,7 @@ def db_get(pair, freq, start, end=None):
         cursor = get_db().candles.find(
             {"pair":pair,
              "freq":freq,
-             "close_date":{"$gte":start, "$lt":_end}},
+             "close_date":{"$gte":start, "$lte":_end}},
             {"_id":0} #"pair":0}
         ).sort("close_date",1)
 
@@ -38,17 +38,11 @@ def db_get(pair, freq, start, end=None):
     return df
 
 #------------------------------------------------------------------------------
-def api_get_all():
-    from config import BINANCE_PAIRS
-    for pair in BINANCE_PAIRS:
-        # 3 extra hrs
-        r1 = api_get(pair, "5m", "6 hours ago UTC")
-        sleep(3)
-        # 8 extra hrs
-        r2 = api_get(pair, "1h", "80 hours ago UTC")
+def api_get_all(pairs, freq, periodlen):
+    for pair in pairs:
+        results = api_get(pair, freq, periodlen)
+        log.info("%s %s %s candles updated (Binance)", len(results), pair, freq)
         sleep(1)
-        log.info("%s %s 5m candles updated (Binance)", len(r1), pair)
-        log.info("%s %s 1h candles updated (Binance)", len(r2), pair)
 
 #------------------------------------------------------------------------------
 def api_get(pair, interval, start_str, end_str=None, store_db=True):
@@ -74,9 +68,8 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
                 limit=limit,
                 startTime=start_ts,
                 endTime=end_ts)
-        except Exception as e:
-            return log.exception("api_get() request error (got %s items)", len(results))
-        else:
+
+            #else:
             if len(data) == 0:
                 start_ts += periodlen
             else:
@@ -90,6 +83,8 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
             idx += 1
             if idx % 3==0:
                 sleep(1)
+        except Exception as e:
+            return log.exception("api_get() request error (got %s items)", len(results))
 
     log.debug("api_get() result: %s loops, %s %s items", idx, len(results), pair)
 

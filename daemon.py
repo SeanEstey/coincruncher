@@ -46,7 +46,8 @@ def main():
     short = Timer(name="MinTimer", expire="in 5 min utc")
 
     if PRELOAD_CANDLES:
-        candles.api_get_all()
+        candles.api_get_all(BINANCE_PAIRS, "5m", "6 hours ago utc")
+        candles.api_get_all(BINANCE_PAIRS, "1h", "80 hours ago utc")
         log.info("Binance candles preloaded")
 
     while True:
@@ -59,20 +60,17 @@ def main():
             pass
 
         if short.remain() == 0:
-            for pair in BINANCE_PAIRS:
-                res = candles.api_get(pair, "5m", "1 hour ago UTC")
-                log.info("%s %s 5m candle saved (Binance)", len(res), pair)
+            candles.api_get_all(BINANCE_PAIRS, "5m", "6 hours ago utc")
+            df = signals.gsigstr()  #mute=True)
+            log.info(pformat(df))
             short.set_expiry("in 5 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
 
         if hourly.remain() == 0:
-            for pair in BINANCE_PAIRS:
-                res = candles.api_get(pair, "1h", "24 hours ago UTC")
-                log.info("%s %s 1h candle saved (Binance)", len(res), pair)
+            candles.api_get_all(BINANCE_PAIRS, "1h", "80 hours ago utc")
             hourly.set_expiry("next hour change")
-
-            df = signals.gsigstr(mute=True)
+            df = signals.gsigstr()  #mute=True)
             log.info(pformat(df))
         else:
             print("%s: %s" % (hourly.name, hourly.remain(unit='str')))

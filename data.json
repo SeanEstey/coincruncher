@@ -2,7 +2,8 @@
     "watchlist": [
         { "id":"litecoin", "symbol":"LTC"},
         { "id":"monero", "symbol":"XMR"},
-        { "id":"bluzelle", "symbol":"BLZ"}
+        { "id":"bluzelle", "symbol":"BLZ"},
+        { "id":"ethereum-classic", "symbol":"ETC"}
     ],
     "portfolio": [
         { "id":"binance-coin", "symbol":"BNB", "amount":11.17},
