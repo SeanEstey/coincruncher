@@ -61,8 +61,7 @@ def main():
 
         if short.remain() == 0:
             candles.api_get_all(BINANCE_PAIRS, "5m", "6 hours ago utc")
-            df = signals.gsigstr()  #mute=True)
-            log.info(pformat(df))
+            df = signals.gsigstr(mute=True, store=True)
             short.set_expiry("in 5 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
@@ -70,8 +69,7 @@ def main():
         if hourly.remain() == 0:
             candles.api_get_all(BINANCE_PAIRS, "1h", "80 hours ago utc")
             hourly.set_expiry("next hour change")
-            df = signals.gsigstr()  #mute=True)
-            log.info(pformat(df))
+            df = signals.gsigstr(mute=True, store=True)
         else:
             print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
 

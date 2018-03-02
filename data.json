@@ -1,6 +1,7 @@
 {
     "watchlist": [
         { "id":"litecoin", "symbol":"LTC"},
+        { "id":"bitcoin-cash", "symbol":"BCC"},
         { "id":"monero", "symbol":"XMR"},
         { "id":"bluzelle", "symbol":"BLZ"},
         { "id":"ethereum-classic", "symbol":"ETC"}

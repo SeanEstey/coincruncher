@@ -31,7 +31,8 @@ BINANCE_PAIRS = [
     "BLZBTC",
     "ETCBTC",
     "XMRBTC",
-    "NEBLBTC"
+    "NEBLBTC",
+    "WTCBTC"
 ]
 
 # Client

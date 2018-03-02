@@ -11,6 +11,13 @@ from app.utils import dt_to_ms
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
+def last(pair, freq):
+    return list(
+        get_db().candles.find({"pair":pair,"freq":freq}
+            ).sort("close_date",-1).limit(1)
+    )[0]
+
+#------------------------------------------------------------------------------
 def db_get(pair, freq, start, end=None):
     """Return historical average candle data from DB as dataframe.
     """
@@ -18,7 +25,6 @@ def db_get(pair, freq, start, end=None):
         # Get most closed candle
         cursor = get_db().candles.find(
             {"pair":pair, "freq":freq}, {"_id":0}
-            #"close_date":{"$lt":utc_datetime()}}, {"_id":0}
         ).sort("close_date",-1).limit(10)
     else:
         _end = end if end else utc_datetime()
@@ -58,9 +64,9 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
     start_ts = date_to_ms(start_str)
     end_ts = date_to_ms(end_str) if end_str else dt_to_ms(utc_datetime())
     client = Client("", "")
-    log.debug("api_get() target: %s %s items", int((end_ts-start_ts)/periodlen), pair)
+    #log.debug("api_get() target: %s %s items", int((end_ts-start_ts)/periodlen), pair)
 
-    while len(results) < 500:
+    while len(results) < 500 and start_ts < end_ts:
         try:
             data = client.get_klines(
                 symbol=pair,
@@ -69,7 +75,6 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
                 startTime=start_ts,
                 endTime=end_ts)
 
-            #else:
             if len(data) == 0:
                 start_ts += periodlen
             else:
@@ -86,7 +91,7 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
         except Exception as e:
             return log.exception("api_get() request error (got %s items)", len(results))
 
-    log.debug("api_get() result: %s loops, %s %s items", idx, len(results), pair)
+    #log.debug("api_get() result: %s loops, %s %s items", idx, len(results), pair)
 
     if store_db:
         store(pair, interval, to_df(pair, interval, results))

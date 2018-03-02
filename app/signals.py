@@ -2,92 +2,127 @@
 import logging
 import sys
 from config import BINANCE_PAIRS
+from pymongo import ReplaceOne
 from datetime import timedelta
 from pprint import pprint
 import pandas as pd
 import numpy as np
 from app import get_db
-from app.candles import db_get
+from app.candles import db_get, last
+from app.timer import Timer
 from app.utils import utc_datetime as now
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def gsigstr(mute=False):
+def gsigstr(mute=False, store=False):
+    _1m = timedelta(minutes=1)
+    _1h = timedelta(hours=1)
+
     if mute:
         sys.stdout=None
 
-    """columns=[
-        " 5m.vs.60m", " 5m.vs.120m", " 5m.vs.180m",
-        " 1h.vs.24hr", " 1h.vs.48hr", " 1h.vs.72hr",
-    ]
-    """
     df = pd.DataFrame(
         index=BINANCE_PAIRS,
         columns=[
-            "5m.t-1", "5m.t-2", "5m.t-3",
-            "1h.t-1", "1h.t-2", "1h.t-3"
+            "5m_vs_60m", " 5m_vs_120m", " 5m_vs_180m",
+            "1h_vs_24h", " 1h_vs_48h", "1h_vs_72h",
         ]
     ).astype(float).round(2)
 
+    sigs=[]
+
+    # For each pair, for each freq, get set of signals for varying timeframes.
     for pair in BINANCE_PAIRS:
         try:
-            s5m = multisigstr(pair, "5m")
-            s1h = multisigstr(pair, "1h")
-            df.loc[pair] = [ s5m[0], s5m[1], s5m[2], s1h[0], s1h[1], s1h[2] ]
+            res = {"pair":pair, "5m":[], "1h":[]}
+
+            c5m = last(pair,"5m")
+            time5m = [c5m["open_date"] - (5*_1m), c5m["close_date"] - (5*_1m)]
+            c1h = last(pair,"1h")
+            time1h = [c1h["open_date"] - (1*_1h), c1h["close_date"] - (1*_1h)]
+
+            for n in range(1,4):
+                res["5m"] += [sigstr(pair, "5m", time5m[0] - (n * 60 *_1m), end=time5m[1])]
+                res["1h"] += [sigstr(pair, "1h", time1h[0] - (n * 24 *_1h), end=time1h[1])]
         except Exception as e:
             log.exception(str(e))
             continue
-
-    #print(df)
+        sigs += [res]
 
     if mute:
         sys.stdout = sys.__stdout__
 
-    df = df[df > 0]
+    t1 = Timer()
 
+    # Save to db (optional)
+    if store:
+        ops=[]
+        for pairsigs in sigs:
+            for sig in pairsigs["5m"]:
+                sig["df"] = sig["df"].to_dict()
+            for sig in pairsigs["1h"]:
+                sig["df"] = sig["df"].to_dict()
+
+            ops.append(
+                ReplaceOne({"pair":pairsigs["pair"]}, pairsigs, upsert=True)
+            )
+        try:
+            db_res = get_db().signals.bulk_write(ops)
+        except Exception as e:
+            return log.exception("gsigstr bulk_write() error")
+
+        log.debug("pair signals saved to db in %sms", t1)
+        log.debug(db_res.bulk_api_result)
+
+    # Find strongest signals
+    for psigs in sigs:
+        df.loc[psigs["pair"]] = [n["score"] for n in psigs["5m"]] + [n["score"] for n in psigs["1h"]]
+    df = df[df > 0]
     print("SIGMAX")
-    _5m_pair = df["5m.t-1"].idxmax()
-    _5m_max = df["5m.t-1"].max()
+
+    _5m_pair = df["5m_vs_60m"].idxmax()
+    _5m_max = df["5m_vs_60m"].max()
     _5m_sigstr = df.ix[_5m_pair].tolist()[0:3]
+    _5m_sigresult = [ n["5m"] for n in sigs if n["pair"] == _5m_pair][0]
     print("Freq: 5m, Pair: %s, Sigstr: %s" %(_5m_pair, _5m_sigstr))
-    _1h_pair = df["1h.t-1"].idxmax()
-    _1h_max = df["1h.t-1"].max()
+
+    _1h_pair = df["1h_vs_24h"].idxmax()
+    _1h_max = df["1h_vs_24h"].max()
     _1h_sigstr = df.ix[_1h_pair].tolist()[3:6]
+    _1h_sigresult = [ n["1h"] for n in sigs if n["pair"] == _1h_pair][0]
     print("Freq: 1h, Pair: %s, Sigstr: %s" %(_1h_pair, _1h_sigstr))
 
     df = df.replace(np.NaN,"-")
-    return df
 
-#------------------------------------------------------------------------------
-def multisigstr(pair, freq):
-    """Average signal strength from 3 different historical average
-    time spans.
-    """
-    freqlen=None
-    periodlen=None
-    microsec = timedelta(microseconds=1)
+    return {
+        "df":df,
+        "5m_max": "MAX_5m: %s" % _5m_pair,
+        "1h_max": "MAX_1h: %s" % _1h_pair,
+        "1h_sigresult":_1h_sigresult,
+        "5m_sigresult":_5m_sigresult
+    }
 
-    if freq == "1h":
-        periodlen = timedelta(hours=24)
-        freqlen = timedelta(hours=1)
-    elif freq == "5m":
-        periodlen = timedelta(hours=1)
-        freqlen = timedelta(minutes=5)
+#-----------------------------------------------------------------------------
+def _print(sigresult):
+    from app.utils import to_local
+    pair = sigresult["candle"]["pair"]
+    freq = sigresult["candle"]["freq"]
 
-    scores = [
-        sigstr(pair, freq, now()-periodlen, end=now()-microsec),
-        sigstr(pair, freq, now()-(2*periodlen), end=now()-periodlen-microsec),
-        sigstr(pair, freq, now()-(3*periodlen), end=now()-(2*periodlen)-microsec)
-    ]
-
-    # sigstr(pair, freq, now() - tspan*2 - periodlen, end=now()),
-    # sigstr(pair, freq, now() - tspan*1 - periodlen, end=now())
-
-    return scores
-
-    #avg_score = round(sum(scores) / len(scores), 2)
-    #print("\n%s %s Avg Signal Score: %s" %(pair, freq, avg_score))
-    #return avg_score
+    print("Pair: %s" % pair)
+    print("Freq: %s" % freq)
+    print("Hist: %s - %s %s" %(
+        to_local(sigresult["hist_rng"][0]).strftime("%m-%dT%H:%M"),
+        to_local(sigresult["hist_rng"][1]).strftime("%m-%dT%H:%M"),
+        to_local(sigresult["hist_rng"][1]).strftime("%Z"))
+    )
+    print("Candle: %s-%s %s" % (
+        to_local(sigresult["candle"]["open_date"]).time().strftime("%H:%M:%S"),
+        to_local(sigresult["candle"]["close_date"]).time().strftime("%H:%M:%S"),
+        to_local(sigresult["candle"]["close_date"]).strftime("%Z"))
+    )
+    print("\n%s" % sigresult["df"])
+    print("\nSignal: %s" % sigresult["score"])
+    print("%s" % ("-"*75))
 
 #-----------------------------------------------------------------------------
 def sigstr(pair, freq, start, end):
@@ -115,14 +150,14 @@ def sigstr(pair, freq, start, end):
     When there are multiple factors triggering alerts, they indicate more
     confidence in the signal.
 
-    Example: Volume traded in the last hour was 3 standard deviations above the mean; AND
-    Change in price over the last hour is 2 standard deviations above the mean; AND
-    Volume ratio of offer/bid is 2 standard deviations above the mean.
-    we will have greater confidence in the signal.
+    Example:
+        1) Volume traded in the last hour was >= 3 STD over mean; AND
+        2) Change in price over the last hour is >=2 STD over mean; AND
+        3) Volume ratio of offer/bid is >= 2 STD over mean
 
     The model will take in factors over multiple time periods (i.e. minute,
-    hourly, daily, weekly) and will also compare against multiple historical
-    time periods (i.e. volume over last 24 hours, 48 hours, 72 hours)
+    hourly, daily, weekly) and will also compare against multiple
+    historical time periods (i.e. volume over last 24 hours, 48 hours, 72 hours)
 
     Furthermore CoinFi stores these factors across a selected universe of coins
     and the model is continuously run, outputting alerts when a factor or a
@@ -202,9 +237,9 @@ def sigstr(pair, freq, start, end):
     print("\nSignal: %s" % score)
     print("%s" % ("-"*75))
 
-    return score
-    """
-    return {"havg":havg,
-            "df":df,
-            "score":score}
-    """
+    return {
+        "hist_rng":[dfh["close_date"].ix[0], dfh["close_date"].ix[-1]],
+        "df":df,
+        "score":score,
+        "candle":dfc
+    }
