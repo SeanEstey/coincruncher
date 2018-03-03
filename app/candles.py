@@ -38,17 +38,19 @@ def db_get(pair, freq, start, end=None):
     df = pd.DataFrame(list(cursor))
     df.index = df["close_date"]
     df.index.name="date"
-
-    log.debug("%s %s %s candle DB records found", len(df), pair, freq)
-
+    #log.debug("%s %s %s candle DB records found", len(df), pair, freq)
     return df
 
 #------------------------------------------------------------------------------
 def api_get_all(pairs, freq, periodlen):
+    idx = 0
     for pair in pairs:
         results = api_get(pair, freq, periodlen)
-        log.info("%s %s %s candles updated (Binance)", len(results), pair, freq)
-        sleep(1)
+        log.debug("%s %s %s candles updated (Binance)", len(results), pair, freq)
+        idx += 1
+        if idx % 3==0:
+            sleep(1)
+    log.info("Binance %s candles updated", freq)
 
 #------------------------------------------------------------------------------
 def api_get(pair, interval, start_str, end_str=None, store_db=True):
@@ -64,7 +66,6 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
     start_ts = date_to_ms(start_str)
     end_ts = date_to_ms(end_str) if end_str else dt_to_ms(utc_datetime())
     client = Client("", "")
-    #log.debug("api_get() target: %s %s items", int((end_ts-start_ts)/periodlen), pair)
 
     while len(results) < 500 and start_ts < end_ts:
         try:
@@ -89,7 +90,7 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
             if idx % 3==0:
                 sleep(1)
         except Exception as e:
-            return log.exception("api_get() request error (got %s items)", len(results))
+            return log.exception("api_get() request error")
 
     #log.debug("api_get() result: %s loops, %s %s items", idx, len(results), pair)
 
@@ -126,7 +127,7 @@ def store(pair, freq, candles_df):
     del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
 
     log.debug("stored to db (%sms)", tmr)
-    log.debug(result)
+    #log.debug(result)
 
     return result
 

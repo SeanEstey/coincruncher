@@ -10,7 +10,7 @@ DEBUGFILE = "logs/debug.log"
 LOGFILE = "logs/info.log"
 MAX_LOG_DATE_WIDTH=14
 MAX_LOG_NAME_WIDTH=8
-MAX_LOG_LINE_WIDTH=75
+MAX_LOG_LINE_WIDTH=100
 LOG_NEWL_INDENT=25
 
 # API
@@ -24,6 +24,9 @@ BINANCE_PAIRS = [
     "LTCUSDT",
     "BCCUSDT",
     "EOSBTC",
+    "ICNBTC",
+    "LINKBTC",
+    "VENBTC",
     "NANOBTC",
     "NANOETH",
     "NEOBTC",

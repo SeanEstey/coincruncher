@@ -3,6 +3,7 @@ from pprint import pprint
 from importlib import reload
 from datetime import timedelta
 import pandas as pd
+import numpy as np
 from app import get_db, set_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate
@@ -18,16 +19,10 @@ set_db(hosts[0])
 db = get_db()
 
 
-df = gsigstr(mute=True,store=False)
-
-for n in range(0,len(df["1h_sigresult"])):
-    _print(df["1h_sigresult"][n])
-for n in range(0,len(df["5m_sigresult"])):
-    _print(df["5m_sigresult"][n])
-
-print("SIGNAL SUMMARY")
-print(df["df"])
-print("")
-print(df["5m_max"])
-print(df["1h_max"])
-print("")
+df = gsigstr(mute=True,dbstore=False)
+print("Signals")
+print(df["signals"])
+print("\nMax 5m Signal Pair")
+print(df["max5m"])
+print("\nMax 1h Signal Pair")
+print(df["max1h"])

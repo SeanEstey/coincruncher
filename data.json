@@ -3,6 +3,7 @@
         { "id":"litecoin", "symbol":"LTC"},
         { "id":"bitcoin-cash", "symbol":"BCC"},
         { "id":"monero", "symbol":"XMR"},
+        { "id":"neblio", "symbol":"NEBL"},
         { "id":"bluzelle", "symbol":"BLZ"},
         { "id":"ethereum-classic", "symbol":"ETC"}
     ],
