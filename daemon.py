@@ -48,11 +48,12 @@ def main():
     if PRELOAD_CANDLES:
         candles.api_get_all(BINANCE_PAIRS, "5m", "6 hours ago utc")
         candles.api_get_all(BINANCE_PAIRS, "1h", "80 hours ago utc")
+        candles.api_get_all(BINANCE_PAIRS, "1d", "30 days ago utc")
         log.info("Binance candles preloaded")
     else:
         candles.api_get_all(BINANCE_PAIRS, "5m", "1 hour ago utc")
 
-    res = signals.gsigstr(mute=True, store=True)
+    res = signals.gsigstr(mute=True, dbstore=True)
     log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
     log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
 
@@ -67,7 +68,7 @@ def main():
 
         if short.remain() == 0:
             candles.api_get_all(BINANCE_PAIRS, "5m", "1 hour ago utc")
-            res = signals.gsigstr(mute=True, store=True)
+            res = signals.gsigstr(mute=True, dbstore=True)
             log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
             log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
             short.set_expiry("in 1 min utc")
@@ -76,8 +77,9 @@ def main():
 
         if hourly.remain() == 0:
             candles.api_get_all(BINANCE_PAIRS, "1h", "4 hours ago utc")
+            candles.api_get_all(BINANCE_PAIRS, "1d", "2 days ago utc")
             hourly.set_expiry("next hour change")
-            res = signals.gsigstr(mute=True, store=True)
+            res = signals.gsigstr(mute=True, dbstore=True)
             log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
             log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
         else:

@@ -52,24 +52,37 @@ def gsigstr(mute=False, dbstore=False):
     from config import BINANCE_PAIRS
     _1m = timedelta(minutes=1)
     _1h = timedelta(hours=1)
+    _1d = timedelta(hours=24)
     if mute:
         sys.stdout=None
     sigs=[]
+    df3=pd.DataFrame()
     # For each pair, for each freq, get set of signals for varying timeframes.
     for pair in BINANCE_PAIRS:
         try:
-            res = {"pair":pair, "5m":[], "1h":[]}
+            res = {"pair":pair, "5m":[], "1h":[], "1d":[]}
             c5m = last(pair,"5m")
             t5m = [c5m["open_date"] - (5*_1m), c5m["close_date"] - (5*_1m)]
             c1h = last(pair,"1h")
             t1h = [c1h["open_date"] - (1*_1h), c1h["close_date"] - (1*_1h)]
+            c1d = last(pair,"1d")
+            t1d = [c1d["open_date"] - (1*_1d), c1d["close_date"] - (1*_1d)]
             for n in range(1,4):
-                res["5m"] += [sigstr(pair, "5m", t5m[0] - (n*60*_1m), end=t5m[1])]
-                res["1h"] += [sigstr(pair, "1h", t1h[0] - (n*24*_1h), end=t1h[1])]
+                res["5m"] += [sigstr(pair, "5m", str(n*60)+"m", t5m[0] - (n*60*_1m), end=t5m[1])]
+                res["1h"] += [sigstr(pair, "1h", str(n*24)+"h",  t1h[0] - (n*24*_1h), end=t1h[1])]
+                res["1d"] += [sigstr(pair, "1d", str(n*7)+"d",  t1d[0] - (n*7*_1d), end=t1d[1])]
+
+            df3 = df3.append(res["5m"][0]["df"]).append(res["5m"][1]["df"]
+            ).append(res["5m"][2]["df"]).append(res["1h"][0]["df"]
+            ).append(res["1h"][1]["df"]).append(res["1h"][2]["df"]
+            ).append(res["1d"][0]["df"]).append(res["1d"][1]["df"]
+            ).append(res["1d"][2]["df"])
         except Exception as e:
             log.exception(str(e))
             continue
         sigs += [res]
+
+    df3.index.names = ["Pair","Freq","Range",""]
 
     if mute:
         sys.stdout = sys.__stdout__
@@ -81,12 +94,14 @@ def gsigstr(mute=False, dbstore=False):
     df = pd.DataFrame(
         index=BINANCE_PAIRS,
         columns=[
-            ["5m","5m","5m","1h","1h","1h"],
-            ["60m","120m","180m","24h","48h","72h"]
+            ["5m","5m","5m","1h","1h","1h","1d","1d","1d"],
+            ["60m","120m","180m","24h","48h","72h","7d","14d","21d"]
         ]
     ).astype(float).round(2)
     for psigs in sigs:
-        df.loc[psigs["pair"]] = [n["score"] for n in psigs["5m"]] + [n["score"] for n in psigs["1h"]]
+        df.loc[psigs["pair"]] = [n["score"] for n in psigs["5m"]] +\
+            [n["score"] for n in psigs["1h"]] +\
+            [n["score"] for n in psigs["1d"]]
 
     update_sigtracker(df)
 
@@ -98,7 +113,7 @@ def gsigstr(mute=False, dbstore=False):
     max1h = df["1h"]["24h"].idxmax()
     df1h = pd.DataFrame([df.ix[max1h].values], index=[max1h], columns=df.columns)
 
-    return {"signals":df, "max5m":df5m, "max1h":df1h}
+    return {"signalsum":df, "signals":df3, "max5m":df5m, "max1h":df1h}
 
 #-----------------------------------------------------------------------------
 def store(gsiglist):
@@ -150,7 +165,7 @@ def update_sigtracker(df):
             score = r[k]
 
             if score > 0:
-                if _saved[key][0] > 0:
+                if _saved.get(key) and _saved[key][0] > 0:
                     # Keep existing +score datetime, update score
                     doc[key] = [score, _saved[key][1]]
                 else:
@@ -166,7 +181,7 @@ def update_sigtracker(df):
     return docs
 
 #-----------------------------------------------------------------------------
-def sigstr(pair, freq, start, end):
+def sigstr(pair, freq, label, start, end):
     """Compare candle fields to historical averages. Measure magnitude in
     number of standard deviations from the mean.
     """
@@ -218,9 +233,11 @@ def sigstr(pair, freq, start, end):
     score = round(float(score), 2)
 
     df = pd.DataFrame(data,
-        index=["Close", "Volume", "Buy Vol", "Buy Ratio", "Trades"],
-        columns=["Candle", "Hist. Mean", "Diff", "Hist. Std", "Score"]
+        index=["Close", "Volume", "BuyVol", "BuyRatio", "Trades"],
+        columns=["Candle", "HistMean", "Diff", "HistStd", "Score"]
     ).astype(float).round(7)
+
+    df = pd.concat([df], keys=[(pair,freq.upper(),label.upper())])
 
     return {
         "hist_rng":[dfh["close_date"].ix[0], dfh["close_date"].ix[-1]],
