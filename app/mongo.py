@@ -1,6 +1,5 @@
 import logging, os, pymongo
-from config import DB
-import db_auth
+from docs.mongo_key import *
 from app.timer import Timer
 log = logging.getLogger('mongodb')
 
@@ -25,8 +24,8 @@ def create_client(host=None, port=None, connect=True, auth=True):
 def authenticate(client, user=None, pw=None):
     try:
         client.admin.authenticate(
-            user or db_auth.user,
-            pw or db_auth.password,
+            user or DBUSER,
+            pw or DBPASSWORD,
             mechanism='SCRAM-SHA-1')
     except Exception as e:
         log.exception("mongodb authentication error. host=%s, port=%s",

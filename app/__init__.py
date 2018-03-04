@@ -2,7 +2,7 @@
 import logging
 import textwrap
 from logging import DEBUG, INFO, WARNING
-from config import *
+from docs.config import *
 from app.utils import colors
 log = logging.getLogger('app')
 
@@ -15,7 +15,7 @@ def set_db(host):
         port=27017,
         connect=True,
         auth=True)
-    db = client[DB]
+    db = client[DB_NAME]
     return db
 
 #---------------------------------------------------------------------------

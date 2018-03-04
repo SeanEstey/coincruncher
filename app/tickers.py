@@ -1,12 +1,10 @@
 # app.tickers
-
 import logging, pytz, json
 from pprint import pformat, pprint
 from datetime import datetime, timedelta as delta, date
 from dateutil import tz
 from dateutil.parser import parse
 from pymongo import ReplaceOne, UpdateOne
-import pandas as pd
 from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, parse_period

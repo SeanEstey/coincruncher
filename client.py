@@ -1,9 +1,9 @@
 # client
 import curses, logging
-from config import *
+from docs.config import *
 from app.timer import Timer
 from app import set_db, get_db, screen, views
-from app.screen import KEY_UP, KEY_DOWN
+from curses import KEY_UP, KEY_DOWN
 log = logging.getLogger("client")
 
 # Globals
@@ -91,6 +91,7 @@ def process_input(stdscr, ch):
 
 #----------------------------------------------------------------------
 def main(stdscr):
+    from docs.data import COINMARKETCAP as CMC
     import json
     import getopt
     import sys
@@ -98,7 +99,10 @@ def main(stdscr):
     global view
 
     try:
-        opts, args = getopt.getopt(sys.argv[1:], "h:pw", ['dbhost=', 'portfolio', 'watchlist'])
+        opts, args = getopt.getopt(
+            sys.argv[1:],
+            "h:pw",
+            ['dbhost=', 'portfolio', 'watchlist'])
     except getopt.GetoptError:
         sys.exit(2)
 
@@ -109,11 +113,11 @@ def main(stdscr):
         if opt in('-h', '--dbhost'):
             set_db(arg)
         elif opt in ('-p', '--portfolio'):
-            user_data = json.load(open('data.json'))
-            update_db('portfolio', user_data['portfolio'])
+            update_db('portfolio',
+                [{"symbol":k,"amount":v} for k,v in CMC["PORTFOLIO"].items()])
         elif opt in('-w', '--watchlist'):
-            user_data = json.load(open('data.json'))
-            update_db('watchlist', user_data['watchlist'])
+            update_db('watchlist',
+                [{"symbol":n} for n in CMC["WATCH"]])
 
     log.debug("initializing curses screen")
     screen.setup(stdscr)

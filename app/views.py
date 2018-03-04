@@ -7,15 +7,11 @@ from pprint import pformat
 from app import get_db, forex, markets, tickers
 from app.analyze import price_df
 from app.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
-from app.screen import c, print_table, pretty, pnlcolor, coeff_color
+from app.screen import c, midx, print_table, pretty, pnlcolor, coeff_color
 from app.timer import Timer
-from config import CURRENCY
+from docs.config import CURRENCY
+from docs.data import COINMARKETCAP as CMC
 log = logging.getLogger('views')
-
-def midx(stdscr):
-    return stdscr.getmaxyx()[1]
-def midy(stdscr):
-    return stdscr.getmaxyx()[0]
 
 #-----------------------------------------------------------------------------
 def show_home(stdscr):
@@ -55,14 +51,12 @@ def show_home(stdscr):
 def show_patterns(stdscr):
     """Ticker correlation matrix data table.
     """
-    coins=["BTC","BCH","ETH","ETC","XRP","LTC","ADA","XLM","EOS","XMR",
-             "NEO","GAS","OMG","NANO","ICX","ZCL","DRGN","AST","ODN"]
     rng = pd.date_range(
         utc_dtdate()-timedelta(days=1),
         periods=24,
         freq='1H')
 
-    df = price_df(coins, rng)
+    df = price_df(CMC["CORR"], rng)
     corr = df.pct_change().corr().round(2)
 
     headers = [" "] + corr.index.tolist()

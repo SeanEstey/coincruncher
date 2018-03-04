@@ -32,7 +32,8 @@ def eod_tasks():
 
 #---------------------------------------------------------------------------
 def main():
-    from config import TICKER_LIMIT, BINANCE_PAIRS
+    from docs.config import TICKER_LIMIT
+    from docs.data import BINANCE
     from binance.client import Client
     from app import candles, coinmktcap, signals
     from app.timer import Timer
@@ -46,12 +47,12 @@ def main():
     short = Timer(name="MinTimer", expire="in 1 min utc")
 
     if PRELOAD_CANDLES:
-        candles.api_get_all(BINANCE_PAIRS, "5m", "6 hours ago utc")
-        candles.api_get_all(BINANCE_PAIRS, "1h", "80 hours ago utc")
-        candles.api_get_all(BINANCE_PAIRS, "1d", "30 days ago utc")
+        candles.api_get_all(BINANCE["CANDLES"], "5m", "6 hours ago utc")
+        candles.api_get_all(BINANCE["CANDLES"], "1h", "80 hours ago utc")
+        candles.api_get_all(BINANCE["CANDLES"], "1d", "30 days ago utc")
         log.info("Binance candles preloaded")
     else:
-        candles.api_get_all(BINANCE_PAIRS, "5m", "1 hour ago utc")
+        candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
 
     res = signals.gsigstr(mute=True, dbstore=False)
     log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
@@ -67,7 +68,7 @@ def main():
             pass
 
         if short.remain() == 0:
-            candles.api_get_all(BINANCE_PAIRS, "5m", "1 hour ago utc")
+            candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
             res = signals.gsigstr(mute=True, dbstore=False)
             log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
             log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
@@ -76,8 +77,8 @@ def main():
             print("%s: %s" % (short.name, short.remain(unit='str')))
 
         if hourly.remain() == 0:
-            candles.api_get_all(BINANCE_PAIRS, "1h", "4 hours ago utc")
-            candles.api_get_all(BINANCE_PAIRS, "1d", "2 days ago utc")
+            candles.api_get_all(BINANCE["CANDLES"], "1h", "4 hours ago utc")
+            candles.api_get_all(BINANCE["CANDLES"], "1d", "2 days ago utc")
             hourly.set_expiry("next hour change")
             res = signals.gsigstr(mute=True, dbstore=False)
             log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
@@ -99,10 +100,6 @@ if __name__ == '__main__':
     import threading
     import sys
     from app import set_db
-
-    # STFU
-    #logging.getLogger("requests").setLevel(logging.ERROR)
-    #logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
 
     divstr = "##### %s #####"
     log.info(divstr % "restarted")
@@ -132,4 +129,3 @@ if __name__ == '__main__':
     log.debug(divstr % "sys.exit()")
     log.info(divstr % "exiting")
     sys.exit()
-

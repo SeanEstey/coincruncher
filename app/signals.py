@@ -43,13 +43,13 @@ from app import get_db
 from app.candles import db_get, last
 from app.timer import Timer
 from app.utils import utc_datetime as now
+from docs.data import BINANCE
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
 def gsigstr(mute=False, dbstore=False):
     """Get signal dataframe for all combined pairs.
     """
-    from config import BINANCE_PAIRS
     _1m = timedelta(minutes=1)
     _1h = timedelta(hours=1)
     _1d = timedelta(hours=24)
@@ -58,7 +58,7 @@ def gsigstr(mute=False, dbstore=False):
     sigs=[]
     df3=pd.DataFrame()
     # For each pair, for each freq, get set of signals for varying timeframes.
-    for pair in BINANCE_PAIRS:
+    for pair in BINANCE["CANDLES"]:
         try:
             res = {"pair":pair, "5m":[], "1h":[], "1d":[]}
             c5m = last(pair,"5m")
@@ -92,7 +92,7 @@ def gsigstr(mute=False, dbstore=False):
 
     # Combine all pair signals into dataframe, find strongest signals
     df = pd.DataFrame(
-        index=BINANCE_PAIRS,
+        index=BINANCE["CANDLES"],
         columns=[
             ["5m","5m","5m","1h","1h","1h","1d","1d","1d"],
             ["60m","120m","180m","24h","48h","72h","7d","14d","21d"]

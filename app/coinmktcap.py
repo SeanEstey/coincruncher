@@ -4,7 +4,7 @@ import argparse, logging, requests, json, pytz, re, sys, time
 from sys import getsizeof as getsize
 from pymongo import ReplaceOne
 from .timer import Timer
-from config import CURRENCY as cur
+from docs.config import CURRENCY as cur
 from app import get_db
 from app.utils import utc_datetime, duration, to_int, to_dt
 log = logging.getLogger('global')

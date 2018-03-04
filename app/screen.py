@@ -1,9 +1,7 @@
 # Display formatted text to stdout in table form
 import curses, logging, re
-from curses import init_pair, color_pair, KEY_UP, KEY_DOWN
+from curses import init_pair, color_pair
 from decimal import Decimal
-from config import *
-from config import CURRENCY as cur
 log = logging.getLogger(__name__)
 
 class c:
@@ -13,6 +11,10 @@ def get_n_lines():
     return curses.LINES
 def get_n_cols():
     return curses.COLS
+def midx(stdscr):
+    return stdscr.getmaxyx()[1]
+def midy(stdscr):
+    return stdscr.getmaxyx()[0]
 
 #----------------------------------------------------------------------
 def setup(stdscr):
