@@ -24,10 +24,4 @@ set_db(hosts[0])
 db = get_db()
 
 
-df = gsigstr(mute=True,dbstore=False)
-print("Signals")
-print(df["signalsum"])
-#print("\nMax 5m Signal Pair")
-#print(df["max5m"])
-#print("\nMax 1h Signal Pair")
-#print(df["max1h"])
+df = gsigstr(dbstore=True)

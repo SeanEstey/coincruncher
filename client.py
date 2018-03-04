@@ -45,6 +45,10 @@ def process_input(stdscr, ch):
         view = views.show_portfolio
         view(stdscr)
         stdscr.refresh()
+    elif ch == ord('s'):
+        view = views.show_signals
+        view(stdscr)
+        stdscr.refresh()
     elif ch == ord('d'):
         view = views.show_patterns
         view(stdscr)

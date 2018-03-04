@@ -6,6 +6,7 @@ COINMARKETCAP = {
         "BCC",
         "XMR",
         "NEBL",
+        "OCN",
         "BLZ",
         "ETC"
     ],

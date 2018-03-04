@@ -40,12 +40,27 @@ def show_home(stdscr):
     width = stdscr.getmaxyx()[1]
     x = int(width/2) - 10
     stdscr.addstr(stdscr.getyx()[0]+3, x,  "G    Global Market")
-    stdscr.addstr(stdscr.getyx()[0]+1, x,  "M    Mooning")
+    stdscr.addstr(stdscr.getyx()[0]+1, x,  "S    Signals")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "H    Ticker History")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "D    Data Patterns")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "W    My Watchlist")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "P    My Portfolio")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "Q    Quit")
+
+#-----------------------------------------------------------------------------
+def show_signals(stdscr):
+    from pprint import pformat
+    from app.signals import gsigstr
+
+    stdscr.clear()
+    df = gsigstr(mute=True,dbstore=False)
+    sigsstr = pformat(df["signalsum"],width=50)
+    sigslist = sigsstr.split("\n")
+
+    y=4
+    for row in sigslist:
+        stdscr.addstr(y, 2, row)
+        y+=1
 
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):

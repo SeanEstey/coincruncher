@@ -35,7 +35,7 @@ series of factors has a positive signal.
 
 import logging
 import sys
-from pymongo import ReplaceOne
+from pymongo import ReplaceOne, UpdateOne
 from datetime import timedelta
 import pandas as pd
 import numpy as np
@@ -47,140 +47,86 @@ from docs.data import BINANCE
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def gsigstr(mute=False, dbstore=False):
+def gsigstr(dbstore=False):
     """Get signal dataframe for all combined pairs.
     """
     _1m = timedelta(minutes=1)
     _1h = timedelta(hours=1)
     _1d = timedelta(hours=24)
-    if mute:
-        sys.stdout=None
-    sigs=[]
-    df3=pd.DataFrame()
-    # For each pair, for each freq, get set of signals for varying timeframes.
+    dfsig = pd.DataFrame()
+
+    # Generate signal scores for each (Pair,Freq,Period) tuple.
     for pair in BINANCE["CANDLES"]:
-        try:
-            res = {"pair":pair, "5m":[], "1h":[], "1d":[]}
-            c5m = last(pair,"5m")
-            t5m = [c5m["open_date"] - (5*_1m), c5m["close_date"] - (5*_1m)]
-            c1h = last(pair,"1h")
-            t1h = [c1h["open_date"] - (1*_1h), c1h["close_date"] - (1*_1h)]
-            c1d = last(pair,"1d")
-            t1d = [c1d["open_date"] - (1*_1d), c1d["close_date"] - (1*_1d)]
-            for n in range(1,4):
-                res["5m"] += [sigstr(pair, "5m", str(n*60)+"m", t5m[0] - (n*60*_1m), end=t5m[1])]
-                res["1h"] += [sigstr(pair, "1h", str(n*24)+"h",  t1h[0] - (n*24*_1h), end=t1h[1])]
-                res["1d"] += [sigstr(pair, "1d", str(n*7)+"d",  t1d[0] - (n*7*_1d), end=t1d[1])]
+        c5m = last(pair,"5m")
+        t5m = [c5m["open_date"] - (5*_1m), c5m["close_date"] - (5*_1m)]
+        c1h = last(pair,"1h")
+        t1h = [c1h["open_date"] - (1*_1h), c1h["close_date"] - (1*_1h)]
+        c1d = last(pair,"1d")
+        t1d = [c1d["open_date"] - (1*_1d), c1d["close_date"] - (1*_1d)]
 
-            df3 = df3.append(res["5m"][0]["df"]).append(res["5m"][1]["df"]
-            ).append(res["5m"][2]["df"]).append(res["1h"][0]["df"]
-            ).append(res["1h"][1]["df"]).append(res["1h"][2]["df"]
-            ).append(res["1d"][0]["df"]).append(res["1d"][1]["df"]
-            ).append(res["1d"][2]["df"])
-        except Exception as e:
-            log.exception(str(e))
-            continue
-        sigs += [res]
+        for n in range(1,4):
+            dfsig = dfsig.append([
+                sigstr(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), end=t5m[1]),
+                sigstr(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), end=t1h[1]),
+                sigstr(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
+            ])
 
-    df3.index.names = ["Pair","Freq","Range",""]
+    # Sum signals in last column for each multi-index (Pair,Freq,Period,Prop)
+    dfsig = dfsig.sort_index()
+    sumlist = [ [n[0:-1], dfsig.ix[n[0:-1]]["Signal"].sum()] for n in dfsig.index.values]
+    sumdict = {}
+    for n in sumlist:
+        sumdict[n[0]] = n[1]
 
-    if mute:
-        sys.stdout = sys.__stdout__
+    dfsum = pd.DataFrame(
+        list(sumdict.values()),
+        index=pd.MultiIndex.from_tuples(list(sumdict.keys())),
+        columns=["Signal"]
+    ).sort_index()
 
     if dbstore:
-        store(sigs)
+        store(dfsum, dfsig)
 
-    # Combine all pair signals into dataframe, find strongest signals
-    df = pd.DataFrame(
-        index=BINANCE["CANDLES"],
-        columns=[
-            ["5m","5m","5m","1h","1h","1h","1d","1d","1d"],
-            ["60m","120m","180m","24h","48h","72h","7d","14d","21d"]
-        ]
-    ).astype(float).round(2)
-    for psigs in sigs:
-        df.loc[psigs["pair"]] = [n["score"] for n in psigs["5m"]] +\
-            [n["score"] for n in psigs["1h"]] +\
-            [n["score"] for n in psigs["1d"]]
+    return {"signalsum":dfsum, "signals":dfsig}
 
-    update_sigtracker(df)
-
-    df = df.sort_values([('5m','60m')], ascending=False)
+    """df = df.sort_values([('5m','60m')], ascending=False)
     max5m = df["5m"]["60m"].idxmax()
     df5m = pd.DataFrame([df.ix[max5m].values], index=[max5m], columns=df.columns)
-
     df = df.sort_values([('1h','24h')], ascending=False)
     max1h = df["1h"]["24h"].idxmax()
     df1h = pd.DataFrame([df.ix[max1h].values], index=[max1h], columns=df.columns)
-
-    return {"signalsum":df, "signals":df3, "max5m":df5m, "max1h":df1h}
+    #, "max5m":df5m, "max1h":df1h}
+    """
 
 #-----------------------------------------------------------------------------
-def store(gsiglist):
-    """Batch store list of sigstr results to mongodb.
-    :gsiglist: list of signal dicts in format: {
-        "pair":pair,
-        "5m":[sigstr_results],
-        "1h":[sigstr_results]
-    }
-    """
-    t1 = Timer()
-    ops=[]
-    for pairsigs in gsiglist:
-        for sig in pairsigs["5m"]:
-            sig["df"] = sig["df"].to_dict()
-        for sig in pairsigs["1h"]:
-            sig["df"] = sig["df"].to_dict()
-        for sig in pairsigs["1d"]:
-            sig["df"] = sig["df"].to_dict()
-        ops.append(ReplaceOne({"pair":pairsigs["pair"]}, pairsigs,
-            upsert=True))
-    try:
-        result = get_db().signals.bulk_write(ops)
-    except Exception as e:
-        return log.exception("gsigstr bulk_write() error")
-
-    log.debug("pair signals saved to db in %sms", t1)
-    log.debug(result.bulk_api_result)
-
-#-----------------------------------------------------------------------------
-def update_sigtracker(df):
-    """Update summary signal document w/ running timer that each
-    pair-frequency-score is > 0 (longer time, higher confidence in signal).
-    """
-    from app.utils import utc_datetime
-    pairs = df.index.tolist()
-    records = df.to_dict('record')
+def store(dfsum, dfsig):
     db = get_db()
-    ops = []
-    docs = []
 
-    for n in range(0,len(pairs)):
-        pair = pairs[n]
-        r = records[n]
-        doc = {"pair":pair}
-        _saved = db.sig_tracker.find_one({"pair":pair})
+    ops=[]
+    # Save signal sum data
+    for key in list(dfsum.to_dict()["Signal"].keys()):
+        sigval = float(dfsum.ix[key]["Signal"])
+        since = now() if sigval > 0 else 0
+        ops.append(UpdateOne(
+            {"pair":key[0], "freq":key[1], "period":key[2]},
+            {
+              "$set": {"pair":key[0], "freq":key[1], "period":key[2], "signal":sigval},
+              "$min": {"since":since},
+            },
+            upsert=True))
+    r = db.signal_sum.bulk_write(ops)
+    log.debug(r.bulk_api_result)
 
-        # k is multi-index tuple ('5m', '60m')
-        for k in list(r.keys()):
-            key = "_".join(k)
-            score = r[k]
-
-            if score > 0:
-                if _saved and _saved.get(key) and _saved[key][0] > 0:
-                    # Keep existing +score datetime, update score
-                    doc[key] = [score, _saved[key][1]]
-                else:
-                    # Add new +score datetime
-                    doc[key] = [score, utc_datetime()]
-            else:
-                doc[key] = [score]
-
-        docs.append(doc)
-        ops.append(ReplaceOne({"pair":pair}, doc, upsert=True))
-
-    result = db.sig_tracker.bulk_write(ops)
-    return docs
+    ops=[]
+    # Save signal data
+    for key in dfsig.index.values:
+        k = key[0:-1]
+        ops.append(ReplaceOne(
+            {"pair":k[0], "freq":k[1], "period":k[2]},
+            {"pair":k[0], "freq":k[1], "period":k[2], "dataframe":dfsig.ix[k].to_dict()},
+            upsert=True))
+    r = db.signals.bulk_write(ops)
+    log.debug(r.bulk_api_result)
 
 #-----------------------------------------------------------------------------
 def sigstr(pair, freq, label, start, end):
@@ -234,19 +180,17 @@ def sigstr(pair, freq, label, start, end):
     score = cs + vs + bvs + brs + ts
     score = round(float(score), 2)
 
-    df = pd.DataFrame(data,
-        index=["Close", "Volume", "BuyVol", "BuyRatio", "Trades"],
-        columns=["Candle", "HistMean", "Diff", "HistStd", "Score"]
+    fields = ["Close", "Volume", "BuyVol", "BuyRatio", "Trades"]
+    cols = ["Candle", "HistMean", "Diff", "HistStd", "Signal"]
+
+    # 4-level multi-index [5 x 5] dataframe
+    # i.e. BTCUSDT->1H->24H->Volume
+    df = pd.DataFrame(
+        data,
+        index=pd.MultiIndex.from_product([ [pair], [freq], [label], fields ]),
+        columns=cols
     ).astype(float).round(7)
-
-    df = pd.concat([df], keys=[(pair,freq.upper(),label.upper())])
-
-    return {
-        "hist_rng":[dfh["close_date"].ix[0], dfh["close_date"].ix[-1]],
-        "df":df,
-        "score":score,
-        "candle":dfc
-    }
+    return df
 
 #-----------------------------------------------------------------------------
 def _print(sigresult):
@@ -264,41 +208,3 @@ def _print(sigresult):
     print("\n%s" % sigresult["df"])
     print("\nSignal: %s" % sigresult["score"])
     print("%s" % ("-"*75))
-
-#------------------------------------------------------------------------------
-def get_sig(pair):
-    """https://pandas.pydata.org/pandas-docs/stable/advanced.html
-    """
-    sig = get_db().signals.find_one({"pair":pair})
-    return sig
-
-    """
-    for pairsigs in sigs:
-        _5m = pairsigs["5m"]
-        _1h = pairsigs["1h"]
-        pair = pairsigs["pair"]#.lower()
-
-        _df1 = pd.concat([
-                _5m[0]["df"],
-                _5m[1]["df"],
-                _5m[2]["df"],
-                _1h[0]["df"],
-                _1h[1]["df"],
-                _1h[2]["df"]
-            ],
-            keys={
-                "%s_%s"%(pair,"A_60m"): _5m[0]["df"],
-                "%s_%s"%(pair,"B_120m"):_5m[1]["df"],
-                "%s_%s"%(pair,"C_180m"):_5m[2]["df"],
-                "%s_%s"%(pair,"D_24h"):_1h[0]["df"],
-                "%s_%s"%(pair,"E_48h"):_1h[1]["df"],
-                "%s_%s"%(pair,"F_72h"):_1h[2]["df"]
-            }
-        )#.sort_index()
-        print("")
-        print(_df1)
-
-        #_df2 = pd.concat(_1h, keys={"24H":_1h[0], "48H":_1h[1], "72H":_1h[2]})
-        #_bigdf = pd.concat([_df1,_df2], keys={pairsigs["pair"]+"_5m":_df1, pairsigs["pair"]+"_1h":_df2})
-        #print(_bigdf)
-    """
