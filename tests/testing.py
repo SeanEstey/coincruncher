@@ -4,6 +4,11 @@ from importlib import reload
 from datetime import timedelta
 import pandas as pd
 import numpy as np
+import os,sys,inspect
+currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentframe())))
+parentdir = os.path.dirname(currentdir)
+sys.path.insert(0,parentdir)
+
 from app import get_db, set_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate
