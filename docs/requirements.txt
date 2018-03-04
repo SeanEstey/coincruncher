@@ -1,0 +1,9 @@
+BitEx==2.0.0
+bs4
+babel
+dateparser
+getch
+money
+pymongo
+pandas
+scipy

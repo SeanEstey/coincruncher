@@ -1,0 +1,21 @@
+# Test out by running logrotate --force /etc/logrotate.d/coincruncher
+#
+# 'copytruncate' used because python logger handler will still be pointing
+# to the old renamed file if it is simply renamed
+#
+# To have logs rotate just before midnight, change the following line in
+# /etc/crontab:
+#25 6    * * *    root  test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+# to:
+#55 23    * * *    root  test -x /usr/sbin/anacron || ( cd / && run-parts --report /etc/cron.daily )
+
+/root/coincruncher/logs/*.log {
+    daily
+    rotate 10
+    su root root
+    notifempty
+    copytruncate
+    dateext
+    dateformat -%Y-%m-%d
+    sharedscripts
+}
