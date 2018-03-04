@@ -23,6 +23,7 @@ BINANCE_PAIRS = [
     "BNBUSDT",
     "LTCUSDT",
     "BCCUSDT",
+    "ETHBTC",
     "EOSBTC",
     "ICNBTC",
     "LINKBTC",
@@ -35,7 +36,9 @@ BINANCE_PAIRS = [
     "ETCBTC",
     "XMRBTC",
     "NEBLBTC",
-    "WTCBTC"
+    "WTCBTC",
+    "NCASHBTC",
+    "ZECBTC"
 ]
 
 # Client

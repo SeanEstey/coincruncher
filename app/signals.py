@@ -131,6 +131,8 @@ def store(gsiglist):
             sig["df"] = sig["df"].to_dict()
         for sig in pairsigs["1h"]:
             sig["df"] = sig["df"].to_dict()
+        for sig in pairsigs["1d"]:
+            sig["df"] = sig["df"].to_dict()
         ops.append(ReplaceOne({"pair":pairsigs["pair"]}, pairsigs,
             upsert=True))
     try:
@@ -165,7 +167,7 @@ def update_sigtracker(df):
             score = r[k]
 
             if score > 0:
-                if _saved.get(key) and _saved[key][0] > 0:
+                if _saved and _saved.get(key) and _saved[key][0] > 0:
                     # Keep existing +score datetime, update score
                     doc[key] = [score, _saved[key][1]]
                 else:
