@@ -1,38 +1,4 @@
-""" app.signals
-It’s simple supply and demand: a sudden increase in the number of buyers
-over sellers in a short space of time. In this scenario, certain phenomena
-can be observed such as:
-    -An acceleration of volume within a short period of time.
-    -An increase in price volatility over historic averages.
-    -An increase in the ratio of volume traded on bid/ask versus normal.
-
-Each of these phenomena can be quantified by tracking the following factors:
-    -Volume traded over an hourly period.
-    -Change in price over an hourly period.
-    -Volume of the coin traded on the offer divided by the volume of the
-    coin traded on the bid over an hourly period.
-
-Every factor is stored by CoinFi (in this case hourly) and plotted on a
-normal distribution. When the latest hourly data is updated, the model
-reruns comparing the current factor value versus the historical factor
-values. The data is plotted on a normal distribution and any current
-factor value that is 2 standard deviations above the mean triggers an alert.
-
-When there are multiple factors triggering alerts, they indicate more
-confidence in the signal. Example:
-    -Volume traded in the last hour was >= 3 STD over mean; AND
-    -Change in price over the last hour is >=2 STD over mean; AND
-    -Volume ratio of offer/bid is >= 2 STD over mean
-
-The model will take in factors over multiple time periods (i.e. minute,
-hourly, daily, weekly) and will also compare against multiple
-historical time periods (i.e. volume over last 24 hours, 48 hours, 72 hours)
-
-Furthermore CoinFi stores these factors across a selected universe of coins
-and the model is continuously run, outputting alerts when a factor or a
-series of factors has a positive signal.
-"""
-
+# app.signals
 import logging
 import sys
 from pymongo import ReplaceOne, UpdateOne
@@ -47,13 +13,13 @@ from docs.data import BINANCE
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def gsigstr(dbstore=False):
-    """Get signal dataframe for all combined pairs.
+def calc_aggr(to_db=False):
+    """Aggregate signal scores for all Binance pair candles.
     """
     _1m = timedelta(minutes=1)
     _1h = timedelta(hours=1)
     _1d = timedelta(hours=24)
-    dfsig = pd.DataFrame()
+    df_pairs = pd.DataFrame()
 
     # Generate signal scores for each (Pair,Freq,Period) tuple.
     for pair in BINANCE["CANDLES"]:
@@ -65,71 +31,32 @@ def gsigstr(dbstore=False):
         t1d = [c1d["open_date"] - (1*_1d), c1d["close_date"] - (1*_1d)]
 
         for n in range(1,4):
-            dfsig = dfsig.append([
-                sigstr(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), end=t5m[1]),
-                sigstr(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), end=t1h[1]),
-                sigstr(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
+            df_pairs = df_pairs.append([
+                calc_pair(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), end=t5m[1]),
+                calc_pair(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), end=t1h[1]),
+                calc_pair(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
             ])
 
     # Sum signals in last column for each multi-index (Pair,Freq,Period,Prop)
-    dfsig = dfsig.sort_index()
-    sumlist = [ [n[0:-1], dfsig.ix[n[0:-1]]["Signal"].sum()] for n in dfsig.index.values]
-    sumdict = {}
-    for n in sumlist:
-        sumdict[n[0]] = n[1]
+    df_pairs = df_pairs.sort_index()
+    aggr_list = [ [n[0:-1], df_pairs.ix[n[0:-1]]["Signal"].sum()] for n in df_pairs.index.values]
+    aggr_dict = {}
+    for n in aggr_list:
+        aggr_dict[n[0]] = n[1]
 
-    dfsum = pd.DataFrame(
-        list(sumdict.values()),
-        index=pd.MultiIndex.from_tuples(list(sumdict.keys())),
+    df_aggr = pd.DataFrame(
+        list(aggr_dict.values()),
+        index=pd.MultiIndex.from_tuples(list(aggr_dict.keys())),
         columns=["Signal"]
     ).sort_index()
 
-    if dbstore:
-        store(dfsum, dfsig)
+    if to_db:
+        save_db(df_aggr=df_aggr, df_pairs=df_pairs)
 
-    return {"signalsum":dfsum, "signals":dfsig}
-
-    """df = df.sort_values([('5m','60m')], ascending=False)
-    max5m = df["5m"]["60m"].idxmax()
-    df5m = pd.DataFrame([df.ix[max5m].values], index=[max5m], columns=df.columns)
-    df = df.sort_values([('1h','24h')], ascending=False)
-    max1h = df["1h"]["24h"].idxmax()
-    df1h = pd.DataFrame([df.ix[max1h].values], index=[max1h], columns=df.columns)
-    #, "max5m":df5m, "max1h":df1h}
-    """
+    return {"aggregate":df_aggr, "pairs":df_pairs}
 
 #-----------------------------------------------------------------------------
-def store(dfsum, dfsig):
-    db = get_db()
-
-    ops=[]
-    # Save signal sum data
-    for key in list(dfsum.to_dict()["Signal"].keys()):
-        sigval = float(dfsum.ix[key]["Signal"])
-        since = now() if sigval > 0 else 0
-        ops.append(UpdateOne(
-            {"pair":key[0], "freq":key[1], "period":key[2]},
-            {
-              "$set": {"pair":key[0], "freq":key[1], "period":key[2], "signal":sigval},
-              "$min": {"since":since},
-            },
-            upsert=True))
-    r = db.signal_sum.bulk_write(ops)
-    log.debug(r.bulk_api_result)
-
-    ops=[]
-    # Save signal data
-    for key in dfsig.index.values:
-        k = key[0:-1]
-        ops.append(ReplaceOne(
-            {"pair":k[0], "freq":k[1], "period":k[2]},
-            {"pair":k[0], "freq":k[1], "period":k[2], "dataframe":dfsig.ix[k].to_dict()},
-            upsert=True))
-    r = db.signals.bulk_write(ops)
-    log.debug(r.bulk_api_result)
-
-#-----------------------------------------------------------------------------
-def sigstr(pair, freq, label, start, end):
+def calc_pair(pair, freq, label, start, end):
     """Compare candle fields to historical averages. Measure magnitude in
     number of standard deviations from the mean.
     """
@@ -185,12 +112,62 @@ def sigstr(pair, freq, label, start, end):
 
     # 4-level multi-index [5 x 5] dataframe
     # i.e. BTCUSDT->1H->24H->Volume
-    df = pd.DataFrame(
+    return pd.DataFrame(
         data,
         index=pd.MultiIndex.from_product([ [pair], [freq], [label], fields ]),
         columns=cols
     ).astype(float).round(7)
-    return df
+
+#-----------------------------------------------------------------------------
+def load_db(aggr=True, pairs=False):
+    """Return aggregate signals from db as multi-index dataframe.
+    """
+    if pairs == True:
+        # TODO
+        pass
+
+    if aggr == True:
+        df = pd.DataFrame(list(get_db().signal_sum.find()))
+        df.index = list(zip(df.pair, df.freq, df.period))
+        df.since = df.since.replace(0,np.nan)
+        _df = pd.DataFrame(
+            df[["signal","since"]],
+            index=pd.MultiIndex.from_tuples(df.index)
+        ) #.sort_index()
+        _df = _df.sort_values(by=['signal'], ascending=False)
+        return _df
+
+#-----------------------------------------------------------------------------
+def save_db(df_aggr=None, df_pairs=None):
+    db = get_db()
+
+    if df_aggr is not None:
+        ops=[]
+        # Save signal sum data
+        for key in list(df_aggr.to_dict()["Signal"].keys()):
+            sigval = float(df_aggr.ix[key]["Signal"])
+            since = now() if sigval > 0 else 0
+            ops.append(UpdateOne(
+                {"pair":key[0], "freq":key[1], "period":key[2]},
+                {
+                  "$set": {"pair":key[0], "freq":key[1], "period":key[2], "signal":sigval},
+                  "$min": {"since":since},
+                },
+                upsert=True))
+        r = db.signal_sum.bulk_write(ops)
+        log.debug(r.bulk_api_result)
+
+    if df_pairs is not None:
+        ops=[]
+        # Save signal data
+        for key in df_pairs.index.values:
+            k = key[0:-1]
+            ops.append(ReplaceOne(
+                {"pair":k[0], "freq":k[1], "period":k[2]},
+                {"pair":k[0], "freq":k[1], "period":k[2], "dataframe":df_pairs.ix[k].to_dict()},
+                upsert=True))
+        r = db.signals.bulk_write(ops)
+        log.debug(r.bulk_api_result)
 
 #-----------------------------------------------------------------------------
 def _print(sigresult):

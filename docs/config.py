@@ -8,9 +8,11 @@ DROPBOXD_PATH="/opt/dropbox/dropboxd"
 # Logger
 DEBUGFILE = "logs/debug.log"
 LOGFILE = "logs/info.log"
+SIGNALFILE = "logs/signals.log"
+SIGNAL = 100
 MAX_LOG_DATE_WIDTH=14
 MAX_LOG_NAME_WIDTH=8
-MAX_LOG_LINE_WIDTH=100
+MAX_LOG_LINE_WIDTH=125
 LOG_NEWL_INDENT=25
 
 # Client

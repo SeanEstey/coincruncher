@@ -8,8 +8,6 @@ log = logging.getLogger("daemon")
 
 PRELOAD_CANDLES = False
 
-# dis on server?
-
 #---------------------------------------------------------------------------
 class GracefulKiller:
     kill_now = False
@@ -46,19 +44,16 @@ def main():
     markets.db_audit()
     daily = Timer(name="DailyTimer", expire=utc_dtdate()+timedelta(days=1))
     hourly = Timer(name="HourTimer", expire="next hour change")
-    short = Timer(name="MinTimer", expire="in 1 min utc")
+    short = Timer(name="MinTimer", expire="in 5 min utc")
 
     if PRELOAD_CANDLES:
         candles.api_get_all(BINANCE["CANDLES"], "5m", "6 hours ago utc")
         candles.api_get_all(BINANCE["CANDLES"], "1h", "80 hours ago utc")
         candles.api_get_all(BINANCE["CANDLES"], "1d", "30 days ago utc")
+        signals.calc_aggr(to_db=True)
         log.info("Binance candles preloaded")
     else:
         candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
-
-    res = signals.gsigstr(dbstore=False)
-    #log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
-    #log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
 
     while True:
         waitfor=[10]
@@ -71,9 +66,7 @@ def main():
 
         if short.remain() == 0:
             candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
-            res = signals.gsigstr(dbstore=True)
-            #log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
-            #log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
+            signals.calc_aggr(to_db=True)
             short.set_expiry("in 1 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
@@ -82,9 +75,7 @@ def main():
             candles.api_get_all(BINANCE["CANDLES"], "1h", "4 hours ago utc")
             candles.api_get_all(BINANCE["CANDLES"], "1d", "2 days ago utc")
             hourly.set_expiry("next hour change")
-            res = signals.gsigstr(dbstore=False)
-            #log.info("MAX5M: %s %s", res["max5m"].ix[-1].name, res["max5m"].values[0])
-            #log.info("MAX1H: %s %s", res["max1h"].ix[-1].name, res["max1h"].values[0])
+            signals.calc_aggr(to_db=True)
         else:
             print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
 
@@ -93,7 +84,6 @@ def main():
             daily.set_expiry(utc_dtdate() + timedelta(days=1))
 
         t_nap = min([n for n in waitfor if type(n) is int])
-        #log.debug("sleeping (%ss)", t_nap)
         time.sleep(t_nap)
 
 #---------------------------------------------------------------------------

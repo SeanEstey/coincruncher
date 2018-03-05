@@ -49,18 +49,33 @@ def show_home(stdscr):
 
 #-----------------------------------------------------------------------------
 def show_signals(stdscr):
+    import numpy as np
     from pprint import pformat
-    from app.signals import gsigstr
+    from app import signals
 
     stdscr.clear()
-    df = gsigstr(mute=True,dbstore=False)
-    sigsstr = pformat(df["signalsum"],width=50)
-    sigslist = sigsstr.split("\n")
 
-    y=4
-    for row in sigslist:
-        stdscr.addstr(y, 2, row)
-        y+=1
+    df = signals.load_db(aggr=True, pairs=False)
+    df["since"] = df["since"].replace(np.nan, "-")
+    pairs = list(df.index.levels[0])
+    pair_idx = 0
+    xpos=2
+
+    for i in range(0,4):
+        if pair_idx >= len(pairs):
+            break
+        ypos=2
+        for j in range(0,4):
+            if pair_idx >= len(pairs):
+                break
+            df_pair = df.ix[(pairs[pair_idx])]
+            df_pair.index.levels[0].name = pairs[pair_idx].upper()
+            for line in pformat(df_pair, width=50).split("\n"):
+                stdscr.addstr(ypos, xpos, line)
+                ypos+=1
+            ypos+=2 # vert. row space
+            pair_idx += 1
+        xpos+=40
 
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):

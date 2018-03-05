@@ -13,15 +13,14 @@ from app import get_db, set_db
 from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate
 from app.candles import api_get, api_get_all, db_get
-from app.signals import gsigstr, sigstr, _print
+from app import signals
 
 # Config
 log = logging.getLogger("testing")
+log.log(100, "test")
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 hosts = ["localhost", "45.79.176.125"]
 set_db(hosts[0])
 db = get_db()
-
-
-df = gsigstr(dbstore=True)
+df = signals.load_db(aggr=True)
