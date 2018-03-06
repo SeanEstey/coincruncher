@@ -54,20 +54,28 @@ def main():
         log.info("Binance candles preloaded")
     else:
         candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
+        signals.calc_aggr(to_db=True)
+
+    try:
+        coinmktcap.get_tickers_5t(limit=TICKER_LIMIT)
+        coinmktcap.get_marketidx_5t()
+    except Exception as e:
+        log.exception(str(e))
+        pass
 
     while True:
         waitfor=[10]
-        try:
-            waitfor.append(coinmktcap.get_tickers_5t(limit=TICKER_LIMIT))
-            waitfor.append(coinmktcap.get_marketidx_5t())
-        except Exception as e:
-            log.exception(str(e))
-            pass
 
-        if short.remain() == 0:
+        if short.remain() <= 0:
+            try:
+                waitfor.append(coinmktcap.get_tickers_5t(limit=TICKER_LIMIT))
+                waitfor.append(coinmktcap.get_marketidx_5t())
+            except Exception as e:
+                log.exception(str(e))
+                pass
             candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
             signals.calc_aggr(to_db=True)
-            short.set_expiry("in 1 min utc")
+            short.set_expiry("in 5 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
 

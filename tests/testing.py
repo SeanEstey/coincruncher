@@ -14,13 +14,18 @@ from app.timer import Timer
 from app.utils import utc_datetime, utc_dtdate
 from app.candles import api_get, api_get_all, db_get
 from app import signals
+from app.views import color_negative_red
 
 # Config
 log = logging.getLogger("testing")
-log.log(100, "test")
+#log.log(100, "test")
+
+def pairs():
+    return signals.load_db(aggr=False,pairs=True)["df_pairs"]
+
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 hosts = ["localhost", "45.79.176.125"]
 set_db(hosts[0])
 db = get_db()
-df = signals.load_db(aggr=True)
+df = pairs()

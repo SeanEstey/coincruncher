@@ -47,6 +47,15 @@ def show_home(stdscr):
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "P    My Portfolio")
     stdscr.addstr(stdscr.getyx()[0]+1, x,  "Q    Quit")
 
+def color_negative_red(val):
+    """
+    Takes a scalar and returns a string with
+    the css property `'color: red'` for negative
+    strings, black otherwise.
+    """
+    color = 'red' if val < 0 else 'black'
+    return 'color: %s' % color
+
 #-----------------------------------------------------------------------------
 def show_signals(stdscr):
     import numpy as np
@@ -55,22 +64,51 @@ def show_signals(stdscr):
 
     stdscr.clear()
 
-    df = signals.load_db(aggr=True, pairs=False)
-    df["since"] = df["since"].replace(np.nan, "-")
+    df = signals.load_db(aggr=True, pairs=False)["df_aggr"]
+    since=[]
+    for n in list(df["since"]):
+        if isinstance(n, datetime):
+            diff = utc_datetime() - n
+            hrs = round(diff.total_seconds()/3600, 2)
+            since.append(str(hrs)+"h")
+        else:
+            since.append("-")
+    df["since"] = since
+
+    """sigs=[]
+
+    for n in list(df["signal"]):
+        if n < 0:
+            sigs.append("RED"+
+    """
+    df["signal"] = df["signal"].round(2)
+    df.columns = ["Signal", "T>0"]
+
     pairs = list(df.index.levels[0])
     pair_idx = 0
     xpos=2
 
-    for i in range(0,4):
+    # 5x Rows
+    for i in range(0,5):
         if pair_idx >= len(pairs):
             break
         ypos=2
+        # 6x Columns
         for j in range(0,4):
             if pair_idx >= len(pairs):
                 break
             df_pair = df.ix[(pairs[pair_idx])]
-            df_pair.index.levels[0].name = pairs[pair_idx].upper()
+            #df_pair.index.levels[0].name = pairs[pair_idx].upper()
+            df_pair.index.levels[0].name = "Freq"
+            df_pair.index.levels[1].name = "Hist"
+            stdscr.addstr(ypos, xpos, pairs[pair_idx].upper(), c.BOLD)
+            ypos+=1
+
             for line in pformat(df_pair, width=50).split("\n"):
+                """ws = re.findall('\s+', line)
+                cells = re.split('\s+', line)
+                for cell in cells:
+                """
                 stdscr.addstr(ypos, xpos, line)
                 ypos+=1
             ypos+=2 # vert. row space
