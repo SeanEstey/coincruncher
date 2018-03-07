@@ -1,6 +1,5 @@
 # app.signals
 import logging
-import sys
 from pymongo import ReplaceOne, UpdateOne
 from datetime import timedelta
 import pandas as pd
@@ -8,19 +7,19 @@ import numpy as np
 from app import get_db
 from app.candles import db_get, last
 from app.timer import Timer
-from app.utils import utc_datetime as now
+from app.utils import utc_datetime as now, to_float
 from docs.data import BINANCE
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def calc_aggr(to_db=False):
-    """Aggregate signal scores for all Binance pair candles.
+def calculate_all():
+    """Compute pair and aggregate signal data for Binance candles.
     """
-    t1 = Timer()
+    timer = Timer()
     _1m = timedelta(minutes=1)
     _1h = timedelta(hours=1)
     _1d = timedelta(hours=24)
-    df_pairs = pd.DataFrame()
+    dfp = pd.DataFrame()
 
     # Generate signal scores for each (Pair,Freq,Period) tuple.
     for pair in BINANCE["CANDLES"]:
@@ -32,35 +31,32 @@ def calc_aggr(to_db=False):
         t1d = [c1d["open_date"] - (1*_1d), c1d["close_date"] - (1*_1d)]
 
         for n in range(1,4):
-            df_pairs = df_pairs.append([
-                calc_pair(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), end=t5m[1]),
-                calc_pair(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), end=t1h[1]),
-                calc_pair(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
+            dfp = dfp.append([
+                calculate(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), end=t5m[1]),
+                calculate(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), end=t1h[1]),
+                calculate(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
             ])
 
     # Sum signals in last column for each multi-index (Pair,Freq,Period,Prop)
-    df_pairs = df_pairs.sort_index()
-    aggr_list = [ [n[0:-1], df_pairs.ix[n[0:-1]]["Signal"].sum()] for n in df_pairs.index.values]
+    dfp = dfp.sort_index()
+    aggr_list = [ [n[0:-1], dfp.loc[n[0:-1]]["Signal"].sum()] for n in dfp.index.values]
     aggr_dict = {}
     for n in aggr_list:
         aggr_dict[n[0]] = n[1]
 
-    df_aggr = pd.DataFrame(
+    dfa = pd.DataFrame(
         list(aggr_dict.values()),
         index=pd.MultiIndex.from_tuples(list(aggr_dict.keys())),
         columns=["signal"]
     ).sort_index()
 
-    log.debug('saving signals')
-    if to_db:
-        save_db(df_aggr=df_aggr, df_pairs=df_pairs)
+    save_db_pairs(dfp)
+    save_db_aggregate(dfa)
 
-    log.debug("calc_aggr done in %sms", t1)
-
-    return {"aggregate":df_aggr, "pairs":df_pairs}
+    log.debug("calculate_all completed in %sms", timer)
 
 #-----------------------------------------------------------------------------
-def calc_pair(pair, freq, label, start, end):
+def calculate(pair, freq, period, start, end):
     """Compare candle fields to historical averages. Measure magnitude in
     number of standard deviations from the mean.
     """
@@ -71,7 +67,7 @@ def calc_pair(pair, freq, label, start, end):
     data = []
 
     # Price diff in past hour
-    close_1h = dfc["close"] - dfh["close"].ix[-1]
+    #close_1h = dfc["close"] - dfh["close"].loc[-1]
 
     # Price vs hist. mean/std
     c_c = dfc["close"]
@@ -116,119 +112,131 @@ def calc_pair(pair, freq, label, start, end):
 
     # 4-level multi-index [5 x 5] dataframe
     # i.e. BTCUSDT->1H->24H->Volume
+    from app.utils import parse_period as per_to_sec
+    _freq = per_to_sec(freq)[2].total_seconds()
+    _period = per_to_sec(period)[2].total_seconds()
+
     return pd.DataFrame(
         data,
-        index=pd.MultiIndex.from_product([ [pair], [freq], [label], fields ]),
+        index=pd.MultiIndex.from_product([ [pair], [_freq], [_period], fields ]),
         columns=cols
     ).astype(float).round(7)
 
 #-----------------------------------------------------------------------------
-def load_db(aggr=True, pairs=False):
-    """Return aggregate signals from db as multi-index dataframe.
+def save_db_pairs(dfp):
+    timer = Timer()
+    db = get_db()
+    ops=[]
+
+    # Save signal data
+    for key in dfp.index.values:
+        k = key[0:-1]
+        values = dfp.loc[k].values.tolist()
+        ops.append(ReplaceOne(
+            {"pair":k[0], "freq":k[1], "period":k[2]},
+            {"pair":k[0], "freq":k[1], "period":k[2], "data":values},
+            upsert=True))
+
+    res = db.pair_signals.bulk_write(ops)
+    log.debug("%s pair signals saved to db in %sms", res.modified_count, timer)
+
+#-----------------------------------------------------------------------------
+def load_db_pairs():
+    """Load pair signal data from DB as multi-index dataframe.
+    Returns:
+        aggregate signals dataframe
+            multi-index levels:
+                0:"Pair"
+                1:"Freq"
+                2:"Period"
+                3:"Prop"   # Candle property
+            columns:
+                ["Candle", "HistMean", "Diff", "HistStd", "Signal"]
     """
-    db = get_db()
-    df_pairs = None
-    df_aggr = None
+    # Fill w/ index values, use to build multi-index df
+    idx_values=[]
+    # Candle properties for "Prop" index
+    cndl_prop=["Close", "Volume", "BuyVol", "BuyRatio", "Trades"]
+    # Fill each sublist w/ column data
+    data=[[],[],[],[],[]]
 
-    if pairs == True:
-        c = db.signals.find()
-        series=[[],[],[],[],[]]
-        tuples=[]
-        # index level 3
-        columns=["Candle", "HistMean", "Diff", "HistStd", "Signal"]
-        idx_lvl3=["Close", "Volume", "BuyVol", "BuyRatio", "Trades"]
+    for item in get_db().pair_signals.find():
+        for i in range(0,5):
+            idx_values.append(
+                (item["pair"], item["freq"], item["period"], cndl_prop[i])
+            )
+            for j in range(0,5):
+                data[i].append(item["data"][j][i])
 
-        for obj in c:
-            for i in range(0,5):
-                tuples.append( (obj["pair"], obj["freq"], obj["period"],idx_lvl3[i] ))
-                for j in range(0,5):
-                    series[i].append(obj["data"][j][i])
+    col_names=["Candle", "HistMean", "Diff", "HistStd", "Signal"]
 
-        df_pairs = pd.DataFrame(
-            data={
-                'Candle':series[0],
-                'HistMean':series[1],
-                'Diff':series[2],
-                'HistStd':series[3],
-                'Signal':series[4]
-            },
-            index=pd.MultiIndex.from_tuples(tuples),
-            columns=columns
-        ).sort_index()
+    dfp = pd.DataFrame(
+        data = { col_names[n]:data[n] for n in range(0,5) },
+        index = pd.MultiIndex.from_tuples(idx_values),
+        columns = col_names
+    ).sort_index()
 
-    if aggr == True:
-        df = pd.DataFrame(list(db.signal_sum.find()))
-        df.index = list(zip(df.pair, df.freq, df.period))
-        df.since = df.since.replace(0,np.nan)
+    dfp.Signal = dfp.Signal.round(2)
 
-        df_aggr = pd.DataFrame(
-            df[["signal","since"]],
-            index=pd.MultiIndex.from_tuples(df.index),
-            columns=["signal", "since"],
-        ).sort_index(level=[0,1,2]
-        ).sort_index(level=[1], ascending=False, sort_remaining=False)
-
-    return {"df_aggr":df_aggr, "df_pairs":df_pairs}
+    log.debug("loaded df with %s indices from db.pair_signals", len(dfp))
+    return dfp
 
 #-----------------------------------------------------------------------------
-def save_db(df_aggr=None, df_pairs=None):
-    from app.utils import to_float
-    t1 = Timer()
+def save_db_aggregate(dfa):
+    timer = Timer()
     db = get_db()
+    ops=[]
 
-    if df_aggr is not None:
-        ops=[]
-        # Save signal sum data
-        for key in list(df_aggr.to_dict()["signal"].keys()):
-            sigval = float(df_aggr.ix[key]["signal"])
+    # Save signal sum data
+    for key in list(dfa.to_dict()["signal"].keys()):
+        sigval = float(dfa.loc[key]["signal"])
+        update = {"$set":{
+            "pair":key[0],
+            "freq":key[1],
+            "period":key[2],
+            "signal":sigval
+        }}
 
-            update = {
-                "$set": {
-                    "pair":key[0], "freq":key[1], "period":key[2], "signal":sigval
-                }
-            }
-            if sigval > 0:
-                doc = db.signal_sum.find_one({"pair":key[0],"freq":key[1],"period":key[2]})
-                if doc is None or not doc.get("since"):
-                    update["$set"]["since"] = now()
-            else:
-                update["$set"]["since"] = False
+        # Do nothing if positive signal already has datetime tracking
+        # Delete datetime tracking for negativ3e signal (if exists)
+        if sigval > 0:
+            doc = db.aggr_signals.find_one(
+                {"pair":key[0],"freq":key[1],"period":key[2]})
+            if doc is None or not doc.get("since"):
+                update["$set"]["since"] = now()
+        else:
+            update["$set"]["since"] = False
 
-            ops.append(UpdateOne(
-                {"pair":key[0], "freq":key[1], "period":key[2]}, update,
-                upsert=True))
+        ops.append(UpdateOne(
+            {"pair":key[0], "freq":key[1], "period":key[2]},
+            update,
+            upsert=True))
 
-        r = db.signal_sum.bulk_write(ops)
-        log.debug("%s aggr. signals saved to db in %sms", r.modified_count, t1)
-
-    if df_pairs is not None:
-        t2 = Timer()
-        ops=[]
-        # Save signal data
-        for key in df_pairs.index.values:
-            k = key[0:-1]
-            values = df_pairs.ix[k].values.tolist()
-            ops.append(ReplaceOne(
-                {"pair":k[0], "freq":k[1], "period":k[2]},
-                {"pair":k[0], "freq":k[1], "period":k[2], "data":values},
-                upsert=True))
-
-        r = db.signals.bulk_write(ops)
-        log.debug("%s pair signals saved to db in %sms", r.modified_count, t2)
+    res = db.aggr_signals.bulk_write(ops)
+    log.debug("%s aggr. signals saved to db in %sms", res.modified_count, timer)
 
 #-----------------------------------------------------------------------------
-def _print(sigresult):
-    from app.utils import to_local
-    cndl = sigresult["candle"]
-    op = to_local(cndl["open_date"])
-    cl = to_local(cndl["close_date"])
-    rng = to_local(sigresult["hist_rng"])
+def load_db_aggregate():
+    """Load aggregate signal data from DB as multi-index dataframe.
+    Returns:
+        pair signals dataframe
+            multi-index levels:
+                0:"Pair",
+                1:"Freq",
+                2:"Period",
+            columns:
+                ["signal", "since"]
+    """
+    df = pd.DataFrame(list(get_db().aggr_signals.find()))
+    df.index = list(zip(df.pair, df.freq, df.period))
+    df.since = df.since.replace(0,np.nan)
 
-    print("Pair: %s" % cndl["pair"])
-    print("Freq: %s" % cndl["freq"])
-    print("Candle: %s-%s %s" % (op.time().strftime("%H:%M:%S"),
-        cl.time().strftime("%H:%M:%S"), cl.strftime("%Z")))
-    print("Timespan: %s" %(rng[1]) - rng[0])
-    print("\n%s" % sigresult["df"])
-    print("\nSignal: %s" % sigresult["score"])
-    print("%s" % ("-"*75))
+    dfa = pd.DataFrame(
+        df[["signal", "since"]],
+        index = pd.MultiIndex.from_tuples(df.index),
+        columns = ["signal", "since"],
+    ).sort_index(level=[0, 1, 2]
+    ).sort_index(level=[1], ascending=False, sort_remaining=False)
+
+    log.debug("loaded df with %s indices from db.aggr_signals", len(dfa))
+    return dfa

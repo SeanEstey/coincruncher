@@ -50,11 +50,11 @@ def main():
         candles.api_get_all(BINANCE["CANDLES"], "5m", "6 hours ago utc")
         candles.api_get_all(BINANCE["CANDLES"], "1h", "80 hours ago utc")
         candles.api_get_all(BINANCE["CANDLES"], "1d", "30 days ago utc")
-        signals.calc_aggr(to_db=True)
+        signals.calculate_all()
         log.info("Binance candles preloaded")
     else:
         candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
-        signals.calc_aggr(to_db=True)
+        signals.calculate_all()
 
     try:
         coinmktcap.get_tickers_5t(limit=TICKER_LIMIT)
@@ -74,7 +74,7 @@ def main():
                 log.exception(str(e))
                 pass
             candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
-            signals.calc_aggr(to_db=True)
+            signals.calculate_all()
             short.set_expiry("in 5 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
@@ -83,7 +83,7 @@ def main():
             candles.api_get_all(BINANCE["CANDLES"], "1h", "4 hours ago utc")
             candles.api_get_all(BINANCE["CANDLES"], "1d", "2 days ago utc")
             hourly.set_expiry("next hour change")
-            signals.calc_aggr(to_db=True)
+            signals.calculate_all()
         else:
             print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
 

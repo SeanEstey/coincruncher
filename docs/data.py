@@ -95,7 +95,6 @@ BINANCE = {
         "VENBTC",
         "XRPBTC",
         "NANOBTC",
-        "NANOETH",
         "NEOBTC",
         "OMGBTC",
         "BLZBTC",

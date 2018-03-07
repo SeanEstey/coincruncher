@@ -243,13 +243,13 @@ def parse_period(p):
     qty = int(p[0:-1]) if len(p) > 1 else 1
     unit = p[-1]
 
-    if unit == 'M':
+    if unit in ['m','M']:
         tdelta = timedelta(minutes = qty)
-    elif unit == 'H':
+    elif unit in ['h','H']:
         tdelta = timedelta(hours = qty)
-    elif unit == 'D':
+    elif unit in ['d', 'D']:
         tdelta = timedelta(days = qty)
-    elif unit == 'Y':
+    elif unit in ['y', 'Y']:
         tdelta = timedelta(days = 365 * qty)
 
     return (qty, unit, tdelta)
