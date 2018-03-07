@@ -20,5 +20,6 @@ pd.set_option("display.width", 2000)
 hosts = ["localhost", "45.79.176.125"]
 app.set_db(hosts[0])
 db = app.get_db()
-dfp = signals.load_db_pairs()
-dfa = signals.load_db_aggregate()
+dfa = signals.calculate_all()
+#dfp = signals.load_db_pairs()
+#dfa = signals.load_db_aggregate()

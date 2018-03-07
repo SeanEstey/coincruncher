@@ -56,27 +56,26 @@ def show_signals(stdscr):
     dfa = signals.load_db_aggregate()
     since=[]
     # Nice print formatting
-    for n in list(dfa["since"]):
+    for n in list(dfa["Since"]):
         if isinstance(n, datetime):
             diff = utc_datetime() - n
             hrs = round(diff.total_seconds()/3600, 2)
             since.append(str(hrs)+"h")
         else:
             since.append("-")
-    dfa["since"] = since
-    dfa["signal"] = dfa["signal"].round(2)
+    dfa["Since"] = since
     dfa.columns = ["Signal", "T>0"]
     pairs = list(dfa.index.levels[0])
     pair_idx = 0
     xpos = 2
 
-    for val in dfa.index.values:
-        new_val = ( val[0], period_to_sec(val[1]), period_to_sec(val[2]) )
+    #for val in dfa.index.values:
+    #    new_val = ( val[0], period_to_sec(val[1]), period_to_sec(val[2]) )
 
     stdscr.clear()
 
     # 5x Rows
-    for i in range(0,5):
+    for i in range(0,4):
         if pair_idx >= len(pairs):
             break
         ypos=2

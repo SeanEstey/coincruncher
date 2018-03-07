@@ -7,7 +7,7 @@ import numpy as np
 from app import get_db
 from app.candles import db_get, last
 from app.timer import Timer
-from app.utils import utc_datetime as now, to_float
+from app.utils import utc_datetime as now, to_float, parse_period as per_to_sec
 from docs.data import BINANCE
 log = logging.getLogger('signals')
 
@@ -37,23 +37,11 @@ def calculate_all():
                 calculate(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
             ])
 
-    # Sum signals in last column for each multi-index (Pair,Freq,Period,Prop)
-    dfp = dfp.sort_index()
-    aggr_list = [ [n[0:-1], dfp.loc[n[0:-1]]["Signal"].sum()] for n in dfp.index.values]
-    aggr_dict = {}
-    for n in aggr_list:
-        aggr_dict[n[0]] = n[1]
-
-    dfa = pd.DataFrame(
-        list(aggr_dict.values()),
-        index=pd.MultiIndex.from_tuples(list(aggr_dict.keys())),
-        columns=["signal"]
-    ).sort_index()
-
-    save_db_pairs(dfp)
+    dfa = dfp.groupby(level=[0,1,2]).sum()["Signal"].round(2)
     save_db_aggregate(dfa)
-
+    save_db_pairs(dfp)
     log.debug("calculate_all completed in %sms", timer)
+    return dfa
 
 #-----------------------------------------------------------------------------
 def calculate(pair, freq, period, start, end):
@@ -109,18 +97,17 @@ def calculate(pair, freq, period, start, end):
 
     fields = ["Close", "Volume", "BuyVol", "BuyRatio", "Trades"]
     cols = ["Candle", "HistMean", "Diff", "HistStd", "Signal"]
+    _freq = int(per_to_sec(freq)[2].total_seconds())
+    _period = int(per_to_sec(period)[2].total_seconds())
 
-    # 4-level multi-index [5 x 5] dataframe
-    # i.e. BTCUSDT->1H->24H->Volume
-    from app.utils import parse_period as per_to_sec
-    _freq = per_to_sec(freq)[2].total_seconds()
-    _period = per_to_sec(period)[2].total_seconds()
-
-    return pd.DataFrame(
+    dfp = pd.DataFrame(
         data,
         index=pd.MultiIndex.from_product([ [pair], [_freq], [_period], fields ]),
         columns=cols
     ).astype(float).round(7)
+
+    dfp.index.names=["Pair","Freq","Period","Prop"]
+    return dfp
 
 #-----------------------------------------------------------------------------
 def save_db_pairs(dfp):
@@ -185,35 +172,34 @@ def load_db_pairs():
 def save_db_aggregate(dfa):
     timer = Timer()
     db = get_db()
+    idx_names = ["pair", "freq", "period"]
     ops=[]
 
-    # Save signal sum data
-    for key in list(dfa.to_dict()["signal"].keys()):
-        sigval = float(dfa.loc[key]["signal"])
-        update = {"$set":{
-            "pair":key[0],
-            "freq":key[1],
-            "period":key[2],
-            "signal":sigval
-        }}
+    for idx_val in dfa.index.values:
+        key_dict = dict(zip(idx_names, idx_val))
+        signal = round(float(dfa.loc[idx_val]),2)
+        update = {"$set":key_dict}
+        update["$set"]["signal"] = signal
 
-        # Do nothing if positive signal already has datetime tracking
-        # Delete datetime tracking for negativ3e signal (if exists)
-        if sigval > 0:
-            doc = db.aggr_signals.find_one(
-                {"pair":key[0],"freq":key[1],"period":key[2]})
+        # Add datetime for signal > 0, remove for < 0
+        if signal > 0:
+            doc = db.aggr_signals.find_one(key_dict)
             if doc is None or not doc.get("since"):
                 update["$set"]["since"] = now()
         else:
             update["$set"]["since"] = False
 
-        ops.append(UpdateOne(
-            {"pair":key[0], "freq":key[1], "period":key[2]},
-            update,
-            upsert=True))
+        ops.append(UpdateOne(key_dict, update, upsert=True))
 
-    res = db.aggr_signals.bulk_write(ops)
-    log.debug("%s aggr. signals saved to db in %sms", res.modified_count, timer)
+    if len(ops) < 1:
+        return
+
+    try:
+        res = db.aggr_signals.bulk_write(ops)
+    except Exception as e:
+        log.exception("bulk_write: %s", str(e)) #, res.bulk_api_result)
+    else:
+        log.debug("%s aggregate signals saved to DB [%sms]", res.modified_count, timer)
 
 #-----------------------------------------------------------------------------
 def load_db_aggregate():
@@ -229,14 +215,14 @@ def load_db_aggregate():
     """
     df = pd.DataFrame(list(get_db().aggr_signals.find()))
     df.index = list(zip(df.pair, df.freq, df.period))
-    df.since = df.since.replace(0,np.nan)
+    #df.since = df.since.replace(0,np.nan)
 
     dfa = pd.DataFrame(
         df[["signal", "since"]],
         index = pd.MultiIndex.from_tuples(df.index),
-        columns = ["signal", "since"],
-    ).sort_index(level=[0, 1, 2]
-    ).sort_index(level=[1], ascending=False, sort_remaining=False)
+        columns = ["Signal", "Since"],
+    )#.sort_index(level=[0, 1, 2]
+    #).sort_index(level=[1], ascending=False, sort_remaining=False)
 
     log.debug("loaded df with %s indices from db.aggr_signals", len(dfa))
     return dfa
