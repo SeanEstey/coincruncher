@@ -173,28 +173,39 @@ def load_db_pairs():
 def save_db_aggregate(dfa):
     t = Timer()
     sign = lambda x: -1 if x<0 else 1 if x>0 else 0
-
     dfa.index.names = [x.lower() for x in dfa.index.names]
     dfa.columns = [x.lower() for x in dfa.columns]
+    last_dfa = load_db_aggregate()
 
-    dfa["last_signal"] = pd.DataFrame(
-        load_db_pairs().groupby(level=[0,1,2]
-        ).sum()["signal"]
-    )["signal"]
-    flip = dfa.signal.apply(sign) != dfa.last_signal.apply(sign)
-    dfa["flip_date"] = flip.apply(lambda x: now() if x==True else 0)
-
-    try:
-        res = get_db().aggr_signals.bulk_write([
+    if last_dfa is None:
+        dfa["last_signal"] = False
+        dfa["flip_date"] = False
+        return get_db().aggr_signals.bulk_write([
             UpdateOne(
                 dict(zip(["pair", "freq", "period"], idx)),
                 {"$set":dfa.loc[idx].to_dict()},
                 upsert=True) for idx in dfa.index.values
         ])
-    except Exception as e:
-        log.exception("bulk_write: %s", str(e))
     else:
-        log.debug("%s aggregate signals saved to DB [%sms]", res.modified_count, t)
+        dfa["last_signal"] = last_dfa["signal"]
+        dfa["flip_date"] = last_dfa["flip_date"]
+        dfa["flip_date"] = dfa["flip_date"].replace(np.nan,False)
+        dfa["is_flip"] = dfa["signal"].apply(sign) != dfa["last_signal"].apply(sign)
+        dfa.loc[dfa[dfa.is_flip==True].index, 'flip_date'] = now()
+        del dfa["is_flip"]
+
+        try:
+            res = get_db().aggr_signals.bulk_write([
+                UpdateOne(
+                    dict(zip(["pair", "freq", "period"], idx)),
+                    {"$set":dfa.loc[idx].to_dict()},
+                    upsert=True) for idx in dfa.index.values
+            ])
+        except Exception as e:
+            log.exception("bulk_write: %s", str(e))
+        else:
+            log.debug("%s aggregate signals saved to DB [%sms]", res.modified_count, t)
+            return dfa
 
 #-----------------------------------------------------------------------------
 def load_db_aggregate(title=None):
@@ -210,6 +221,10 @@ def load_db_aggregate(title=None):
     """
     df = pd.DataFrame(
         list(get_db().aggr_signals.find()))
+
+    if len(df) == 0:
+        return None
+
     df.index = pd.MultiIndex.from_tuples(
         list(zip(df.pair, df.freq, df.period)))
 

@@ -25,7 +25,9 @@ def eod_tasks():
     #tickers.generate_1d(yday)
     markets.generate_1d(yday)
     log.debug("running mongodump...")
-    os.system("mongodump -d crypto -o ~/Dropbox/mongodumps")
+    from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
+    os.system("sudo mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
+        --authenticationDatabase %s" %(DBUSER, DBPASSWORD, AUTHDB))
     log.info("eod tasks completed")
 
 #---------------------------------------------------------------------------
