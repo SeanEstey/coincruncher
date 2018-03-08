@@ -2,7 +2,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from pprint import pformat
+from pprint import pformat, pprint
 from decimal import Decimal
 from datetime import timedelta, datetime
 from pprint import pformat
@@ -51,35 +51,67 @@ def show_home(stdscr):
 
 #-----------------------------------------------------------------------------
 def show_signals(stdscr):
-    stdscr.clear()
+    per_to_str = {
+        300: "5m",
+        3600: "60m",
+        7200: "120m",
+        10800: "180m",
+        86400: "24h",
+        172800: "48h",
+        259200: "72h",
+        604800: "7d",
+        1209600: "14d",
+        1814400: "21d"
+    }
 
+    if stdscr:
+        stdscr.clear()
+
+    # Convert int freq/period indices to str representation
     dfa = signals.load_db_aggregate()
+    lvl0 = dfa.index.get_level_values(0)
+    lvl1 = dfa.index.get_level_values(1)
+    lvl2 = dfa.index.get_level_values(2)
+    lvl1 = [ per_to_str[n] for n in lvl1 ]
+    lvl2 = [ per_to_str[n] for n in lvl2 ]
+    dfa.index = pd.MultiIndex.from_arrays([lvl0, lvl1, lvl2])
+    dfa.index.names = ["Pair","Freq","Hist"]
 
     for idx, row in dfa.iterrows():
         if isinstance(row.flip_date, datetime):
             diff = utc_datetime() - row.flip_date
-            hrs = round(diff.total_seconds()/3600, 2)
-            dfa.set_value(idx,"flip_date", str(hrs)+"h")
-    dfa.flip_date = dfa.flip_date.replace(0,"-")
+            hrs = round(diff.total_seconds()/3600, 1)
+            if hrs < 1:
+                dfa.set_value(idx,"flip_date", str(int(hrs*60))+"m")
+            else:
+                dfa.set_value(idx,"flip_date", str(hrs)+"h")
 
+    dfa.flip_date = dfa.flip_date.replace(0,"-")
+    dfa["signal"] = dfa["signal"].apply(lambda x: "{0:+.1f}".format(x))
+    dfa.columns=["T+/-", "Signal"]
     pairs = list(dfa.index.levels[0])
     pair = pairs[0]
+
     n=0
     xpos=2
     for i in range(0,5):
         ypos=2
         for j in range(0,4):
-            #print(pair)
-            stdscr.addstr(ypos, xpos, pair, c.BOLD)
+            stdscr.addstr(ypos, xpos, pair, c.BOLD) if stdscr else pprint(pair)
             ypos+=1
+
             lines = pformat(dfa.loc[(pair)], width=100).split("\n")
-            #pprint(lines)
-            for line in lines:
-                stdscr.addstr(ypos, xpos, line)
-                ypos+=1
+            if stdscr:
+                for line in lines:
+                    stdscr.addstr(ypos, xpos, line)
+                    ypos+=1
+            else:
+                pprint(lines)
             ypos+=2
             pair=pairs[pairs.index(pair) + 1]
-        xpos+=40
+        xpos+=30
+
+    return dfa
 
 #-----------------------------------------------------------------------------
 def show_patterns(stdscr):

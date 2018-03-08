@@ -38,8 +38,14 @@ def calculate_all():
             ])
 
     dfa = pd.DataFrame(dfp.groupby(level=[0,1,2]).sum()["Signal"].round(2))
+
     save_db_aggregate(dfa)
     save_db_pairs(dfp)
+
+    #baller = pd.DataFrame(dfa[dfa.signal >= 2][dfa.flip_date != False].max())
+    #log.log(100, "%s is a ballin' with %s signal on %s/%s",
+    #baller.index.values[0], baller.signal, baller.index.values[1],
+    #baller.index.values[2])
 
     log.debug("calculate_all completed in %sms", timer)
     return dfa
@@ -107,7 +113,7 @@ def calculate(pair, freq, period, start, end):
         columns=cols
     ).astype(float).round(7)
 
-    dfp.index.names=["Pair","Freq","Period","Prop"]
+    dfp.index.names=["pair","freq","period","prop"]
     return dfp
 
 #-----------------------------------------------------------------------------
@@ -228,7 +234,7 @@ def load_db_aggregate(title=None):
     df.index = pd.MultiIndex.from_tuples(
         list(zip(df.pair, df.freq, df.period)))
 
-    dfa = df[["signal", "flip_date"]]
+    dfa = df[["flip_date", "signal"]]
     dfa.index.names = ["pair","freq","period"]
 
     log.debug("loaded df with %s indices from db.aggr_signals", len(dfa))
