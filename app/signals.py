@@ -37,9 +37,10 @@ def calculate_all():
                 calculate(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
             ])
 
-    dfa = dfp.groupby(level=[0,1,2]).sum()["Signal"].round(2)
+    dfa = pd.DataFrame(dfp.groupby(level=[0,1,2]).sum()["Signal"].round(2))
     save_db_aggregate(dfa)
     save_db_pairs(dfp)
+
     log.debug("calculate_all completed in %sms", timer)
     return dfa
 
@@ -143,7 +144,7 @@ def load_db_pairs():
     # Fill w/ index values, use to build multi-index df
     idx_values=[]
     # Candle properties for "Prop" index
-    cndl_prop=["Close", "Volume", "BuyVol", "BuyRatio", "Trades"]
+    cndl_prop=["close", "volume", "buy_vol", "buy_ratio", "trades"]
     # Fill each sublist w/ column data
     data=[[],[],[],[],[]]
 
@@ -155,74 +156,65 @@ def load_db_pairs():
             for j in range(0,5):
                 data[i].append(item["data"][j][i])
 
-    col_names=["Candle", "HistMean", "Diff", "HistStd", "Signal"]
+    col_names=["candle", "hist_mean", "diff", "hist_std", "signal"]
 
     dfp = pd.DataFrame(
         data = { col_names[n]:data[n] for n in range(0,5) },
         index = pd.MultiIndex.from_tuples(idx_values),
         columns = col_names
     ).sort_index()
-
-    dfp.Signal = dfp.Signal.round(2)
+    dfp.index.names = ["pair","freq","period","prop"]
+    dfp.signal = dfp.signal.round(2)
 
     log.debug("loaded df with %s indices from db.pair_signals", len(dfp))
     return dfp
 
 #-----------------------------------------------------------------------------
 def save_db_aggregate(dfa):
-    timer = Timer()
-    db = get_db()
-    idx_names = ["pair", "freq", "period"]
-    ops=[]
+    t = Timer()
+    sign = lambda x: -1 if x<0 else 1 if x>0 else 0
 
-    for idx_val in dfa.index.values:
-        key_dict = dict(zip(idx_names, idx_val))
-        signal = round(float(dfa.loc[idx_val]),2)
-        update = {"$set":key_dict}
-        update["$set"]["signal"] = signal
+    dfa.index.names = [x.lower() for x in dfa.index.names]
+    dfa.columns = [x.lower() for x in dfa.columns]
 
-        # Add datetime for signal > 0, remove for < 0
-        if signal > 0:
-            doc = db.aggr_signals.find_one(key_dict)
-            if doc is None or not doc.get("since"):
-                update["$set"]["since"] = now()
-        else:
-            update["$set"]["since"] = False
-
-        ops.append(UpdateOne(key_dict, update, upsert=True))
-
-    if len(ops) < 1:
-        return
+    dfa["last_signal"] = pd.DataFrame(
+        load_db_pairs().groupby(level=[0,1,2]
+        ).sum()["signal"]
+    )["signal"]
+    flip = dfa.signal.apply(sign) != dfa.last_signal.apply(sign)
+    dfa["flip_date"] = flip.apply(lambda x: now() if x==True else 0)
 
     try:
-        res = db.aggr_signals.bulk_write(ops)
+        res = get_db().aggr_signals.bulk_write([
+            UpdateOne(
+                dict(zip(["pair", "freq", "period"], idx)),
+                {"$set":dfa.loc[idx].to_dict()},
+                upsert=True) for idx in dfa.index.values
+        ])
     except Exception as e:
-        log.exception("bulk_write: %s", str(e)) #, res.bulk_api_result)
+        log.exception("bulk_write: %s", str(e))
     else:
-        log.debug("%s aggregate signals saved to DB [%sms]", res.modified_count, timer)
+        log.debug("%s aggregate signals saved to DB [%sms]", res.modified_count, t)
 
 #-----------------------------------------------------------------------------
-def load_db_aggregate():
+def load_db_aggregate(title=None):
     """Load aggregate signal data from DB as multi-index dataframe.
     Returns:
         pair signals dataframe
             multi-index levels:
-                0:"Pair",
-                1:"Freq",
-                2:"Period",
+                0:"pair",
+                1:"freq",
+                2:"period",
             columns:
-                ["signal", "since"]
+                ["signal", "flip_date"]
     """
-    df = pd.DataFrame(list(get_db().aggr_signals.find()))
-    df.index = list(zip(df.pair, df.freq, df.period))
-    #df.since = df.since.replace(0,np.nan)
+    df = pd.DataFrame(
+        list(get_db().aggr_signals.find()))
+    df.index = pd.MultiIndex.from_tuples(
+        list(zip(df.pair, df.freq, df.period)))
 
-    dfa = pd.DataFrame(
-        df[["signal", "since"]],
-        index = pd.MultiIndex.from_tuples(df.index),
-        columns = ["Signal", "Since"],
-    )#.sort_index(level=[0, 1, 2]
-    #).sort_index(level=[1], ascending=False, sort_remaining=False)
+    dfa = df[["signal", "flip_date"]]
+    dfa.index.names = ["pair","freq","period"]
 
     log.debug("loaded df with %s indices from db.aggr_signals", len(dfa))
     return dfa

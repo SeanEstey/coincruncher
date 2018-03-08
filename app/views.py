@@ -51,54 +51,34 @@ def show_home(stdscr):
 
 #-----------------------------------------------------------------------------
 def show_signals(stdscr):
-    from app.utils import parse_period as period_to_sec
-
-    dfa = signals.load_db_aggregate()
-    since=[]
-    # Nice print formatting
-    for n in list(dfa["Since"]):
-        if isinstance(n, datetime):
-            diff = utc_datetime() - n
-            hrs = round(diff.total_seconds()/3600, 2)
-            since.append(str(hrs)+"h")
-        else:
-            since.append("-")
-    dfa["Since"] = since
-    dfa.columns = ["Signal", "T>0"]
-    pairs = list(dfa.index.levels[0])
-    pair_idx = 0
-    xpos = 2
-
-    #for val in dfa.index.values:
-    #    new_val = ( val[0], period_to_sec(val[1]), period_to_sec(val[2]) )
-
     stdscr.clear()
 
-    # 5x Rows
-    for i in range(0,4):
-        if pair_idx >= len(pairs):
-            break
+    dfa = signals.load_db_aggregate()
+
+    for idx, row in dfa.iterrows():
+        if isinstance(row.flip_date, datetime):
+            diff = utc_datetime() - row.flip_date
+            hrs = round(diff.total_seconds()/3600, 2)
+            dfa.set_value(idx,"flip_date", str(hrs)+"h")
+    dfa.flip_date = dfa.flip_date.replace(0,"-")
+
+    pairs = list(dfa.index.levels[0])
+    pair = pairs[0]
+    n=0
+    xpos=2
+    for i in range(0,5):
         ypos=2
-        # 6x Columns
         for j in range(0,4):
-            if pair_idx >= len(pairs):
-                break
-            dfp = dfa.ix[(pairs[pair_idx])]
-            dfp.index.levels[0].name = "Freq"
-            dfp.index.levels[1].name = "Hist"
-
-            stdscr.addstr(ypos, xpos, pairs[pair_idx].upper(), c.BOLD)
+            #print(pair)
+            stdscr.addstr(ypos, xpos, pair, c.BOLD)
             ypos+=1
-
-            for line in pformat(dfp, width=50).split("\n"):
-                """ws = re.findall('\s+', line)
-                cells = re.split('\s+', line)
-                for cell in cells:
-                """
+            lines = pformat(dfa.loc[(pair)], width=100).split("\n")
+            #pprint(lines)
+            for line in lines:
                 stdscr.addstr(ypos, xpos, line)
                 ypos+=1
-            ypos+=2 # vert. row space
-            pair_idx += 1
+            ypos+=2
+            pair=pairs[pairs.index(pair) + 1]
         xpos+=40
 
 #-----------------------------------------------------------------------------

@@ -112,7 +112,7 @@ def get_tickers_5t(start=0, limit=None):
     result = db.tickers_5t.bulk_write(ops).bulk_api_result
     log.debug("bulk_write completed (%sms)", t2)
     del result["upserted"]
-    log.debug(result)
+    #log.debug(result)
     if result["nUpserted"] > 0:
         log.info("%s tickers updated (Coinmarketcap)", len(tickerdata))
 
