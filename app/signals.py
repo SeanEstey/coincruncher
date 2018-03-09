@@ -11,11 +11,44 @@ from app.utils import utc_datetime as now, to_float, parse_period as per_to_sec
 from docs.data import BINANCE
 log = logging.getLogger('signals')
 
+#baller = pd.DataFrame(dfa[dfa.signal >= 2][dfa.flip_date != False].max())
+#log.log(100, "%s is a ballin' with %s signal on %s/%s",
+#baller.index.values[0], baller.signal, baller.index.values[1],
+#baller.index.values[2])
+
+#------------------------------------------------------------------------------
+def siglog(dfa, dfp):
+    for freq in list(dfa.index.levels[1]):
+        aggr_df = dfa.xs(freq, level=1).sort_values('signal', ascending=False)
+        aggr_sigmax = aggr_df.signal.max()
+
+        # (pair, period)
+        pair = aggr_df.iloc[0].name[0]
+        period = aggr_df.iloc[0].name[1]
+        flip_date =  aggr_df.iloc[0].flip_date
+        flip_msg = ""
+        if flip_date:
+            diff = (now() - flip_date).total_seconds()
+            flip_msg = ", above zero for %sh" % str(round(diff/3600,1))
+
+        dfp_max = dfp.loc[(pair, freq, period)]
+        pair_prop = dfp_max.signal.idxmax()
+        pair_prop_val = dfp_max.loc[pair_prop]['signal']
+
+
+        log.log(100,
+            "%s %s is STRONG at %sx mean%s. SIG=+%s",
+            pair,
+            pair_prop.title().replace('_',''),
+            round(pair_prop_val,1),
+            flip_msg,
+            aggr_sigmax)
+
 #------------------------------------------------------------------------------
 def calculate_all():
-    """Compute pair and aggregate signal data for Binance candles.
+    """Compute pair/aggregate signal data. Binance candle historical averages..
     """
-    timer = Timer()
+    t = Timer()
     _1m = timedelta(minutes=1)
     _1h = timedelta(hours=1)
     _1d = timedelta(hours=24)
@@ -37,18 +70,11 @@ def calculate_all():
                 calculate(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
             ])
 
-    dfa = pd.DataFrame(dfp.groupby(level=[0,1,2]).sum()["Signal"].round(2))
+    dfa = aggregate(dfp.copy())
+    save_db(aggr=dfa, pairs=dfp)
 
-    save_db_aggregate(dfa)
-    save_db_pairs(dfp)
-
-    #baller = pd.DataFrame(dfa[dfa.signal >= 2][dfa.flip_date != False].max())
-    #log.log(100, "%s is a ballin' with %s signal on %s/%s",
-    #baller.index.values[0], baller.signal, baller.index.values[1],
-    #baller.index.values[2])
-
-    log.debug("calculate_all completed in %sms", timer)
-    return dfa
+    log.info("Binance signals updated. n=%s, t=%sms", len(dfp)+len(dfa), t)
+    return [dfa, dfp]
 
 #-----------------------------------------------------------------------------
 def calculate(pair, freq, period, start, end):
@@ -102,8 +128,8 @@ def calculate(pair, freq, period, start, end):
     score = cs + vs + bvs + brs + ts
     score = round(float(score), 2)
 
-    fields = ["Close", "Volume", "BuyVol", "BuyRatio", "Trades"]
-    cols = ["Candle", "HistMean", "Diff", "HistStd", "Signal"]
+    fields = ["close", "volume", "buy_vol", "buy_ratio", "trades"]
+    cols = ["candle", "hist_mean", "diff", "hist_std", "signal"]
     _freq = int(per_to_sec(freq)[2].total_seconds())
     _period = int(per_to_sec(period)[2].total_seconds())
 
@@ -117,22 +143,89 @@ def calculate(pair, freq, period, start, end):
     return dfp
 
 #-----------------------------------------------------------------------------
-def save_db_pairs(dfp):
-    timer = Timer()
+def aggregate(dfp):
+    t = Timer()
     db = get_db()
-    ops=[]
+    sign = lambda x: -1 if x<0 else 1 if x>0 else 0
 
-    # Save signal data
-    for key in dfp.index.values:
-        k = key[0:-1]
-        values = dfp.loc[k].values.tolist()
-        ops.append(ReplaceOne(
-            {"pair":k[0], "freq":k[1], "period":k[2]},
-            {"pair":k[0], "freq":k[1], "period":k[2], "data":values},
-            upsert=True))
+    dfa = pd.DataFrame(dfp.groupby(level=[0,1,2]).sum()["signal"].round(2))
+    dfa_prv = load_db_aggr()
 
-    res = db.pair_signals.bulk_write(ops)
-    log.debug("%s pair signals saved to db in %sms", res.modified_count, timer)
+    if dfa_prv is not None:
+        dfa["last_signal"] = dfa_prv["signal"]
+        dfa["flip_date"] = dfa_prv["flip_date"].replace(np.nan, False)
+        dfa["is_flip"] = dfa["signal"].apply(sign) != dfa["last_signal"].apply(sign)
+        dfa.loc[dfa[dfa.is_flip==True].index, 'flip_date'] = now()
+        del dfa["is_flip"]
+    else:
+        dfa["last_signal"] = False
+        dfa["flip_date"] = False
+
+    return dfa
+
+#-----------------------------------------------------------------------------
+def save_db(aggr=None, pairs=None):
+    """Given pair signal dataframe, Generate aggregate (sum) signals on each
+    index (pair, freq, period, prop), along with time since last sign change,
+    t(signal > 0) and t(signal < 0).
+    #dfa.index.names = [x.lower() for x in dfa.index.names]
+    #dfa.columns = [x.lower() for x in dfa.columns]
+    """
+    t = Timer()
+    db = get_db()
+
+    if aggr is not None:
+        dfa = aggr
+        bulk=[]
+        for idx in dfa.index.values:
+            bulk.append(UpdateOne(
+                dict(zip(["pair", "freq", "period"], idx)),
+                {"$set":dfa.loc[idx].to_dict()},
+                upsert=True))
+        try:
+            res = db.aggr_signals.bulk_write(bulk)
+        except Exception as e:
+            return log.exception(str(e))
+
+        log.debug("%s aggr_sigs stored [%sms]", res.modified_count, t)
+
+    if pairs is not None:
+        dfp = pairs
+        bulk=[]
+        for key in dfp.index.values:
+            k = key[0:-1]
+            values = dfp.loc[k].values.tolist()
+
+            bulk.append(ReplaceOne(
+                {"pair":k[0], "freq":k[1], "period":k[2]},
+                {"pair":k[0], "freq":k[1], "period":k[2], "data":values},
+                upsert=True))
+        try:
+            res = db.pair_signals.bulk_write(bulk)
+        except Exception as e:
+            return log.exception(str(e))
+
+        return log.debug("%s pair_sigs stored [%sms]", res.modified_count, t)
+
+#-----------------------------------------------------------------------------
+def load_db_aggr(title=None):
+    """Load aggregate signal data from DB as multi-index dataframe.
+    Returns:
+        pair signals dataframe
+            multi-index levels:
+                0:"pair",
+                1:"freq",
+                2:"period",
+            columns:
+                ["signal", "flip_date"]
+    """
+    df = pd.DataFrame(list(get_db().aggr_signals.find()))
+    if len(df) == 0:
+        return None
+    df.index = pd.MultiIndex.from_tuples(list(zip(df.pair, df.freq, df.period)))
+    dfa = df[["flip_date", "signal"]]
+    dfa.index.names = ["pair", "freq", "period"]
+    return dfa
 
 #-----------------------------------------------------------------------------
 def load_db_pairs():
@@ -169,73 +262,9 @@ def load_db_pairs():
         index = pd.MultiIndex.from_tuples(idx_values),
         columns = col_names
     ).sort_index()
+
     dfp.index.names = ["pair","freq","period","prop"]
     dfp.signal = dfp.signal.round(2)
 
     log.debug("loaded df with %s indices from db.pair_signals", len(dfp))
     return dfp
-
-#-----------------------------------------------------------------------------
-def save_db_aggregate(dfa):
-    t = Timer()
-    sign = lambda x: -1 if x<0 else 1 if x>0 else 0
-    dfa.index.names = [x.lower() for x in dfa.index.names]
-    dfa.columns = [x.lower() for x in dfa.columns]
-    last_dfa = load_db_aggregate()
-
-    if last_dfa is None:
-        dfa["last_signal"] = False
-        dfa["flip_date"] = False
-        return get_db().aggr_signals.bulk_write([
-            UpdateOne(
-                dict(zip(["pair", "freq", "period"], idx)),
-                {"$set":dfa.loc[idx].to_dict()},
-                upsert=True) for idx in dfa.index.values
-        ])
-    else:
-        dfa["last_signal"] = last_dfa["signal"]
-        dfa["flip_date"] = last_dfa["flip_date"]
-        dfa["flip_date"] = dfa["flip_date"].replace(np.nan,False)
-        dfa["is_flip"] = dfa["signal"].apply(sign) != dfa["last_signal"].apply(sign)
-        dfa.loc[dfa[dfa.is_flip==True].index, 'flip_date'] = now()
-        del dfa["is_flip"]
-
-        try:
-            res = get_db().aggr_signals.bulk_write([
-                UpdateOne(
-                    dict(zip(["pair", "freq", "period"], idx)),
-                    {"$set":dfa.loc[idx].to_dict()},
-                    upsert=True) for idx in dfa.index.values
-            ])
-        except Exception as e:
-            log.exception("bulk_write: %s", str(e))
-        else:
-            log.debug("%s aggregate signals saved to DB [%sms]", res.modified_count, t)
-            return dfa
-
-#-----------------------------------------------------------------------------
-def load_db_aggregate(title=None):
-    """Load aggregate signal data from DB as multi-index dataframe.
-    Returns:
-        pair signals dataframe
-            multi-index levels:
-                0:"pair",
-                1:"freq",
-                2:"period",
-            columns:
-                ["signal", "flip_date"]
-    """
-    df = pd.DataFrame(
-        list(get_db().aggr_signals.find()))
-
-    if len(df) == 0:
-        return None
-
-    df.index = pd.MultiIndex.from_tuples(
-        list(zip(df.pair, df.freq, df.period)))
-
-    dfa = df[["flip_date", "signal"]]
-    dfa.index.names = ["pair","freq","period"]
-
-    log.debug("loaded df with %s indices from db.aggr_signals", len(dfa))
-    return dfa

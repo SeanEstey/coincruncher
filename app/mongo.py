@@ -33,6 +33,23 @@ def authenticate(client, user=None, pw=None):
         raise
 
 #-------------------------------------------------------------------------------
+def locked():
+    from app import client
+
+    if not client.is_locked:
+        return False
+
+    msg = "mongoDB locked. Writes are blocked. Retrying in 1s"
+    log.error(msg)
+    time.sleep(1)
+
+    if client.is_locked:
+        log.error("mongoDB still locked after sleeping")
+        return True
+    else:
+        return False
+
+#-------------------------------------------------------------------------------
 def dump(path):
     import os
     os.system("mongodump -o %s" % path)

@@ -24,7 +24,9 @@ hosts = ["localhost", "45.79.176.125"]
 app.set_db(hosts[0])
 db = app.get_db()
 
-dfa = signals.calculate_all()
+results = signals.calculate_all()
+signals.siglog(results[0], results[1])
+
 #df = show_signals()
 #dfp = signals.load_db_pairs()
 #dfa = signals.load_db_aggregate()

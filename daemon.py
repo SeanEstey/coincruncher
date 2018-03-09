@@ -19,13 +19,16 @@ class GracefulKiller:
 #---------------------------------------------------------------------------
 def eod_tasks():
     import os
+    from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
 
     forex.update_1d()
     yday = utc_dtdate() - timedelta(days=1)
+
     #tickers.generate_1d(yday)
     markets.generate_1d(yday)
+
     log.debug("running mongodump...")
-    from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
+
     os.system("sudo mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
         --authenticationDatabase %s" %(DBUSER, DBPASSWORD, AUTHDB))
     log.info("eod tasks completed")

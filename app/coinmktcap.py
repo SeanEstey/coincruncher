@@ -79,7 +79,7 @@ def get_tickers_5t(start=0, limit=None):
     if r.status_code != 200:
         return log.error("API error %s", r.status_code)
 
-    log.debug("{:,} bytes received ({:,}ms)".format(getsize(r.text), t))
+    #log.debug("{:,} bytes received ({:,}ms)".format(getsize(r.text), t))
     data = json.loads(r.text)
 
     # Sort by timestamp in descending order
@@ -110,11 +110,11 @@ def get_tickers_5t(start=0, limit=None):
 
     t2 = Timer()
     result = db.tickers_5t.bulk_write(ops).bulk_api_result
-    log.debug("bulk_write completed (%sms)", t2)
+    #log.debug("bulk_write completed (%sms)", t2)
     del result["upserted"]
     #log.debug(result)
     if result["nUpserted"] > 0:
-        log.info("%s tickers updated (Coinmarketcap)", len(tickerdata))
+        log.info("Coinmktcap tickers updated [n=%s, freq='5m', t=%sms]", len(tickerdata), t)
 
 #---------------------------------------------------------------------------
 def get_marketidx_5t():
@@ -125,13 +125,13 @@ def get_marketidx_5t():
         return _t
 
     t1 = Timer()
-    log.debug("querying global market")
+    #log.debug("querying global market")
 
     r = requests.get("https://api.coinmarketcap.com/v1/global")
     if r.status_code != 200:
         return log.error("%s request error.", r.status_code)
 
-    log.debug("%s bytes received (%sms)", getsize(r.text), t1)
+    #log.debug("%s bytes received (%sms)", getsize(r.text), t1)
 
     data = json.loads(r.text)
     store = {}
@@ -141,7 +141,9 @@ def get_marketidx_5t():
     get_db().market_idx_5t.replace_one(
         {'date':store['date']}, store,
         upsert=True)
-    log.debug("bulk_write completed in %sms", t1)
+
+    log.info("Coinmktcap markets updated [n=%s, freq='5m', t=%sms]",
+        len(data), t1)
 
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):

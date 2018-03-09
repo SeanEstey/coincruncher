@@ -8,6 +8,7 @@ from app import get_db
 from app.timer import Timer
 from app.utils import utc_datetime, to_float, to_dt, intrvl_to_ms, date_to_ms
 from app.utils import dt_to_ms
+from app.mongo import locked
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
@@ -44,13 +45,14 @@ def db_get(pair, freq, start, end=None):
 #------------------------------------------------------------------------------
 def api_get_all(pairs, freq, periodlen):
     idx = 0
+    t = Timer()
     for pair in pairs:
         results = api_get(pair, freq, periodlen)
-        log.debug("%s %s %s candles updated (Binance)", len(results), pair, freq)
+        log.debug("Binance %s '%s' candles updated (t=%sms)", pair, freq, t)
         idx += 1
         if idx % 3==0:
             sleep(1)
-    log.info("Binance %s candles updated", freq)
+    log.info("Binance '%s' candles updated. t=%sms", freq, t)
 
 #------------------------------------------------------------------------------
 def api_get(pair, interval, start_str, end_str=None, store_db=True):
@@ -90,7 +92,7 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
             if idx % 3==0:
                 sleep(1)
         except Exception as e:
-            return log.exception("api_get() request error")
+            return log.exception("Binance API request error. e=%s", str(e))
 
     #log.debug("api_get() result: %s loops, %s %s items", idx, len(results), pair)
 
@@ -101,7 +103,6 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
 
 #------------------------------------------------------------------------------
 def store(pair, freq, candles_df):
-    from app import client
     tmr = Timer()
     bulk=[]
 
@@ -113,22 +114,15 @@ def store(pair, freq, candles_df):
             upsert=True))
 
     if len(bulk) < 1:
-        return log.info("No candles to store in DB")
-
-    if client.is_locked:
-        log.error("store() db is locked!")
-        return False
+        return log.debug("No candle data")
 
     try:
         result = (get_db().candles.bulk_write(bulk)).bulk_api_result
     except Exception as e:
-        return log.exception("store() error")
+        return log.exception("mongodb write error. locked=%s, result=%s", locked(), result)
 
     del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
-
-    log.debug("stored to db (%sms)", tmr)
-    #log.debug(result)
-
+    #log.debug("stored to db (%sms)", tmr)
     return result
 
 #------------------------------------------------------------------------------
@@ -156,5 +150,4 @@ def to_df(pair, freq, rawdata, store_db=False):
 
     if store_db:
         store(pair, freq, df)
-
     return df
