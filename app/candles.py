@@ -48,14 +48,16 @@ def db_get(pair, freq, start, end=None):
 #------------------------------------------------------------------------------
 def api_get_all(pairs, freq, periodlen):
     idx = 0
-    t = Timer()
+    t1 = Timer()
+
     for pair in pairs:
+        t2 = Timer()
         results = api_get(pair, freq, periodlen)
-        log.debug("Binance %s '%s' candles updated (t=%sms)", pair, freq, t)
+        log.debug("%s %s candles updated. [%ss]", freq, pair, t2.elapsed(unit='s'))
         idx += 1
         if idx % 3==0:
             sleep(1)
-    log.info("Binance '%s' candles updated. t=%sms", freq, t)
+    log.info("%s %s binance candles updated. [%ss]", len(pairs), freq, t1.elapsed(unit='s'))
 
 #------------------------------------------------------------------------------
 def api_get(pair, interval, start_str, end_str=None, store_db=True):
@@ -87,7 +89,6 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
                 # close_time > now?
                 if data[-1][6] >= dt_to_ms(utc_datetime()):
                     results += data[:-1]
-                    log.debug("close price: %s format=%s", data[-1][4], type(data[-1][4]))
                     break
                 results += data
                 start_ts = data[len(data) - 1][0] + periodlen

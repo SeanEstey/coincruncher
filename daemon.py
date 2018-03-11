@@ -104,9 +104,10 @@ if __name__ == '__main__':
     import sys
     from app import set_db
 
-    divstr = "##### %s #####"
-    log.info(divstr % "restarted")
-    log.debug(divstr % "restarted")
+    divstr = "***** %s *****"
+    log.info('Initializing daemon.')
+    #log.info(divstr % "restarted")
+    #log.debug(divstr % "restarted")
     killer = GracefulKiller()
 
     try:
@@ -144,5 +145,5 @@ if __name__ == '__main__':
         time.sleep(0.1)
 
     log.debug(divstr % "sys.exit()")
-    log.info(divstr % "exiting")
+    log.info(divstr % "Terminating")
     sys.exit()

@@ -43,10 +43,15 @@ class Timer():
         """
         self.start = utc_datetime()
 
-    def elapsed(self):
+    def elapsed(self, unit='ms'):
         """
         """
-        return int((utc_datetime() - self.start).total_seconds()*1000)
+        sec = (utc_datetime() - self.start).total_seconds()
+
+        if unit == 'ms':
+            return round(sec * 1000, 1)
+        elif unit == 's':
+            return round(sec, 1)
 
     def remain(self, unit='ms'):
         """If in timer mode, return time remaining as milliseconds

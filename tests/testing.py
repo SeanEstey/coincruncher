@@ -27,9 +27,3 @@ db = app.get_db()
 results = signals.calculate_all()
 dfa = results[0]
 dfp = results[1]
-
-#signals.siglog(results[0], results[1])
-
-#df = show_signals()
-#dfp = signals.load_db_pairs()
-#dfa = signals.load_db_aggregate()

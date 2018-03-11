@@ -2,13 +2,13 @@
 import logging
 from pymongo import ReplaceOne, UpdateOne
 from decimal import Decimal as Dec
-from datetime import timedelta
+from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 from app import get_db
 from app.candles import db_get, last
 from app.timer import Timer
-from app.utils import utc_datetime as now, to_float, parse_period as per_to_sec
+from app.utils import utc_datetime as now
 from docs.data import BINANCE
 log = logging.getLogger('signals')
 
@@ -39,38 +39,40 @@ STR_TO_PER = dict(zip(
     list(PER_TO_STR.values()), list(PER_TO_STR.keys())))
 
 #------------------------------------------------------------------------------
-def siglog(dfa, dfp):
-    from pprint import pformat
+def log_max(dfa, dfp):
+    _hdr = "SIGNAL: {:+.1f}, FREQ: {:}, PER: {:}, AGE: {:}"
+    dfa = dfa.sort_values('signal')
+    max_sigs=[]
+
+    # Given tuples with index levels=[1,2], find max aggregate series
+    for idx in [(300,3600), (3600,86400), (86400,604800)]:
+        r = {"freq":idx[0], "period":idx[1]}
+        series = dfa.xs(r['freq'], level=1).xs(r['period'], level=1).iloc[-1]
+        r['pair'] = series.name
+        r.update(series.to_dict())
+        max_sigs.append(r)
+
     log.log(100,'')
 
-    # Iterate over index level 1 (5m, 1h, 1d)
-    # Find highest pair signals for each
-    for freq in list(dfa.index.levels[1]):
-        df = dfa.xs(freq, level=1).sort_values('signal', ascending=False)
-        pair = df.iloc[0].name[0]
-        period = df.iloc[0].name[1]
-        dfpmax = dfp.loc[(pair, freq, period)]
+    for r in max_sigs:
+        if isinstance(r['age'], datetime):
+            hrs = round((now()-r['age']).total_seconds()/3600, 1)
+            r['age'] = str(int(hrs*60))+'m' if hrs < 1 else str(hrs)+'h'
 
-        #log.debug(pformat(dfpmax, width=90))
+        log.log(100, r['pair'])
+        log.log(100, _hdr.format(r['signal'], FREQ_TO_STR[r['freq']],
+            PER_TO_STR[r['period']], r['age']))
 
-        dfpmax_idx = dfpmax.signal.idxmax() # Index level 3
-        signal = dfpmax.loc[dfpmax_idx]['signal']
-        close = dfp.loc[(pair, freq, period, "close")]
-        close_cndl = close['candle']
-        close_mean = close['mean']
-        close_pct = ((close_cndl - close_mean)/close_mean)*100
-        flip_d =  df.iloc[0].flip_date
-        duration = round((now()-flip_d).total_seconds()/3600, 1) if flip_d else 0.0
+        dfr = dfp.loc[(r['pair'], r['freq'], r['period'])]
 
-        log.log(100,
-            "Max({0},{1}): {2}, ".format(
-                FREQ_TO_STR[freq], PER_TO_STR[period], pair) +\
-            "Signal: {:+.1f}, ".format(df.signal.max()) +\
-            "Age: {:.1f}h, ".format(duration) +\
-            "{0} x STD: {1}, ".format(
-                dfpmax_idx.title().replace('_',''), round(signal, 1)) +\
-            "Close vs Mean: {0:+.2f}%".format(close_pct)
-        )
+        lines = dfr.to_string(
+            col_space=4,
+            float_format=lambda x: '%.3f ' % x,
+            line_width=100).upper().split("\n")
+        lines = [lines[0]] + lines[2:]
+
+        [log.log(100, line) for line in lines]
+        log.log(100, '')
 
 #------------------------------------------------------------------------------
 def calculate_all():
@@ -98,11 +100,13 @@ def calculate_all():
                 calculate(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), end=t1d[1])
             ])
 
-    dfa = aggregate(dfp.copy())
+    dfp = dfp.sort_index()
+    dfa = aggregate(dfp)
     save_db(aggr=dfa, pairs=dfp)
-    siglog(dfa, dfp)
 
-    log.info("Binance signals updated. n=%s, t=%sms", len(dfp)+len(dfa), t)
+    log_max(dfa, dfp)
+    log.info("%s signals generated from %s binance pairs. [%ss]",
+        len(dfp), len(BINANCE['CANDLES']), t.elapsed(unit='s'))
     return [dfa, dfp]
 
 #-----------------------------------------------------------------------------
@@ -147,14 +151,14 @@ def aggregate(dfp):
     dfa_prv = load_db_aggr()
 
     if dfa_prv is not None:
-        dfa["last_signal"] = dfa_prv["signal"]
-        dfa["flip_date"] = dfa_prv["flip_date"].replace(np.nan, False)
-        dfa["is_flip"] = dfa["signal"].apply(sign) != dfa["last_signal"].apply(sign)
-        dfa.loc[dfa[dfa.is_flip==True].index, 'flip_date'] = now()
+        dfa["prev_signal"] = dfa_prv["signal"]
+        dfa["age"] = dfa_prv["age"].replace(np.nan, False)
+        dfa["is_flip"] = dfa["signal"].apply(sign) != dfa["prev_signal"].apply(sign)
+        dfa.loc[dfa[dfa.is_flip==True].index, 'age'] = now()
         del dfa["is_flip"]
     else:
-        dfa["last_signal"] = False
-        dfa["flip_date"] = False
+        dfa["prev_signal"] = None
+        dfa["age"] = None
 
     return dfa
 
@@ -166,10 +170,10 @@ def save_db(aggr=None, pairs=None):
     #dfa.index.names = [x.lower() for x in dfa.index.names]
     #dfa.columns = [x.lower() for x in dfa.columns]
     """
-    t = Timer()
     db = get_db()
 
     if pairs is not None:
+        t1 = Timer()
         dfp = pairs
         ops=[]
 
@@ -184,36 +188,56 @@ def save_db(aggr=None, pairs=None):
             res = db.pair_signals.bulk_write(ops)
         except Exception as e:
             return log.exception(str(e))
-        return log.debug("%s pair_sigs stored [%sms]", res.modified_count, t)
+        log.debug("%s pair signals saved. [%sms]", res.modified_count, t1)
 
     if aggr is not None:
+        t2 = Timer()
         dfa = aggr
         ops=[]
 
         for idx in dfa.index.values:
-            ops.append(ReplaceOne(
-                dict(zip(LEVELS[0:3], idx)), {"$set":dfa.loc[idx].to_dict()},
-                upsert=True))
+            match = dict(zip(dfa.index.names, dfa.loc[idx].name))
+            match['period'] = int(match['period'])
+            match['freq'] = int(match['freq'])
+            record = match.copy()
+            record.update(dfa.loc[idx].to_dict())
+            ops.append(ReplaceOne(match, record, upsert=True))
         try:
             res = db.aggr_signals.bulk_write(ops)
         except Exception as e:
             return log.exception(str(e))
-        log.debug("%s aggr_sigs stored [%sms]", res.modified_count, t)
+        log.debug("%s aggregate signals saved. [%sms]", res.modified_count, t2)
 
 #-----------------------------------------------------------------------------
 def load_db_aggr(title=None):
-    """Load aggregate signal data from DB as multi-index dataframe.
+    """Load aggregate signal db records.
     Returns:
-        aggregate signals dataframe
-            index levels: [pair, freq, period]
-            columns: [signal, flip_date]
+        multi-index pd.DataFrame
+        index levels: [pair, freq, period]
+        columns: [signal, age, prev_signal]
+            signal: aggregate (pair,freq,period,indicator) signal
+            age: datetime of most recent signal +/- sign flip.
+            prev_signal: last saved signal (for age)
     """
-    df = pd.DataFrame(list(get_db().aggr_signals.find()))
-    if len(df) == 0:
+    t1 = Timer()
+    c = get_db().aggr_signals.find()
+
+    if c.count() == 0:
         return None
-    df.index = pd.MultiIndex.from_tuples(list(zip(df.pair, df.freq, df.period)))
-    dfa = df[["flip_date", "signal"]]
-    dfa.index.names = LEVELS[0:3]
+
+    data = list(c)
+    lvls = LEVELS[0:3]
+    cols = ['signal', 'age', 'prev_signal']
+    index = pd.MultiIndex.from_arrays(
+        [[x[k] for x in data] for k in lvls],
+        names=lvls)
+    dfa = pd.DataFrame(
+        data = np.array([[x[k] for x in data] for k in cols]).transpose(),
+        index = index,
+        columns = cols
+    ).sort_index()
+    dfa.signal = dfa.signal.astype('float64')
+    log.debug("%s aggregate signal docs retrieved. [%sms]", len(dfa), t1)
     return dfa
 
 #-----------------------------------------------------------------------------
@@ -224,9 +248,21 @@ def load_db_pairs():
             index levels: [pair, freq, period, indicator]
             columns: [candle, mean, std, signal]
     """
-    df = pd.DataFrame(list(get_db().pair_signals.find()))
-    if len(df) == 0:
+    t1 = Timer()
+    c = get_db().pair_signals.find()
+
+    if c.count() == 0:
         return None
-    df.index = pd.MultiIndex.from_tuples(list(zip(df.pair, df.freq, df.period, INDICATORS)))
-    dfa.index.names = LEVELS
-    return dfa
+
+    data = list(c)
+    index = pd.MultiIndex.from_arrays(
+        [[x[k] for x in data] for k in LEVELS],
+        names=LEVELS)
+    dfp = pd.DataFrame(
+        data = np.array([[x[k] for x in data] for k in COLUMNS]).transpose(),
+        index = index,
+        columns = COLUMNS
+    ).astype('float64').sort_index()
+
+    log.debug("%s pair signal docs retrieved. [%sms]", len(dfp), t1)
+    return dfp

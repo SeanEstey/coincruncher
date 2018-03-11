@@ -51,44 +51,35 @@ def show_home(stdscr):
 
 #-----------------------------------------------------------------------------
 def show_signals(stdscr):
-    per_to_str = {
-        300: "5m",
-        3600: "60m",
-        7200: "120m",
-        10800: "180m",
-        86400: "24h",
-        172800: "48h",
-        259200: "72h",
-        604800: "7d",
-        1209600: "14d",
-        1814400: "21d"
-    }
+    from app.signals import FREQ_TO_STR, PER_TO_STR
 
     if stdscr:
         stdscr.clear()
 
+    dfp = signals.load_db_pairs()
+
     # Convert int freq/period indices to str representation
-    dfa = signals.load_db_aggr()
-    lvl0 = dfa.index.get_level_values(0)
-    lvl1 = dfa.index.get_level_values(1)
-    lvl2 = dfa.index.get_level_values(2)
-    lvl1 = [ per_to_str[n] for n in lvl1 ]
-    lvl2 = [ per_to_str[n] for n in lvl2 ]
-    dfa.index = pd.MultiIndex.from_arrays([lvl0, lvl1, lvl2])
-    dfa.index.names = ["Pair","Freq","Hist"]
+    dfa = signals.load_db_aggr()[["signal", "age"]]
+    #lvl0 = dfa.index.get_level_values(0)
+    #lvl1 = dfa.index.get_level_values(1)
+    #lvl2 = dfa.index.get_level_values(2)
+    #lvl1 = [ FREQ_TO_STR[n] for n in lvl1 ]
+    #lvl2 = [ PER_TO_STR[n] for n in lvl2 ]
+    #dfa.index = pd.MultiIndex.from_arrays([lvl0, lvl1, lvl2])
+    #dfa.index.names = ["Pair","Freq","Period"]
 
     for idx, row in dfa.iterrows():
-        if isinstance(row.flip_date, datetime):
-            diff = utc_datetime() - row.flip_date
+        if isinstance(row.age, datetime):
+            diff = utc_datetime() - row.age
             hrs = round(diff.total_seconds()/3600, 1)
             if hrs < 1:
-                dfa.set_value(idx,"flip_date", str(int(hrs*60))+"m")
+                dfa.set_value(idx,"age", str(int(hrs*60))+"m")
             else:
-                dfa.set_value(idx,"flip_date", str(hrs)+"h")
+                dfa.set_value(idx,"age", str(hrs)+"h")
 
-    dfa.flip_date = dfa.flip_date.replace(0,"-")
+    dfa.age = dfa.age.replace(0,"-")
     dfa["signal"] = dfa["signal"].apply(lambda x: "{0:+.1f}".format(x))
-    dfa.columns=["T+/-", "Signal"]
+    #dfa.columns=["T+/-", "Signal"]
     pairs = list(dfa.index.levels[0])
     pair = pairs[0]
 
