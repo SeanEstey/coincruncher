@@ -2,26 +2,28 @@
 import logging, time
 from time import sleep
 import pandas as pd
+import numpy as np
+from decimal import Decimal
 from pymongo import ReplaceOne
 from binance.client import Client
 from app import get_db
 from app.timer import Timer
-from app.utils import utc_datetime, to_float, to_dt, intrvl_to_ms, date_to_ms
+from app.utils import utc_datetime, intrvl_to_ms, date_to_ms
 from app.utils import dt_to_ms
 from app.mongo import locked
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
 def last(pair, freq):
-    return list(
-        get_db().candles.find({"pair":pair,"freq":freq}
-            ).sort("close_date",-1).limit(1)
-    )[0]
+    return list(get_db().candles.find({"pair":pair,"freq":freq}
+        ).sort("close_date",-1).limit(1))[0]
 
 #------------------------------------------------------------------------------
 def db_get(pair, freq, start, end=None):
     """Return historical average candle data from DB as dataframe.
     """
+    _npfloats = ["open","high","low","close","buy_vol","volume","buy_ratio"]
+
     if start is None and end is None:
         # Get most closed candle
         cursor = get_db().candles.find(
@@ -33,10 +35,11 @@ def db_get(pair, freq, start, end=None):
             {"pair":pair,
              "freq":freq,
              "close_date":{"$gte":start, "$lte":_end}},
-            {"_id":0} #"pair":0}
+            {"_id":0}
         ).sort("close_date",1)
 
     df = pd.DataFrame(list(cursor))
+    df[_npfloats] = df[_npfloats].astype(np.float64)
     df.index = df["close_date"]
     df.index.name="date"
     #log.debug("%s %s %s candle DB records found", len(df), pair, freq)
@@ -84,6 +87,7 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
                 # close_time > now?
                 if data[-1][6] >= dt_to_ms(utc_datetime()):
                     results += data[:-1]
+                    log.debug("close price: %s format=%s", data[-1][4], type(data[-1][4]))
                     break
                 results += data
                 start_ts = data[len(data) - 1][0] + periodlen
@@ -105,6 +109,8 @@ def api_get(pair, interval, start_str, end_str=None, store_db=True):
 def store(pair, freq, candles_df):
     tmr = Timer()
     bulk=[]
+
+    #candles_df = candles_df.astype(str)
 
     for idx, row in candles_df.iterrows():
         record = row.to_dict()
@@ -130,6 +136,8 @@ def to_df(pair, freq, rawdata, store_db=False):
     """Convert candle data to pandas DataFrame.
     @freq: Binance interval (NOT pandas frequency format!)
     """
+    _npfloats = ["open","high","low","close","buy_vol","volume"]
+
     columns=["open_date","open","high","low","close","volume","close_date",
         "quote_vol", "trades", "buy_vol", "sell_vol", "ignore"]
 
@@ -137,15 +145,15 @@ def to_df(pair, freq, rawdata, store_db=False):
         index = [pd.to_datetime(x[6], unit='ms', utc=True) for x in rawdata],
         data = [x for x in rawdata],
         columns = columns
-    )[columns].astype(float)
-
+    )
+    df[_npfloats] = df[_npfloats].astype(np.float64)
     df.index.name="date"
     del df["ignore"]
     df["pair"] = pair
     df["freq"] = freq
     df["close_date"] = pd.to_datetime(df["close_date"],unit='ms',utc=True)
     df["open_date"] = pd.to_datetime(df["open_date"],unit='ms',utc=True)
-    df["buy_ratio"] = (df["buy_vol"] / df["volume"]).round(5)
+    df["buy_ratio"] = df["buy_vol"] / df["volume"]
     df = df[sorted(df.columns)]
 
     if store_db:

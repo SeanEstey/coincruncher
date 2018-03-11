@@ -6,12 +6,12 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir)
 import logging
 import time
-from pprint import pprint
+from pprint import pprint, pformat
 from importlib import reload
 from datetime import timedelta, datetime
 import pandas as pd
 import numpy as np
-
+from pymongo import ReplaceOne, UpdateOne
 import app
 from app import signals
 from app.timer import Timer
@@ -25,10 +25,11 @@ app.set_db(hosts[0])
 db = app.get_db()
 
 results = signals.calculate_all()
-signals.siglog(results[0], results[1])
+dfa = results[0]
+dfp = results[1]
+
+#signals.siglog(results[0], results[1])
 
 #df = show_signals()
 #dfp = signals.load_db_pairs()
 #dfa = signals.load_db_aggregate()
-
-
