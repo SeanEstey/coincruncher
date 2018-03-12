@@ -13,9 +13,9 @@ import pandas as pd
 import numpy as np
 from pymongo import ReplaceOne, UpdateOne
 import app
-from app import signals
+from app import candles, signals
 from app.timer import Timer
-from app.utils import utc_datetime, utc_dtdate
+from app.utils import utc_datetime as now, utc_dtdate
 
 log = logging.getLogger("testing")
 pd.set_option("display.max_columns", 25)
@@ -24,6 +24,6 @@ hosts = ["localhost", "45.79.176.125"]
 app.set_db(hosts[0])
 db = app.get_db()
 
-results = signals.calculate_all()
+results = signals.update()
 dfa = results[0]
 dfp = results[1]

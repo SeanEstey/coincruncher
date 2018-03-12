@@ -56,10 +56,10 @@ def show_signals(stdscr):
     if stdscr:
         stdscr.clear()
 
-    dfp = signals.load_db_pairs()
+    dfp = signals.load_pairs()
 
     # Convert int freq/period indices to str representation
-    dfa = signals.load_db_aggr()[["signal", "age"]]
+    dfa = signals.load_aggregate()[["signal", "age"]]
     #lvl0 = dfa.index.get_level_values(0)
     #lvl1 = dfa.index.get_level_values(1)
     #lvl2 = dfa.index.get_level_values(2)

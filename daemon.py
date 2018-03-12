@@ -54,7 +54,7 @@ def main(tckr=None, cndl=None):
         candles.api_get_all(pairs, "5m", "6 hours ago utc")
         candles.api_get_all(pairs, "1h", "80 hours ago utc")
         candles.api_get_all(pairs, "1d", "30 days ago utc")
-        signals.calculate_all()
+        signals.update()
 
     if tckr:
         try:
@@ -64,7 +64,7 @@ def main(tckr=None, cndl=None):
             log.exception(str(e))
             pass
 
-    signals.calculate_all()
+    signals.update()
 
     while True:
         waitfor=[10]
@@ -77,7 +77,7 @@ def main(tckr=None, cndl=None):
                 log.exception(str(e))
                 pass
             candles.api_get_all(BINANCE["CANDLES"], "5m", "1 hour ago utc")
-            signals.calculate_all()
+            signals.update()
             short.set_expiry("in 5 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
@@ -86,7 +86,7 @@ def main(tckr=None, cndl=None):
             candles.api_get_all(BINANCE["CANDLES"], "1h", "4 hours ago utc")
             candles.api_get_all(BINANCE["CANDLES"], "1d", "2 days ago utc")
             hourly.set_expiry("next hour change")
-            signals.calculate_all()
+            signals.update()
         else:
             print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
 
