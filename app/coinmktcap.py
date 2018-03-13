@@ -70,17 +70,17 @@ def get_tickers_5t(start=0, limit=None):
         return _t
 
     idx = start
-    t = Timer()
+    t1 = Timer()
     db = get_db()
-    log.debug("querying tickers")
 
-    r = requests.get("https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
-        .format(idx, limit or 0))
-    if r.status_code != 200:
-        return log.error("API error %s", r.status_code)
-
-    #log.debug("{:,} bytes received ({:,}ms)".format(getsize(r.text), t))
-    data = json.loads(r.text)
+    try:
+        r = requests.get("https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
+            .format(idx, limit or 0))
+    except Exception as e:
+        if r.status_code != 200:
+            return log.error("API error %s", r.status_code)
+    else:
+        data = json.loads(r.text)
 
     # Sort by timestamp in descending order
     data = sorted(data, key=lambda x: int(x["last_updated"] or 1))[::-1]
@@ -96,7 +96,6 @@ def get_tickers_5t(start=0, limit=None):
 
     for ticker in tickerdata:
         store={"date":updated}
-
         for f in ticker_f:
             try:
                 val = ticker[f["from"]]
@@ -104,17 +103,46 @@ def get_tickers_5t(start=0, limit=None):
             except Exception as e:
                 log.exception("%s ticker error", ticker["symbol"])
                 continue
-
         ops.append(ReplaceOne(
             {'date':updated, 'symbol':store['symbol']}, store, upsert=True))
 
-    t2 = Timer()
-    result = db.tickers_5t.bulk_write(ops).bulk_api_result
-    #log.debug("bulk_write completed (%sms)", t2)
-    del result["upserted"]
-    #log.debug(result)
-    if result["nUpserted"] > 0:
-        log.info("Coinmktcap tickers updated [n=%s, freq='5m', t=%sms]", len(tickerdata), t)
+    if save_capped_db(ops, db.tickers_5t):
+        log.info("%s Coinmktcap tickers updated. [%sms]", len(tickerdata), t1)
+
+#---------------------------------------------------------------------------
+def save_capped_db(ops, coll):
+    try:
+        result = coll.bulk_write(ops)
+    except Exception as e:
+        log.exception("Error saving CMC tickers. %s", str(e))
+        db = get_db()
+        stats = db.command("collstats",coll.name)
+
+        if stats['capped'] == False:
+            return False
+
+        max_size = stats['maxSize']
+
+        # Capped collection full. Drop and re-create w/ indexes.
+        if stats['size'] / max_size > 0.9:
+            from pymongo import IndexModel, ASCENDING, DESCENDING
+
+            log.info("Capped collection > 90% full. Dropping and recreating.")
+            name = coll.name
+            coll.drop()
+
+            db.create_collection(name, capped=True, size=max_size)
+            idx1 = IndexModel( [("symbol", ASCENDING)], name="symbol")
+            idx2 = IndexModel( [("date", DESCENDING)], name="date_-1")
+            db[name].create_indexes([idx1, idx2])
+
+            log.info("Retrying bulk_write")
+            try:
+                result = db[name].bulk_write(ops)
+            except Exception as e:
+                log.exception("Error saving CMC tickers. %s", str(e))
+                return False
+    return True
 
 #---------------------------------------------------------------------------
 def get_marketidx_5t():

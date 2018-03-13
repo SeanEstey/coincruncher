@@ -32,6 +32,45 @@ def authenticate(client, user=None, pw=None):
             client.HOST, client.PORT)
         raise
 
+#---------------------------------------------------------------------------
+def bulk_write_capped(ops, coll):
+    try:
+        result = coll.bulk_write(ops)
+    except Exception as e:
+        log.exception("Bulk write error. %s", str(e))
+
+        from app import get_db
+        db = get_db()
+        stats = db.command("collstats",coll.name)
+
+        if stats['capped'] == False:
+            return False
+
+        max_size = stats['maxSize']
+
+        # Capped collection full. Drop and re-create w/ indexes.
+        if stats['size'] / max_size > 0.9:
+            from pymongo import IndexModel, ASCENDING, DESCENDING
+
+            log.info("Capped collection > 90% full. Dropping/recreating.")
+            log.info("Manually recreate indexes: %s", list(coll.list_indexes()))
+            name = coll.name
+            coll.drop()
+
+            db.create_collection(name, capped=True, size=max_size)
+            # FIXME
+            idx1 = IndexModel( [("symbol", ASCENDING)], name="symbol")
+            idx2 = IndexModel( [("date", DESCENDING)], name="date_-1")
+            db[name].create_indexes([idx1, idx2])
+
+            log.info("Retrying bulk_write")
+            try:
+                result = db[name].bulk_write(ops)
+            except Exception as e:
+                log.exception("Error saving CMC tickers. %s", str(e))
+                return False
+    return True
+
 #-------------------------------------------------------------------------------
 def locked():
     from app import client

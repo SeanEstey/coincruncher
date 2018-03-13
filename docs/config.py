@@ -1,3 +1,6 @@
+# Trading
+ZSCORE_THRESHOLD = 2
+
 # App
 HOST="45.79.176.125"
 MONGO_PORT = 27017
