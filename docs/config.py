@@ -1,5 +1,5 @@
 # Trading
-ZSCORE_THRESH = 2
+ZSCORE_THRESH = 2.5
 
 # App
 HOST="45.79.176.125"

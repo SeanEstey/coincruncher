@@ -25,5 +25,7 @@ app.set_db(hosts[0])
 db = app.get_db()
 
 results = signals.update()
-dfa = results[0]
-dfp = results[1]
+df_z = results[0]
+df_wa = results[1]
+df_out = results[2]
+df_in = results[3]

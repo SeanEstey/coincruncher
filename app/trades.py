@@ -17,36 +17,36 @@ def update_position(keys, wascore, df_z):
     @wascore: weighted average trade signal score
     @df_z: dataframe w/ stat analysis & candle component z-scores
     """
+    from app.signals import print_score
     db = app.get_db()
     idx = dict(zip(['pair', 'freq', 'period'], keys))
     curs = db.trades.find({**idx, **{'status': 'open'}})
 
-    # Open new position
-    if curs.count() == 0:
-        candle = candles.last(idx['pair'], freqtostr[idx['freq']])
-        fee_amt = (FEE_PCT/100) * VOL * candle['close']
-        buy_amt = (VOL * candle['close']) - fee_amt
+    if curs.count() > 0:
+        # Update open position
+        return siglog("OPEN: ({}). Mean Z-Score: {:+.2f}.".format(",".join(keystostr(keys)), wascore))
 
-        db.trades.insert_one({**idx, **{
-            'status': 'open',
-            'exchange': 'Binance',
-            'start_time': now(),
-            'buy_price': candle['close'],
-            'buy_vol': VOL,
-            'buy_amt': buy_amt,
-            'total_fee_pct': FEE_PCT,
-            'candles':{'start': candle},
-            'scores': {'start': {
-                'wascore':wascore,
-                'zscores': df_z.to_dict()
-            }}
-        }})
-        siglog("Opened trade for (%s, %s, %s)." % keys)
-    # Update open position
-    else:
-        #record = list(curs)[0]
-        #db.trades.update_one({"_id":record["_id"]}, {"$set":{"last_zscore":zscore}})
-        siglog("Updated trade zscore for (%s,%s,%s)." % keys)
+    # Open new position
+    candle = candles.last(idx['pair'], freqtostr[idx['freq']])
+    fee_amt = (FEE_PCT/100) * VOL * candle['close']
+    buy_amt = (VOL * candle['close']) - fee_amt
+    db.trades.insert_one({**idx, **{
+        'status': 'open',
+        'exchange': 'Binance',
+        'start_time': now(),
+        'buy_price': candle['close'],
+        'buy_vol': VOL,
+        'buy_amt': buy_amt,
+        'total_fee_pct': FEE_PCT,
+        'candles':{'start': candle},
+        'scores': {'start': {
+            'wascore':wascore,
+            'zscores': df_z.to_dict()
+        }}
+    }})
+
+    print_score(keys, df_z)
+    siglog("Opened {} position, has {:+.2f} wascore.".format(", ".join(keystostr(keys)), wascore))
 
 #------------------------------------------------------------------------------
 def close_position(keys, wascore, df_z):
@@ -55,6 +55,7 @@ def close_position(keys, wascore, df_z):
     @wascore: weighted average trade signal score
     @df_z: dataframe w/ stat analysis & candle component z-scores
     """
+    from app.signals import print_score
     db = app.get_db()
     idx = dict(zip(['pair', 'freq', 'period'], keys))
     curs = db.trades.find({**idx, **{'status': 'open'}})
@@ -91,32 +92,30 @@ def close_position(keys, wascore, df_z):
             }
         }}
     )
-
-    siglog('Closing (%s, %s, %s) trade.' % keys)
-    siglog('Price change: %s%%' % round(price_pct_change,2))
+    print_score(keys, df_z)
+    siglog('Closing %s position, %s%% price change.' %(keystostr(keys), (round(price_pct_change,5),)))
 
 #------------------------------------------------------------------------------
 def summarize():
     db = app.get_db()
-
-    closed = list(db.trade_stats.find({"end_time":{"$ne":False}}))
+    closed = list(db.trades.find({"status":"closed"}))
     n_loss, n_gain = 0, 0
     pct_gross_gain = 0
     pct_net_gain = 0
     pct_trade_fee = 0.05
 
     for n in closed:
-        if n['pct_change'] > 0:
+        if n['price_pct_change'] > 0:
             n_gain += 1
         else:
             n_loss += 1
-        pct_gross_gain += n['pct_change']
+        pct_gross_gain += n['price_pct_change']
 
     win_ratio = n_gain/len(closed)
     pct_net_gain = pct_gross_gain - (len(closed) * pct_trade_fee)
-    n_open = db.trade_stats.find({"end_time":False}).count()
-
-    log.log(100, "Trade summary: %s closed, %s win ratio, %s%% gross earn, %s%% net earn. %s open." %(
+    n_open = db.trades.find({"status":"open"}).count()
+    siglog('-'*80)
+    siglog("Trade summary: %s closed, %s win ratio, %s%% gross earn, %s%% net earn. %s open." %(
         len(closed), round(win_ratio,2), round(pct_gross_gain,2), round(pct_net_gain,2), n_open))
-    log.log(100, '-'*80)
-    log.debug('%s win trades, %s loss trades.', n_gain, n_loss)
+    siglog('-'*80)
+    log.info('%s win trades, %s loss trades.', n_gain, n_loss)

@@ -5,9 +5,10 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import app
-from app import candles, trades
+from app import candles
 from app.timer import Timer
 from app.utils import utc_datetime as now, to_local
+from docs.config import ZSCORE_THRESH
 from docs.data import BINANCE, FREQ_TO_STR as freqtostr, PER_TO_STR as pertostr
 
 log = logging.getLogger('signals')
@@ -19,7 +20,7 @@ def siglog(msg): log.log(100, msg)
 def update():
     """Compute pair/aggregate signal data. Binance candle historical averages..
     """
-    from docs.config import ZSCORE_THRESH
+    from app import trades
     t1 = Timer()
 
     # Aggregate zscores for new candle data
@@ -46,7 +47,7 @@ def update():
 
     trades.summarize()
     log.info('Scores/trades updated. [%ss]', t1)
-    return (df_out, df_wa)
+    return (df_z, df_wa, df_out, df_in)
 
 #------------------------------------------------------------------------------
 def generate_dataset():
@@ -75,7 +76,7 @@ def generate_dataset():
                 zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
             ])
 
-    log.info("Generated [%s rows x %s cols] z-score dataframe from Binance candles. [%ss]",
+    log.debug("Generated [%s rows x %s cols] z-score dataframe from Binance candles. [%ss]",
         len(df_data), len(df_data.columns), t1.elapsed(unit='s'))
     return df_data
 
@@ -120,11 +121,6 @@ def zscore(pair, freq, period, start, end, candle):
 
     # Enhance floating point precision for small numbers
     df_h["close"] = df_h["close"].astype('float64')
-
-    df_h.metadata_candle_open_time = candle['open_time']
-    df_h.metadata_candle_close_time = candle['close_time']
-    df_h.metadata_period_start = hist_data.iloc[0].name
-    df_h.metadata_period_end = hist_data.iloc[-1].name
     return df_h
 
 #-----------------------------------------------------------------------------
@@ -168,71 +164,55 @@ def load_scores(pair, freq, period):
     ).astype('float64')
 
 #------------------------------------------------------------------------------
-def show_alerts(df_h, df_z):
-    """Print alerts to signal log.
+def print_score(idx, df_z):
+    """Print statistial analysis for single (pair, freq, period).
     """
-    df_z = df_z.sort_values('zscore')
-    max_sigs=[]
+    from datetime import timedelta as tdelta
 
-    # Given tuples with index levels=[1,2], find max aggregate series
-    for idx in [(300,3600), (3600,86400), (86400,604800)]:
-        r = {"freq":idx[0], "period":idx[1]}
-        series = df_z.xs(r['freq'], level=1).xs(r['period'], level=1).iloc[-1]
-        r['pair'] = series.name
-        r.update(series.to_dict())
-        max_sigs.append(r)
+    if len(df_z.index.values) != 4:
+        return log.error("Too many rows. Should be only 4.")
 
-    log.log(100, '-'*80)
+    # FIXME once weighted_average is calculated differently
+    wascore = df_z.iloc[-1].mean()
+    idx_dict = dict(zip(['pair','freq', 'period'], idx))
+    freq = freqtostr[idx_dict['freq']]
+    prd = pertostr[idx_dict['period']]
+    candle = candles.last(idx_dict['pair'], freq)
+    open_time = to_local(candle['open_time'])
+    close_time = to_local(candle['close_time'])
+    prd_end = open_time - tdelta(microseconds=1)
 
-    for r in max_sigs:
-        if r['zscore'] < 2:
-            continue
+    if freq == '5m':
+        prd_start = open_time - tdelta(minutes=60)
+    elif freq == '1h':
+        prd_start = open_time - tdelta(hours=24)
+    elif freq == '1d':
+        prd_start = open_time - tdelta(days=7)
 
-        #if isinstance(r['age'], datetime):
-        #    hrs = round((now()-r['age']).total_seconds()/3600, 1)
-        #    r['age'] = str(int(hrs*60))+'m' if hrs < 1 else str(hrs)+'h'
-
-        dfr = df_h.loc[(r['pair'], r['freq'], r['period'])].copy()
-        open_time = to_local(dfr.iloc[0]['open_time'])
-        start = to_local(dfr.iloc[0]['hist_start'])
-        end = to_local(dfr.iloc[0]['hist_end'])
-
-        log.log(100, r['pair'])
-        log.log(100, "{} Candle:    {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
-            freqtostr[r['freq']], open_time, open_time + timedelta(seconds=r['freq'])))
-
-        if start.day == end.day:
-            log.log(100, "{} Hist:     {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
-                pertostr[r['period']], start, end))
-        else:
-            log.log(100, "{} Hist:     {:%m-%d-%Y %I:%M%p} - {:%m-%d-%Y %I:%M%p}".format(
-                pertostr[r['period']], start, end))
-        log.log(100,'')
-
-        dfr = dfr[["close", "buy_vol", "buy_ratio", "volume", "trades"]]
-        dfr[["buy_vol", "buy_ratio", "volume"]] = dfr[["buy_vol", "buy_ratio", "volume"]].astype(float).round(2)
-
-        lines = dfr.to_string(
-            col_space=10,
-            #float_format=lambda x: "{:,f}".format(x),
-            line_width=100).title().split("\n")
-        [log.log(100, line) for line in lines]
-
-        log.log(100, '')
-        log.log(100, "Mean Zscore: {:+.1f}, Age: :".format(r['zscore'])) #, r['age']))
-        log.log(100, '-'*80)
+    siglog(idx_dict['pair'])
+    siglog("{} Candle:    {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
+        freq, open_time, close_time))
+    if prd_start.day == prd_end.day:
+        siglog("{} Hist:     {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
+            prd, prd_start, prd_end))
+    else:
+        siglog("{} Hist:     {:%m-%d-%Y %I:%M%p} - {:%m-%d-%Y %I:%M%p}".format(
+            prd, prd_start, prd_end))
+    siglog('')
+    lines = df_z.to_string(col_space=10, line_width=100).title().split("\n")
+    [siglog(line) for line in lines]
+    siglog('')
+    siglog("Mean Zscore: {:+.1f}".format(wascore))
+    siglog('-'*80)
 
 #------------------------------------------------------------------------------
 def weighted_average(df_z):
     """Check if any updated datasets have z-scores > 2, track in DB to determine
     price correlations.
     """
-    from docs.config import ZSCORE_THRESH
-
-    # Weighted average scores
+    # Locate dataframe at 3rd index level and take mean zscore
     df_wa = pd.DataFrame(df_z.xs('zscore', level=3).mean(axis=1),
         columns=['wascore']).sort_values('wascore')
-
     return df_wa
 
 
