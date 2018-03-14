@@ -106,8 +106,6 @@ if __name__ == '__main__':
 
     divstr = "***** %s *****"
     log.info('Initializing daemon.')
-    #log.info(divstr % "restarted")
-    #log.debug(divstr % "restarted")
     killer = GracefulKiller()
 
     try:

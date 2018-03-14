@@ -8,9 +8,7 @@ import app
 from app import candles, trades
 from app.timer import Timer
 from app.utils import utc_datetime as now, to_local
-from docs.data import BINANCE
-from docs.config import FREQ_TO_STR as freqtostr
-from docs.config import PER_TO_STR as pertostr
+from docs.data import BINANCE, FREQ_TO_STR as freqtostr, PER_TO_STR as pertostr
 
 log = logging.getLogger('signals')
 strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
@@ -25,23 +23,26 @@ def update():
     t1 = Timer()
 
     # Aggregate zscores for new candle data
-    df_data = generate_dataset()
-    save_db(df_data)
-    df_wa = weighted_average(df_data)
+    df_z = generate_dataset()
+    save_db(df_z)
+
+    df_wa = weighted_average(df_z)
 
     # Apply threshold filters (n_deviations)
-    df_out = df_wa[df_wa.score > ZSCORE_THRESH]
-    df_in = df_wa[df_wa.score <= ZSCORE_THRESH]
+    df_out = df_wa[df_wa.wascore > ZSCORE_THRESH]
+    df_in = df_wa[df_wa.wascore <= ZSCORE_THRESH]
     log.info("%s above threshold, %s below.", len(df_out), len(df_in))
 
     # Send alerts, update trading positions
 
     for idx, row in df_out.iterrows():
-        show_alert(idx, row)
-        trades.update_position(idx, row)
+        df = df_z.loc[idx]
+        #show_alert(idx, row)
+        trades.update_position(idx, row.wascore, df)
 
     for idx, row in df_in.iterrows():
-        trades.close_position(idx, row)
+        df = df_z.loc[idx]
+        trades.close_position(idx, row.wascore, df)
 
     trades.summarize()
     log.info('Scores/trades updated. [%ss]', t1)
@@ -120,14 +121,14 @@ def zscore(pair, freq, period, start, end, candle):
     # Enhance floating point precision for small numbers
     df_h["close"] = df_h["close"].astype('float64')
 
-    df_h["open_time"] = candle["open_time"]
-    df_h["hist_start"] = hist_data.iloc[0].name
-    df_h["hist_end"] = hist_data.iloc[-1].name
-
+    df_h.metadata_candle_open_time = candle['open_time']
+    df_h.metadata_candle_close_time = candle['close_time']
+    df_h.metadata_period_start = hist_data.iloc[0].name
+    df_h.metadata_period_end = hist_data.iloc[-1].name
     return df_h
 
 #-----------------------------------------------------------------------------
-def save_db(df_data):
+def save_db(df_z):
     """Given pair signal dataframe, Generate aggregate (sum) signals on each
     index (pair, freq, period, prop), along with time since last sign change,
     t(signal > 0) and t(signal < 0).
@@ -136,14 +137,11 @@ def save_db(df_data):
     t1 = Timer()
     ops=[]
 
-    for idx, row in df_data.iterrows():
-
-        keys = dict(zip(df_data.index.names, df_data.loc[idx].name))
-        match['period'] = int(match['period'])
-        match['freq'] = int(match['freq'])
-        record = match.copy()
-        record.update(df_data.loc[idx].to_dict())
-        ops.append(ReplaceOne(match, record, upsert=True))
+    for idx, row in df_z.iterrows():
+        query = dict(zip(['pair', 'freq', 'period'], idx))
+        record = query.copy()
+        record.update(row.to_dict())
+        ops.append(ReplaceOne(query, record, upsert=True))
     try:
         res = db.zscores.bulk_write(ops)
     except Exception as e:
@@ -225,15 +223,15 @@ def show_alerts(df_h, df_z):
         log.log(100, '-'*80)
 
 #------------------------------------------------------------------------------
-def weighted_average(df_s):
+def weighted_average(df_z):
     """Check if any updated datasets have z-scores > 2, track in DB to determine
     price correlations.
     """
     from docs.config import ZSCORE_THRESH
 
     # Weighted average scores
-    df_wa = pd.DataFrame(df_h.xs('zscore', level=3).mean(axis=1),
-        columns=['zscore']).sort_values('zscore')
+    df_wa = pd.DataFrame(df_z.xs('zscore', level=3).mean(axis=1),
+        columns=['wascore']).sort_values('wascore')
 
     return df_wa
 
