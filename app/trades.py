@@ -1,75 +1,101 @@
 # app.trades
 import logging
 import app
-from app import candles
+from app import candles, signals
 from app.utils import utc_datetime as now
-from docs.data import FREQ_TO_STR as freqtostr, PER_TO_STR as pertostr,\
-VOLUME as VOL, BINANCE_TRADE_FEE_PCT as FEE_PCT
+from docs.data import FREQ_STR as freqtostr, PER_STR as pertostr
+from docs.config import Z_THRESH, Z_WEIGHTS
+from docs.data import BINANCE
 
 log = logging.getLogger('trades')
 def siglog(msg): log.log(100, msg)
 def keystostr(keys): return (keys[0], freqtostr[keys[1]], pertostr[keys[2]])
 
 #------------------------------------------------------------------------------
-def update_position(keys, wascore, df_z):
+def update_all():
+    """Compute pair/aggregate signal data. Binance candle historical averages..
+    """
+    pairs = BINANCE['pairs']
+    t1 = Timer()
+    # Aggregate zscores from candles
+    df_z = signals.generate_dataset(pairs)
+    signals.save_db(df_z)
+    df_wtz = signals.weight_scores(df_z, Z_WEIGHTS)
+
+    # Mean across 3 historical periods on 1h candles
+    for pair in df_wtz.index.levels[0]:
+        score = df_wtz.loc[(pair, 3600)]['weighted'].mean()
+        if score > Z_THRESH:
+            update(pair, score, df_wtz.loc[(pair)], df_z.loc[(pair)])
+        else:
+            close(pair, score, df_wtz.loc[(pair)], df_z.loc[(pair)])
+
+    summarize()
+    log.info('Scores/trades updated. [%ss]', t1)
+    return (df_z, df_wtz)
+
+#------------------------------------------------------------------------------
+def update(pair, score, df_wtz, df_z):
     """Create or update existing position for zscore above threshold value.
-    @keys: (pair, freq, period) tuple
-    @wascore: weighted average trade signal score
+    @score: weighted average trade signal score
     @df_z: dataframe w/ stat analysis & candle component z-scores
     """
-    from app.signals import print_score
-    db = app.get_db()
-    idx = dict(zip(['pair', 'freq', 'period'], keys))
-    curs = db.trades.find({**idx, **{'status': 'open'}})
+    fee_pct = BINANCE['trade_fee_pct']
+    vol = BINANCE['volume']
 
+    db = app.get_db()
+    curs = db.trades.find({'pair':pair, 'status': 'open'})
     if curs.count() > 0:
-        # Update open position
-        return siglog("OPEN: ({}), {:+.2f} mean zscore.".format(",".join(keystostr(keys)), wascore))
+        return siglog("OPEN: ({}), {:+.2f} mean zscore.".format(
+            ",".join(keystostr((pair, 3600, 86400))), score))
 
     # Open new position
-    candle = candles.last(idx['pair'], freqtostr[idx['freq']])
-    fee_amt = (FEE_PCT/100) * VOL * candle['close']
-    buy_amt = (VOL * candle['close']) - fee_amt
-    db.trades.insert_one({**idx, **{
+    close = df_z.loc[(pair, 3600, 86400, 'candle')].close
+    fee_amt = (fee_pct/100) * vol * close
+    buy_amt = (vol * close) - fee_amt
+    db.trades.insert_one({
+        'pair': pair,
+        'freq': 3600,
         'status': 'open',
         'exchange': 'Binance',
         'start_time': now(),
-        'buy_price': candle['close'],
-        'buy_vol': VOL,
+        'buy_price': close,
+        'buy_vol': vol,
         'buy_amt': buy_amt,
-        'total_fee_pct': FEE_PCT,
-        'candles':{'start': candle},
-        'scores': {'start': {
-            'wascore':wascore,
-            'zscores': df_z.to_dict()
+        'total_fee_pct': fee_pct,
+        'analysis': {
+            'start': {
+                'candles': df_z.loc[(pair)].to_dict(),
+                'zscores': df_wtz.to_dict(),
+                'mean_score':score
         }}
-    }})
+    })
 
-    print_score(keys, df_z)
-    siglog("OPENING POSITION: ({}), {:+.2f} mean zscore.".format(",".join(keystostr(keys)), wascore))
+    signals.print_score((pair, 3600, 86400), df_z)
+    siglog("OPENING POSITION: ({}), {:+.2f} mean zscore.".format(
+        ",".join(keystostr((pair, 3600, 86400))), score))
 
 #------------------------------------------------------------------------------
-def close_position(keys, wascore, df_z):
+def close(pair, score, df_wtz, df_z):
     """Close off existing position and calculate earnings.
-    @keys: (pair, freq, period) tuple
-    @wascore: weighted average trade signal score
+    @score: weighted average trade signal score
     @df_z: dataframe w/ stat analysis & candle component z-scores
     """
-    from app.signals import print_score
-    db = app.get_db()
-    idx = dict(zip(['pair', 'freq', 'period'], keys))
-    curs = db.trades.find({**idx, **{'status': 'open'}})
+    fee_pct = BINANCE['trade_fee_pct']
+    vol = BINANCE['volume']
 
+    db = app.get_db()
+    curs = db.trades.find('pair':pair, {'status': 'open'})
     if curs.count() == 0:
         return False
 
     trade = list(curs)[0]
-    candle = candles.last(idx['pair'], freqtostr[idx['freq']])
+    close = df_z.loc[(pair, 3600, 86400, 'candle')].close
     end_time = now()
-    fee_amt = (FEE_PCT/100) * VOL * candle['close']
-    sell_amt = (VOL * candle['close']) - fee_amt
-    price_pct_change = (candle['close'] - trade['buy_price']) / trade['buy_price']
-    gross_earn = (candle['close'] * VOL) - (trade['buy_price'] * VOL)
+    fee_amt = (fee_pct/100) * vol * close
+    sell_amt = (vol * close) - fee_amt
+    price_pct_change = (close - trade['buy_price']) / trade['buy_price']
+    gross_earn = (close * vol) - (trade['buy_price'] * vol)
     net_earn = gross_earn - (fee_amt * 2)
 
     db.trades.update_one(
@@ -77,21 +103,22 @@ def close_position(keys, wascore, df_z):
         {"$set": {
             'status': 'closed',
             'end_time': end_time,
-            'sell_price': candle['close'],
+            'sell_price': close,
             'sell_amt': sell_amt,
-            'total_fee_pct': FEE_PCT * 2,
+            'total_fee_pct': fee_pct * 2,
             'price_pct_change': price_pct_change,
             'gross_earn':gross_earn,
             'net_earn': net_earn,
-            'candles.end': candle,
-            'scores.end': {
-                'wascore': wascore,
-                'zscores': df_z.to_dict()
+            'analysis.end': {
+                'candles': df_z.loc[(pair)].to_dict(),
+                'zscores': df_wtz.to_dict(),
+                'mean_score':score
             }
         }}
     )
-    siglog('CLOSING POSITION: ({}), {:+.2f}% price.'.format(",".join(keystostr(keys)), price_pct_change))
-    print_score(keys, df_z)
+    siglog('CLOSING POSITION: ({}), {:+.2f}% price.'.format(
+        ",".join(keystostr((pair, 3600, 86400))), price_pct_change))
+    signals.print_score((pair, 3600, 86400), df_z)
 
 #------------------------------------------------------------------------------
 def summarize():

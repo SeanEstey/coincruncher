@@ -1,4 +1,5 @@
 BitEx==2.0.0
+python-binance
 bs4
 babel
 dateparser

@@ -1,78 +1,23 @@
 
-# Frequency in seconds to str
-FREQ_TO_STR = {
-    300:"5m",
-    3600:"1h",
-    86400:"1d"
-}
-
-# Placeholder for simulating trades
-VOLUME = 1
-BINANCE_TRADE_FEE_PCT = 0.05
-
-# Period in seconds to str
-PER_TO_STR = {
-    3600:"60m",
-    7200:"120m",
-    10800: "180m",
-    86400:"24h",
-    172800:"48h",
-    259200:"72h",
-    604800:"7d",
-    1209600:"14d",
-    1814400:"21d"
+BINANCE = {
+    "volume": 1,
+    "trade_fee_pct": 0.05,
+    "pairs": [
+        "BLZBTC", "BTCUSDT", "BNBUSDT", "BCCUSDT", "ETCBTC", "ETHUSDT", "ETHBTC", "EOSBTC",
+        "ICXBTC", "LINKBTC", "LTCUSDT", "NANOBTC", "NCASHBTC", "NEOBTC", "NEBLBTC", "OMGBTC",
+        "VENBTC", "WTCBTC", "XMRBTC", "XRPBTC", "ZECBTC"
+    ]
 }
 
 COINMARKETCAP = {
     "WATCH": [
-        "LTC",
-        "BCH",
-        "XMR",
-        "NEBL",
-        "OCN",
-        "BLZ",
-        "ETC"
-        "BNB",
-        "BTC",
-        "LINK",
-        "DRGN",
-        "ENJ",
-        "EOS",
-        "ETH",
-        "GAS",
-        "ICX",
-        "JNT",
-        "NANO",
-        "NCASH",
-        "NEO",
-        "ODN",
-        "OMG",
-        "POLY",
-        "REQ",
-        "AGI",
-        "VEN",
-        "WTC",
-        "ZIL",
-        "ZCL",
-        "XRP"
+        "LTC", "BCH", "XMR", "NEBL", "OCN", "BLZ", "ETC", "BNB", "BTC", "LINK", "DRGN",
+        "ENJ", "EOS", "ETH", "GAS", "ICX", "JNT", "NANO", "NCASH", "NEO", "ODN", "OMG",
+        "POLY", "REQ", "AGI", "VEN", "WTC", "ZIL", "ZCL", "XRP"
     ],
     "CORR": [
-        "BLZ",
-        "BTC",
-        "BCH",
-        "ETH",
-        "EOS",
-        "ETC",
-        "ICX",
-        "LTC",
-        "NANO",
-        "NEBL",
-        "NEO",
-        "OMG",
-        "VEN",
-        "XMR",
-        "XRP",
-        "WTC"
+        "BLZ", "BTC", "BCH", "ETH", "EOS", "ETC", "ICX", "LTC", "NANO", "NEBL", "NEO",
+        "OMG", "VEN", "XMR", "XRP", "WTC"
     ],
     "PORTFOLIO": {
         "BNB": 11.17,
@@ -102,28 +47,21 @@ COINMARKETCAP = {
     }
 }
 
-BINANCE = {
-    "CANDLES": [
-        "BLZBTC",
-        "BTCUSDT",
-        "BNBUSDT",
-        "BCCUSDT",
-        "ETCBTC",
-        "ETHUSDT",
-        "ETHBTC",
-        "EOSBTC",
-        "ICXBTC",
-        "LINKBTC",
-        "LTCUSDT",
-        "NANOBTC",
-        "NCASHBTC",
-        "NEOBTC",
-        "NEBLBTC",
-        "OMGBTC",
-        "VENBTC",
-        "WTCBTC",
-        "XMRBTC",
-        "XRPBTC",
-        "ZECBTC"
-    ]
+# Frequency in seconds to str
+FREQ_STR = {
+    300:"5m",
+    3600:"1h",
+    86400:"1d"
+}
+# Period in seconds to str
+PER_STR = {
+    3600:"60m",
+    7200:"120m",
+    10800: "180m",
+    86400:"24h",
+    172800:"48h",
+    259200:"72h",
+    604800:"7d",
+    1209600:"14d",
+    1814400:"21d"
 }

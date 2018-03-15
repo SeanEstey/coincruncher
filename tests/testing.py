@@ -21,11 +21,12 @@ log = logging.getLogger("testing")
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 hosts = ["localhost", "45.79.176.125"]
-app.set_db(hosts[0])
+app.set_db(hosts[1])
 db = app.get_db()
 
-results = signals.update()
+"""results = signals.update()
 df_z = results[0]
 df_wa = results[1]
 df_out = results[2]
 df_in = results[3]
+"""

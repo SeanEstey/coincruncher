@@ -9,6 +9,12 @@ python3 setup.py install
 
 Dev 2.0 documentation: https://github.com/Crypto-toolbox/bitex/tree/dev
 
+### Run MongoDB Daemon
+
+```
+mongod --auth --port 27017 --dbpath /data/db --bind_ip_all
+```
+
 ### Run daemon
 
 ```

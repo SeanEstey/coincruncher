@@ -142,6 +142,8 @@ def save_capped_db(ops, coll):
             except Exception as e:
                 log.exception("Error saving CMC tickers. %s", str(e))
                 return False
+        else:
+            log.error("Size is <90% max. Unknown error.")
     return True
 
 #---------------------------------------------------------------------------

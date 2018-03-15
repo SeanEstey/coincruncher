@@ -8,8 +8,7 @@ import app
 from app import candles
 from app.timer import Timer
 from app.utils import utc_datetime as now, to_local
-from docs.config import ZSCORE_THRESH
-from docs.data import BINANCE, FREQ_TO_STR as freqtostr, PER_TO_STR as pertostr
+from docs.data import FREQ_TO_STR as freqtostr, PER_TO_STR as pertostr
 
 log = logging.getLogger('signals')
 strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
@@ -17,68 +16,20 @@ strtoper = dict(zip(list(pertostr.values()), list(pertostr.keys())))
 def siglog(msg): log.log(100, msg)
 
 #------------------------------------------------------------------------------
-def update():
-    """Compute pair/aggregate signal data. Binance candle historical averages..
+def weight_scores(df_z, weights):
+    """Check if any updated datasets have z-scores > 2, track in DB to determine
+    price correlations.
     """
-    from app import trades
-    t1 = Timer()
+    results = []
+    df_wt = df_z.copy().xs('zscore', level=3)
 
-    # Aggregate zscores for new candle data
-    df_z = generate_dataset()
-    save_db(df_z)
+    for idx, row in df_wt.iterrows():
+        results.append((row * weights).sum() / sum(weights))
 
-    df_wa = weighted_average(df_z)
+    df_wt['mean'] = df_wt.mean(axis=1)
+    df_wt['weighted'] = wa_scores
 
-    # Apply threshold filters (n_deviations)
-    df_out = df_wa[df_wa.wascore > ZSCORE_THRESH]
-    df_in = df_wa[df_wa.wascore <= ZSCORE_THRESH]
-    log.info("%s above threshold, %s below.", len(df_out), len(df_in))
-
-    # Send alerts, update trading positions
-
-    for idx, row in df_out.iterrows():
-        df = df_z.loc[idx]
-        #show_alert(idx, row)
-        trades.update_position(idx, row.wascore, df)
-
-    for idx, row in df_in.iterrows():
-        df = df_z.loc[idx]
-        trades.close_position(idx, row.wascore, df)
-
-    trades.summarize()
-    log.info('Scores/trades updated. [%ss]', t1)
-    return (df_z, df_wa, df_out, df_in)
-
-#------------------------------------------------------------------------------
-def generate_dataset():
-    """Build dataframe with scores for 5m, 1h, 1d frequencies across various
-    time periods.
-    """
-    t1 = Timer()
-    _1m = timedelta(minutes=1)
-    _1h = timedelta(hours=1)
-    _1d = timedelta(hours=24)
-    df_data = pd.DataFrame()
-
-    # Calculate z-scores for various (pair, freq, period) keys
-    for pair in BINANCE["CANDLES"]:
-        c5m = candles.last(pair,"5m")
-        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
-        c1h = candles.last(pair,"1h")
-        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
-        c1d = candles.last(pair,"1d")
-        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
-
-        for n in range(1,4):
-            df_data = df_data.append([
-                zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
-                zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
-                zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
-            ])
-
-    log.debug("Generated [%s rows x %s cols] z-score dataframe from Binance candles. [%ss]",
-        len(df_data), len(df_data.columns), t1.elapsed(unit='s'))
-    return df_data
+    return df_wt.sort_index()
 
 #-----------------------------------------------------------------------------
 def zscore(pair, freq, period, start, end, candle):
@@ -93,7 +44,7 @@ def zscore(pair, freq, period, start, end, candle):
     # Save as int to enable df index sorting
     _freq = strtofreq[freq]
     _period = strtoper[period]
-    columns = ['close', 'volume', 'buy_vol', 'buy_ratio', 'trades']
+    columns = ['close', 'open', 'volume', 'buy_vol', 'buy_ratio', 'trades']
     stats_idx = ['candle', 'mean', 'std', 'zscore']
 
     # Statistical data and z-score
@@ -206,18 +157,32 @@ def print_score(idx, df_z):
     siglog('-'*80)
 
 #------------------------------------------------------------------------------
-def weighted_average(df_z):
-    """Check if any updated datasets have z-scores > 2, track in DB to determine
-    price correlations.
+def generate_dataset(pairs):
+    """Build dataframe with scores for 5m, 1h, 1d frequencies across various
+    time periods.
     """
-    #         Close, Vol, BuyVol, Buyratio, Trades
-    weights = [0.75, 0.5, 0.5,    0.75,     0.5]
-    by = df_z.index
+    t1 = Timer()
+    _1m = timedelta(minutes=1)
+    _1h = timedelta(hours=1)
+    _1d = timedelta(hours=24)
+    df_data = pd.DataFrame()
 
-    #result = (df_z.zscore * weights).groupby(by).sum() / weights.groupby(by).sum()
-    #return result
+    # Calculate z-scores for various (pair, freq, period) keys
+    for pair in pairs:
+        c5m = candles.last(pair,"5m")
+        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
+        c1h = candles.last(pair,"1h")
+        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
+        c1d = candles.last(pair,"1d")
+        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
 
-    # Locate dataframe at 3rd index level and take mean zscore
-    df_wa = pd.DataFrame(df_z.xs('zscore', level=3).mean(axis=1),
-        columns=['wascore']).sort_values('wascore')
-    return df_wa
+        for n in range(1,4):
+            df_data = df_data.append([
+                zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
+                zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
+                zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
+            ])
+
+    log.debug("Generated [%s rows x %s cols] z-score dataframe from Binance candles. [%ss]",
+        len(df_data), len(df_data.columns), t1.elapsed(unit='s'))
+    return df_data
