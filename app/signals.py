@@ -210,9 +210,14 @@ def weighted_average(df_z):
     """Check if any updated datasets have z-scores > 2, track in DB to determine
     price correlations.
     """
+    #         Close, Vol, BuyVol, Buyratio, Trades
+    weights = [0.75, 0.5, 0.5,    0.75,     0.5]
+    by = df_z.index
+
+    #result = (df_z.zscore * weights).groupby(by).sum() / weights.groupby(by).sum()
+    #return result
+
     # Locate dataframe at 3rd index level and take mean zscore
     df_wa = pd.DataFrame(df_z.xs('zscore', level=3).mean(axis=1),
         columns=['wascore']).sort_values('wascore')
     return df_wa
-
-

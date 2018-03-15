@@ -54,7 +54,6 @@ def main(tckr=None, cndl=None):
         candles.api_get_all(pairs, "5m", "6 hours ago utc")
         candles.api_get_all(pairs, "1h", "80 hours ago utc")
         candles.api_get_all(pairs, "1d", "30 days ago utc")
-        signals.update()
 
     if tckr:
         try:

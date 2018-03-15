@@ -24,7 +24,7 @@ def update_position(keys, wascore, df_z):
 
     if curs.count() > 0:
         # Update open position
-        return siglog("OPEN: ({}). Mean Z-Score: {:+.2f}.".format(",".join(keystostr(keys)), wascore))
+        return siglog("OPEN: ({}), {:+.2f} mean zscore.".format(",".join(keystostr(keys)), wascore))
 
     # Open new position
     candle = candles.last(idx['pair'], freqtostr[idx['freq']])
@@ -46,7 +46,7 @@ def update_position(keys, wascore, df_z):
     }})
 
     print_score(keys, df_z)
-    siglog("Opened {} position, has {:+.2f} wascore.".format(", ".join(keystostr(keys)), wascore))
+    siglog("OPENING POSITION: ({}), {:+.2f} mean zscore.".format(",".join(keystostr(keys)), wascore))
 
 #------------------------------------------------------------------------------
 def close_position(keys, wascore, df_z):
@@ -62,10 +62,8 @@ def close_position(keys, wascore, df_z):
 
     if curs.count() == 0:
         return False
-    else:
-        trade = list(curs)[0]
-        siglog('Closing (%s, %s, %s) trade.' % keystostr(keys))
 
+    trade = list(curs)[0]
     candle = candles.last(idx['pair'], freqtostr[idx['freq']])
     end_time = now()
     fee_amt = (FEE_PCT/100) * VOL * candle['close']
@@ -92,8 +90,8 @@ def close_position(keys, wascore, df_z):
             }
         }}
     )
+    siglog('CLOSING POSITION: ({}), {:+.2f}% price.'.format(",".join(keystostr(keys)), price_pct_change))
     print_score(keys, df_z)
-    siglog('Closing %s position, %s%% price change.' %(keystostr(keys), (round(price_pct_change,5),)))
 
 #------------------------------------------------------------------------------
 def summarize():
@@ -115,7 +113,7 @@ def summarize():
     pct_net_gain = pct_gross_gain - (len(closed) * pct_trade_fee)
     n_open = db.trades.find({"status":"open"}).count()
     siglog('-'*80)
-    siglog("Trade summary: %s closed, %s win ratio, %s%% gross earn, %s%% net earn. %s open." %(
+    siglog("SUMMARY: %s closed, %s win ratio, %s%% gross earn, %s%% net earn. %s open." %(
         len(closed), round(win_ratio,2), round(pct_gross_gain,2), round(pct_net_gain,2), n_open))
     siglog('-'*80)
     log.info('%s win trades, %s loss trades.', n_gain, n_loss)
