@@ -8,7 +8,7 @@ import app
 from app import candles
 from app.timer import Timer
 from app.utils import utc_datetime as now, to_local
-from docs.data import FREQ_TO_STR as freqtostr, PER_TO_STR as pertostr
+from docs.data import FREQ_STR as freqtostr, PER_STR as pertostr
 
 log = logging.getLogger('signals')
 strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
@@ -20,14 +20,14 @@ def weight_scores(df_z, weights):
     """Check if any updated datasets have z-scores > 2, track in DB to determine
     price correlations.
     """
-    results = []
+    wt_scores = []
     df_wt = df_z.copy().xs('zscore', level=3)
 
     for idx, row in df_wt.iterrows():
-        results.append((row * weights).sum() / sum(weights))
+        wt_scores.append((row * weights).sum() / sum(weights))
 
     df_wt['mean'] = df_wt.mean(axis=1)
-    df_wt['weighted'] = wa_scores
+    df_wt['weighted'] = wt_scores
 
     return df_wt.sort_index()
 
@@ -111,20 +111,15 @@ def load_scores(pair, freq, period):
 
     return pd.DataFrame(list(curs),
         index = pd.Index(['candle', 'mean', 'std', 'zscore'], name='stats'),
-        columns = ['close', 'volume', 'buy_vol', 'buy_ratio', 'trades']
+        columns = ['close', 'open', 'volume', 'buy_vol', 'buy_ratio', 'trades']
     ).astype('float64')
 
 #------------------------------------------------------------------------------
-def print_score(idx, df_z):
+def print_score(idx, score, df_z):
     """Print statistial analysis for single (pair, freq, period).
     """
     from datetime import timedelta as tdelta
 
-    if len(df_z.index.values) != 4:
-        return log.error("Too many rows. Should be only 4.")
-
-    # FIXME once weighted_average is calculated differently
-    wascore = df_z.iloc[-1].mean()
     idx_dict = dict(zip(['pair','freq', 'period'], idx))
     freq = freqtostr[idx_dict['freq']]
     prd = pertostr[idx_dict['period']]
@@ -140,6 +135,7 @@ def print_score(idx, df_z):
     elif freq == '1d':
         prd_start = open_time - tdelta(days=7)
 
+    siglog('-'*80)
     siglog(idx_dict['pair'])
     siglog("{} Candle:    {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
         freq, open_time, close_time))
@@ -153,7 +149,7 @@ def print_score(idx, df_z):
     lines = df_z.to_string(col_space=10, line_width=100).title().split("\n")
     [siglog(line) for line in lines]
     siglog('')
-    siglog("Mean Zscore: {:+.1f}".format(wascore))
+    siglog("Mean Zscore: {:+.1f}".format(score))
     siglog('-'*80)
 
 #------------------------------------------------------------------------------
@@ -185,4 +181,4 @@ def generate_dataset(pairs):
 
     log.debug("Generated [%s rows x %s cols] z-score dataframe from Binance candles. [%ss]",
         len(df_data), len(df_data.columns), t1.elapsed(unit='s'))
-    return df_data
+    return df_data.sort_index()

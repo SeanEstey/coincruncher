@@ -1,8 +1,10 @@
 # Signals
 
-ZTHRESH = 2.5
-# Close, Volume, BuyVol, BuyRatio, Trades
-ZWEIGHTS = [1.75, 1.5, 1.0, 1.75, 1.0]
+Z_THRESH = 2.5
+# Weights to apply to z-scores to improve signals
+# for [Close, Open, Volume, BuyVol, BuyRatio, Trades]
+Z_WEIGHTS = [1.75, 1.75, 1.5, 1.0, 1.75, 1.0]
+
 
 # App
 

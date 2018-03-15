@@ -1,3 +1,4 @@
-scp docs/data.py coincrusher:~/coincrusher/docs
-scp app/*.py coincrusher:~/coincrusher/app
+scp docs/data.py coincruncher:~/coincruncher/docs
+scp docs/config.py coincruncher:~/coincruncher/docs
+scp app/*.py coincruncher:~/coincruncher/app
 

@@ -13,7 +13,7 @@ import pandas as pd
 import numpy as np
 from pymongo import ReplaceOne, UpdateOne
 import app
-from app import candles, signals
+from app import candles, signals, trades
 from app.timer import Timer
 from app.utils import utc_datetime as now, utc_dtdate
 
@@ -23,6 +23,8 @@ pd.set_option("display.width", 2000)
 hosts = ["localhost", "45.79.176.125"]
 app.set_db(hosts[1])
 db = app.get_db()
+
+r = trades.update_all()
 
 """results = signals.update()
 df_z = results[0]

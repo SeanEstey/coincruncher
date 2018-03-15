@@ -41,8 +41,6 @@ def load_db(pair, freq, start=None, end=None):
     )
     df[["trades"]] = df[["trades"]].astype('int32')
     df[cols[4:]] = df[cols[4:]].astype('float64')
-
-    #log.debug("%s %s %s candle records loaded. [%sms]", len(df), freq, pair, t1.elapsed(unit='ms'))
     return df
 
 #------------------------------------------------------------------------------
