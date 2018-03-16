@@ -14,15 +14,8 @@ class colors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
-# Pandas convenience methods
-
-#------------------------------------------------------------------------------
-def print_df(df, func, line_width=None):
-    import pandas as pd
-
-    rows = df.to_string(line_width=line_width).split("\n")
-    [ func(n) for n in rows ]
-
+# Dataframes
+def df_to_list(df): return df.to_string().title().split("\n")
 
 # Datetime methods
 import pytz

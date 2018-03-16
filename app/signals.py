@@ -5,29 +5,26 @@ from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import app
-from app import candles
+from app import siglog, freqtostr, pertostr, strtofreq, strtoper, candles
 from app.timer import Timer
-from app.utils import utc_datetime as now, to_local
-from docs.data import FREQ_STR as freqtostr, PER_STR as pertostr
+from app.utils import to_local
+from docs.config import Z_FACTORS, Z_DIMEN, Z_IDX_NAMES
 
 log = logging.getLogger('signals')
-strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
-strtoper = dict(zip(list(pertostr.values()), list(pertostr.keys())))
-def siglog(msg): log.log(100, msg)
 
 #------------------------------------------------------------------------------
-def weight_scores(df_z, weights):
+def apply_weights(df_z, wt):
     """Check if any updated datasets have z-scores > 2, track in DB to determine
     price correlations.
     """
     wt_scores = []
-    df_wt = df_z.copy().xs('zscore', level=3)
+    df_wt = df_z.copy().xs('ZSCORE', level=3)
 
     for idx, row in df_wt.iterrows():
-        wt_scores.append((row * weights).sum() / sum(weights))
+        wt_scores.append((row * wt).sum() / sum(wt))
 
-    df_wt['mean'] = df_wt.mean(axis=1)
-    df_wt['weighted'] = wt_scores
+    df_wt['MEAN_SCORE'] = df_wt.mean(axis=1)
+    df_wt['WA_SCORE'] = wt_scores
 
     return df_wt.sort_index()
 
@@ -44,14 +41,13 @@ def zscore(pair, freq, period, start, end, candle):
     # Save as int to enable df index sorting
     _freq = strtofreq[freq]
     _period = strtoper[period]
-    columns = ['close', 'open', 'volume', 'buy_vol', 'buy_ratio', 'trades']
-    stats_idx = ['candle', 'mean', 'std', 'zscore']
 
     # Statistical data and z-score
     hist_data = candles.load_db(pair, freq, start, end=end)
     hist_avg = hist_data.describe()[1::]
 
-    for x in columns:
+    for x in Z_FACTORS:
+        x = x.lower()
         data.append([
             candle[x],
             hist_avg[x]['mean'],
@@ -60,18 +56,15 @@ def zscore(pair, freq, period, start, end, candle):
         ])
 
     index = pd.MultiIndex.from_product(
-        [[pair],[_freq],[_period], stats_idx],
-        names=['pair','freq','period','stats']
-    )
-
+        [[pair],[_freq],[_period], Z_DIMEN],
+        names=Z_IDX_NAMES)
     # Reverse lists. x-axis: candle_fields, y-axis: stat_data
     df_h = pd.DataFrame(np.array(data).transpose(),
         index=index,
-        columns=columns
-    )
+        columns=Z_FACTORS)
 
     # Enhance floating point precision for small numbers
-    df_h["close"] = df_h["close"].astype('float64')
+    df_h["CLOSE"] = df_h["CLOSE"].astype('float64')
     return df_h
 
 #-----------------------------------------------------------------------------
@@ -103,19 +96,18 @@ def load_scores(pair, freq, period):
         index levels: [pair, freq, period, indicator]
         columns: [candle, mean, std, signal]
     """
-    curs = app.get_db().zscores.find(
-        {"pair":pair, "freq":freq, "period":period})
+    curs = app.get_db().zscores.find({"pair":pair, "freq":freq, "period":period})
 
     if curs.count() == 0:
         return None
 
     return pd.DataFrame(list(curs),
-        index = pd.Index(['candle', 'mean', 'std', 'zscore'], name='stats'),
-        columns = ['close', 'open', 'volume', 'buy_vol', 'buy_ratio', 'trades']
+        index = pd.Index(Z_DIMEN, name='stats'),
+        columns = Z_FACTORS
     ).astype('float64')
 
 #------------------------------------------------------------------------------
-def print_score(idx, score, df_z):
+def print(idx, score, df_z):
     """Print statistial analysis for single (pair, freq, period).
     """
     from datetime import timedelta as tdelta
@@ -179,6 +171,6 @@ def generate_dataset(pairs):
                 zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
             ])
 
-    log.debug("Generated [%s rows x %s cols] z-score dataframe from Binance candles. [%ss]",
+    log.debug("[%s rows x %s cols] z-score dataset built. [%ss]",
         len(df_data), len(df_data.columns), t1.elapsed(unit='s'))
     return df_data.sort_index()

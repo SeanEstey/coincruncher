@@ -7,30 +7,39 @@ from app.utils import colors
 logging.addLevelName(SIGNAL, "Signal")
 log = logging.getLogger('app')
 
+# Frequency in seconds to str
+freqtostr = {
+    300:"5m",
+    3600:"1h",
+    86400:"1d"
+}
+# Period in seconds to str
+pertostr = {
+    3600:"60m",
+    7200:"120m",
+    10800: "180m",
+    86400:"24h",
+    172800:"48h",
+    259200:"72h",
+    604800:"7d",
+    1209600:"14d",
+    1814400:"21d"
+}
+strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
+strtoper = dict(zip(list(pertostr.values()), list(pertostr.keys())))
+
 class DebugFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == DEBUG
-
+    def filter(self, record): return record.levelno == DEBUG
 class InfoFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == INFO
-
+    def filter(self, record): return record.levelno == INFO
 class ErrorFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == ERROR
-
+    def filter(self, record): return record.levelno == ERROR
 class CriticalFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno <= CRITICAL
-
+    def filter(self, record): return record.levelno <= CRITICAL
 class SignalFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == SIGNAL
-
+    def filter(self, record): return record.levelno == SIGNAL
 class WarningFilter(logging.Filter):
-    def filter(self, record):
-        return record.levelno == WARNING
-
+    def filter(self, record): return record.levelno == WARNING
 class WrappedFixedIndentingLog(logging.Formatter):
     def __init__(self,
                  fmt=None,
@@ -42,7 +51,6 @@ class WrappedFixedIndentingLog(logging.Formatter):
         self.wrapper = textwrap.TextWrapper(
             width=width,
             subsequent_indent=' '*indent)
-
     def format(self, record):
         return self.wrapper.fill(super().format(record))
 
@@ -104,6 +112,9 @@ logging.basicConfig(
         file_handler(SIGNAL, SIGNALFILE, filters=[SIGNAL])
     ]
 )
+
+def siglog(msg): log.log(100, msg)
+def keystostr(keys): return (keys[0], freqtostr[keys[1]], pertostr[keys[2]])
 
 # STFU
 logging.getLogger("requests").setLevel(logging.ERROR)

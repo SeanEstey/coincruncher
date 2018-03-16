@@ -47,21 +47,4 @@ COINMARKETCAP = {
     }
 }
 
-# Frequency in seconds to str
-FREQ_STR = {
-    300:"5m",
-    3600:"1h",
-    86400:"1d"
-}
-# Period in seconds to str
-PER_STR = {
-    3600:"60m",
-    7200:"120m",
-    10800: "180m",
-    86400:"24h",
-    172800:"48h",
-    259200:"72h",
-    604800:"7d",
-    1209600:"14d",
-    1814400:"21d"
-}
+

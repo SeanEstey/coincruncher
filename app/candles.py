@@ -7,6 +7,7 @@ from decimal import Decimal
 from pymongo import ReplaceOne
 from binance.client import Client
 import app
+from app import freqtostr
 from app.timer import Timer
 from app.utils import intrvl_to_ms, date_to_ms, dt_to_ms
 from app.utils import utc_datetime as now
@@ -15,6 +16,8 @@ log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
 def last(pair, freq):
+    if type(freq) == int:
+        freq = freqtostr[freq]
     return list(app.get_db().candles.find({"pair":pair,"freq":freq}
         ).sort("open_time",-1).limit(1))[0]
 
