@@ -1,9 +1,11 @@
 # daemon
-from pprint import pformat
 import logging, time, signal
-from datetime import timedelta
-from app import forex, markets
-from app.utils import utc_dtdate, utc_datetime
+from datetime import datetime, timedelta
+from app.timer import Timer
+from app.utils import utc_dtdate
+from app import candles, coinmktcap, forex, markets, trades
+from docs.config import TICKER_LIMIT
+from docs.data import BINANCE
 log = logging.getLogger("daemon")
 
 #---------------------------------------------------------------------------
@@ -15,34 +17,8 @@ class GracefulKiller:
 
     def exit_gracefully(self,signum, frame):
         self.kill_now = True
-
-#---------------------------------------------------------------------------
-def eod_tasks():
-    import os
-    from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
-
-    forex.update_1d()
-    yday = utc_dtdate() - timedelta(days=1)
-
-    #tickers.generate_1d(yday)
-    markets.generate_1d(yday)
-
-    log.debug("running mongodump...")
-
-    os.system("sudo mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
-        --authenticationDatabase %s" %(DBUSER, DBPASSWORD, AUTHDB))
-    log.info("eod tasks completed")
-
 #---------------------------------------------------------------------------
 def main(tckr=None, cndl=None):
-    print("main")
-    from docs.config import TICKER_LIMIT
-    from docs.data import BINANCE
-    from binance.client import Client
-    from app import candles, coinmktcap, trades
-    from app.timer import Timer
-    from datetime import datetime
-
     pairs = BINANCE['pairs']
     markets.db_audit()
     daily = Timer(name="DailyTimer", expire=utc_dtdate()+timedelta(days=1))
@@ -50,50 +26,43 @@ def main(tckr=None, cndl=None):
     short = Timer(name="MinTimer", expire="in 5 min utc")
 
     if cndl:
-        candles.update(pairs, "5m", "6 hours ago utc", force=True)
-        candles.update(pairs, "1h", "80 hours ago utc", force=True)
-        candles.update(pairs, "1d", "30 days ago utc", force=True)
+        candles.update(pairs, "5m", start="3 hours ago utc", force=True)
+        candles.update(pairs, "1h", start="48 hours ago utc", force=True)
+        candles.update(pairs, "1d", start="21 days ago utc", force=True)
     if tckr:
-        try:
-            coinmktcap.get_tickers_5t(limit=TICKER_LIMIT)
-            coinmktcap.get_marketidx_5t()
-        except Exception as e:
-            log.exception(str(e))
-            pass
-
-    trades.update()
+        coinmktcap.tickers(limit=TICKER_LIMIT)
+        coinmktcap.global_markets()
+    if cndl or tckr:
+        trades.update()
 
     while True:
-        waitfor=[10]
-
-        if short.remain() <= 0:
-            try:
-                waitfor.append(coinmktcap.get_tickers_5t(limit=TICKER_LIMIT))
-                waitfor.append(coinmktcap.get_marketidx_5t())
-            except Exception as e:
-                log.exception(str(e))
-                pass
-            candles.update(pairs, "5m", "1 hour ago utc")
+        if short.remain() == 0:
+            coinmktcap.tickers(limit=500)
+            coinmktcap.global_markets()
+            candles.update(pairs, "5m")
             trades.update()
             short.set_expiry("in 5 min utc")
-        else:
-            print("%s: %s" % (short.name, short.remain(unit='str')))
-
         if hourly.remain() == 0:
-            candles.update(pairs, "1h", "4 hours ago utc")
-            candles.update(pairs, "1d", "2 days ago utc")
-            hourly.set_expiry("next hour change")
+            candles.update(pairs, "1h")
             trades.update()
-        else:
-            print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
-
+            hourly.set_expiry("next hour change")
         if daily.remain() == 0:
+            candles.update(pairs, "1d")
+            trades.update()
             eod_tasks()
             daily.set_expiry(utc_dtdate() + timedelta(days=1))
-
-        t_nap = min([n for n in waitfor if type(n) is int])
-        time.sleep(t_nap)
-
+        time.sleep(5)
+#---------------------------------------------------------------------------
+def eod_tasks():
+    import os
+    from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
+    forex.update_1d()
+    yday = utc_dtdate() - timedelta(days=1)
+    markets.generate_1d(yday)
+    log.debug("running mongodump...")
+    os.system("sudo mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
+        --authenticationDatabase %s" %(DBUSER, DBPASSWORD, AUTHDB))
+    log.info("eod tasks completed")
 #---------------------------------------------------------------------------
 if __name__ == '__main__':
     import getopt

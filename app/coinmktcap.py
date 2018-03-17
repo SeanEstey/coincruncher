@@ -60,9 +60,8 @@ def next_update(collection):
         #log.debug("update in %ss", api_refresh-elapsed)
         assert(elapsed >= 0)
         return api_refresh - elapsed + 30
-
 #------------------------------------------------------------------------------
-def get_tickers_5t(start=0, limit=None):
+def tickers(start=0, limit=None):
     """Update 5T ticker data from coinmarketcap.com REST API.
     """
     _t = next_update(get_db().tickers_5t)
@@ -108,46 +107,8 @@ def get_tickers_5t(start=0, limit=None):
 
     if save_capped_db(ops, db.tickers_5t):
         log.info("%s Coinmktcap tickers updated. [%sms]", len(tickerdata), t1)
-
 #---------------------------------------------------------------------------
-def save_capped_db(ops, coll):
-    try:
-        result = coll.bulk_write(ops)
-    except Exception as e:
-        log.exception("Error saving CMC tickers. %s", str(e))
-        db = get_db()
-        stats = db.command("collstats",coll.name)
-
-        if stats['capped'] == False:
-            return False
-
-        max_size = stats['maxSize']
-
-        # Capped collection full. Drop and re-create w/ indexes.
-        if stats['size'] / max_size > 0.9:
-            from pymongo import IndexModel, ASCENDING, DESCENDING
-
-            log.info("Capped collection > 90% full. Dropping and recreating.")
-            name = coll.name
-            coll.drop()
-
-            db.create_collection(name, capped=True, size=max_size)
-            idx1 = IndexModel( [("symbol", ASCENDING)], name="symbol")
-            idx2 = IndexModel( [("date", DESCENDING)], name="date_-1")
-            db[name].create_indexes([idx1, idx2])
-
-            log.info("Retrying bulk_write")
-            try:
-                result = db[name].bulk_write(ops)
-            except Exception as e:
-                log.exception("Error saving CMC tickers. %s", str(e))
-                return False
-        else:
-            log.error("Size is <90% max. Unknown error.")
-    return True
-
-#---------------------------------------------------------------------------
-def get_marketidx_5t():
+def global_markets():
     """Update 5T market index data from coinmarketcap.com REST API.
     """
     _t = next_update(get_db().market_idx_5t)
@@ -174,7 +135,6 @@ def get_marketidx_5t():
 
     log.info("Coinmktcap markets updated [n=%s, freq='5m', t=%sms]",
         len(data), t1)
-
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):
     """Extract parameters from command line.
@@ -214,7 +174,6 @@ def parse_options(currency, start_date, end_date):
     end_date   = end_date_split[0]  + end_date_split[1]   + end_date_split[2]
 
     return currency, start_date, end_date
-
 #---------------------------------------------------------------------------
 def download_data(currency, start_date, end_date):
     """Download HTML price history for the specified cryptocurrency and time
@@ -240,7 +199,6 @@ def download_data(currency, start_date, end_date):
 
     raise Exception("Error scraping data for %s" % currency)
     return html
-
 #---------------------------------------------------------------------------
 def extract_data(html):
     """Extract the price history from the HTML.
@@ -271,7 +229,6 @@ def extract_data(html):
 
     rows = [ append_average(row) for row in rows ]
     return header, rows
-
 #---------------------------------------------------------------------------
 def render_csv_data(header, rows):
     """Render the data in CSV format.
@@ -279,7 +236,6 @@ def render_csv_data(header, rows):
     print(','.join(header))
     for row in rows:
         print(','.join(row))
-
 #---------------------------------------------------------------------------
 def processDataFrame(df):
     import pandas as pd
@@ -290,7 +246,6 @@ def processDataFrame(df):
     df.loc[:,'Date'] = pd.to_datetime(df.Date)
     for col in cols: df.loc[:,col] = df[col].apply(lambda x: float(x))
     return df.sort_values(by='Date').reset_index(drop=True)
-
 #---------------------------------------------------------------------------
 def rowsFromFile(filename):
     import csv
@@ -298,3 +253,39 @@ def rowsFromFile(filename):
         rows = csv.reader(infile, delimiter=',')
         for row in rows:
             print(row)
+#---------------------------------------------------------------------------
+def save_capped_db(ops, coll):
+    try:
+        result = coll.bulk_write(ops)
+    except Exception as e:
+        log.exception("Error saving CMC tickers. %s", str(e))
+        db = get_db()
+        stats = db.command("collstats",coll.name)
+
+        if stats['capped'] == False:
+            return False
+
+        max_size = stats['maxSize']
+
+        # Capped collection full. Drop and re-create w/ indexes.
+        if stats['size'] / max_size > 0.9:
+            from pymongo import IndexModel, ASCENDING, DESCENDING
+
+            log.info("Capped collection > 90% full. Dropping and recreating.")
+            name = coll.name
+            coll.drop()
+
+            db.create_collection(name, capped=True, size=max_size)
+            idx1 = IndexModel( [("symbol", ASCENDING)], name="symbol")
+            idx2 = IndexModel( [("date", DESCENDING)], name="date_-1")
+            db[name].create_indexes([idx1, idx2])
+
+            log.info("Retrying bulk_write")
+            try:
+                result = db[name].bulk_write(ops)
+            except Exception as e:
+                log.exception("Error saving CMC tickers. %s", str(e))
+                return False
+        else:
+            log.error("Size is <90% max. Unknown error.")
+    return True

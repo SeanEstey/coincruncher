@@ -88,16 +88,12 @@ def open_new(pair, xscore, dfx, dfz):
     PERIOD = 86400
     fee_pct = BINANCE['trade_fee_pct']
     vol = BINANCE['volume']
-    db = app.get_db()
-    curs = db.trades.find({'pair':pair, 'status': 'open'})
-    if curs.count() > 0:
-        return siglog("OPEN: ({}), {:+.2f} xscore.".format(pair, xscore))
 
     # Open new position
     close = dfz.loc[(FREQ, PERIOD, 'CANDLE')].CLOSE
     fee_amt = (fee_pct/100) * vol * close
     buy_amt = (vol * close) - fee_amt
-    db.trades.insert_one({
+    app.get_db().trades.insert_one({
         'pair': pair,
         'status': 'open',
         'exchange': 'Binance',
@@ -124,7 +120,6 @@ def close_out(pair, xscore, dfx, dfz):
     @dfx: pd.dataframe w/ multi-index: (freq, period)
     @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
-
     # TODO: Move into close_out
     xdelta = pct_diff(x_1h, stats['xscore'])
     # TODO: Move into close_out

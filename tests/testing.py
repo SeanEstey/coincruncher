@@ -25,7 +25,6 @@ app.set_db(hosts[0])
 db = app.get_db()
 
 #r = trades.update_all()
-
 """results = signals.update()
 df_z = results[0]
 df_wa = results[1]

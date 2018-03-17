@@ -1,5 +1,5 @@
 # Signals
-Z_IDX_NAMES = ['PAIR', 'FREQ', 'PERIOD', 'DIMEN']
+Z_IDX_NAMES = ['PAIR', 'CLOSE_TIME', 'FREQ', 'PERIOD', 'DIMEN']
 Z_FACTORS = ['CLOSE', 'VOLUME', 'BUY_RATIO']
 Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE']
 Z_WEIGHTS = [1.75, 1.25, 1.5]   # Weights to apply to z-factors

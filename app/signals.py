@@ -1,5 +1,5 @@
 import logging
-from pymongo import ReplaceOne
+from pymongo import UpdateOne, ReplaceOne
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
@@ -33,14 +33,15 @@ def xscores(dfz):
 def zscore(pair, freq, period, start, end, candle):
     """Assign Z-Scores for given candle using period historical average.
     Can be appended with other pair/freq/periods for easy indexing.
+    @candle: dict
     Returns:
-        pd.DataFrame of [4x4 INDEX][3x1 DATA] dimensions.
-        Example index:
-        PAIR      FREQ  PERIOD  DIMEN
-        BTCUSDT-->300-->3600--> CANDLE
-        `                  |--> MEAN
-        `                  |--> STD
-        `                  |--> ZSCORE
+        pd.DataFrame of [5x4 INDEX][3x1 DATA] dimensions.
+        e.g:
+        PAIR      CLOSE_TIME  FREQ  PERIOD  DIMEN   CLOSE   VOLUME  BUY_RATIO
+        BTCUSDT-->2018-03---->300-->3600--> CANDLE    ###      ###        ###
+        `                              |--> MEAN      ###      ###        ###
+        `                              |--> STD       ###      ###        ###
+        `                              |--> ZSCORE    ###      ###        ###
     """
     data = []
     # Historical average
@@ -56,9 +57,11 @@ def zscore(pair, freq, period, start, end, candle):
             (candle[x] - dfh_avg[x]['mean']) / dfh_avg[x]['std']
         ])
 
-    idx_levels = [ [pair], [strtofreq[freq]], [strtoper[period]], Z_DIMEN ]
+    levels = [[pair], [candle['close_time']], [strtofreq[freq]],
+        [strtoper[period]], Z_DIMEN]
+
     dfz = pd.DataFrame(np.array(data).transpose(),
-        index = pd.MultiIndex.from_product(idx_levels, names=Z_IDX_NAMES),
+        index = pd.MultiIndex.from_product(levels, names=Z_IDX_NAMES),
         columns = Z_FACTORS
     )
     # Small number precision
@@ -95,7 +98,7 @@ def zscores(pairs):
         len(dfz), len(dfz.columns), t1.elapsed(unit='s'))
     return dfz.sort_index()
 #------------------------------------------------------------------------------
-def print(idx, score, dfz):
+def zprint(idx, score, dfz):
     """Print statistial analysis for single (pair, freq, period).
     """
     from datetime import timedelta as tdelta
@@ -133,26 +136,31 @@ def print(idx, score, dfz):
     siglog('-'*80)
 #-----------------------------------------------------------------------------
 def save_db(dfz):
-    """Given pair signal dataframe, Generate aggregate (sum) signals on each
-    index (pair, freq, period, prop), along with time since last sign change,
-    t(signal > 0) and t(signal < 0).
     """
-    db = app.get_db()
+    """
     t1 = Timer()
     ops=[]
 
-    for idx, row in dfz.iterrows():
-        query = dict(zip(['pair', 'freq', 'period'], idx))
-        record = query.copy()
-        record.update(row.to_dict())
-        ops.append(ReplaceOne(query, record, upsert=True))
+    for idx in set([n[:-1] for n in dfz.index.values]):
+        idx_dict = dict(zip(dfz.index.names, idx))
+        idx_dict = {k.lower():v for k,v in idx_dict.items()}
+        period = idx_dict['period']
+        del idx_dict['period']
+        idx_dict['freq'] = freqtostr[idx_dict['freq']]
+        record = dfz.loc[idx].to_dict()
+        record = {k.lower():v for k,v in record.items()}
+        record['period'] = pertostr[period]
+        ops.append(UpdateOne(idx_dict, {'$set':{'zscores':record}}))
+
     try:
-        res = db.zscores.bulk_write(ops)
+        results = app.get_db().candles.bulk_write(ops)
     except Exception as e:
         return log.exception(str(e))
-    log.debug("%s pair signals saved. [%sms]", res.modified_count, t1)
+
+    print("%s candle records updated w/ z-scores" % results.modified_count)
+    log.debug("%s pair signals saved. [%sms]", results.modified_count, t1)
 #-----------------------------------------------------------------------------
-def load_scores(pair, freq, period):
+def load_db(pair, freq, period):
     """Load pair signal data from DB as multi-index dataframe.
     Returns:
     pair signals dataframe
