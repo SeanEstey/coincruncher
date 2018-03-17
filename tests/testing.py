@@ -21,10 +21,10 @@ log = logging.getLogger("testing")
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 hosts = ["localhost", "45.79.176.125"]
-app.set_db(hosts[1])
+app.set_db(hosts[0])
 db = app.get_db()
 
-r = trades.update_all()
+#r = trades.update_all()
 
 """results = signals.update()
 df_z = results[0]

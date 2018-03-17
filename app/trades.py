@@ -1,15 +1,16 @@
-# app.trades
 import logging
 import app
-from app import siglog, freqtostr, pertostr, candles, signals
+from app import freqtostr, pertostr, candles, signals
 from app.utils import utc_datetime as now, df_to_list
 from app.timer import Timer
-from docs.config import Z_THRESH, Z_WEIGHTS
+from docs.config import X_THRESH
 from docs.data import BINANCE
+def siglog(msg): log.log(100, msg)
+def pct_diff(a,b): return (b-a)/a
 log = logging.getLogger('trades')
 
 #------------------------------------------------------------------------------
-def update_all():
+def update():
     """
     """
     siglog('-'*80)
@@ -17,68 +18,71 @@ def update_all():
 
     pairs = BINANCE['pairs']
     db = app.get_db()
-    df_z = signals.generate_dataset(pairs)
-    df_wtz = signals.apply_weights(df_z, Z_WEIGHTS)
     trades = list(db.trades.find({'status':'open', 'pair':{"$in": pairs}}))
+
+    dfz = signals.zscores(pairs)
+    dfx = signals.xscores(dfz)
 
     # Evaluate existing trades
     active = [ n['pair'] for n in trades]
     for pair in active:
-        evaluate(pair, df_wtz.loc[(pair)], df_z.loc[(pair)])
+        evaluate(pair, dfx.loc[(pair)], dfz.loc[(pair)])
 
     # Open new trades if above threshold
-    inactive = list(set(pairs) - set(active))
-    for pair in inactive:
-        score = df_wtz.loc[(pair, 3600)]['WA_SCORE'].mean()
-        if score > Z_THRESH:
-            open_new(pair, score, df_wtz.loc[(pair)], df_z.loc[(pair)])
+    for pair in list(set(pairs) - set(active)):
+        xscore = dfx.loc[(pair,3600,86400)].XSCORE
+        if xscore > X_THRESH:
+            open_new(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)])
 
-    summarize(df_wtz)
-    signals.save_db(df_z)
+    summarize(dfx)
+    signals.save_db(dfz)
 
-    return (df_z, df_wtz)
-
+    return (dfz, dfx)
 #------------------------------------------------------------------------------
-def evaluate(pair, df_wtz, df_z):
+def evaluate(pair, dfx, dfz):
     """
-    @df_wtz: pd.dataframe w/ multi-index: (freq, period)
-    @df_z: pd.dataframe w/ multi-index (freq, period, dimen)
+    @dfx: pd.dataframe w/ multi-index: (freq, period)
+    @dfz: pd.dataframe w/ multi-index (freq, period, dimen)
     """
     db = app.get_db()
     trade = db.trades.find_one({'status':'open', 'pair':pair})
     stats = trade['analysis']['start']
 
-    new_5m = candles.last(pair, 300)['open_time'] > trade['start_time']
-    new_1h =  candles.last(pair, 3600)['open_time'] > trade['start_time']
+    c_5m = candles.last(pair,300)
+    c_1h = candles.last(pair,3600)
 
-    score_5m = df_wtz.loc[(300,3600)].WA_SCORE
-    score_1h = df_wtz.loc[(3600,86400)].WA_SCORE
+    x_5m = dfx.loc[(300,3600)].XSCORE
+    x_1h = dfx.loc[(3600,86400)].XSCORE
+
+    p_5m = dfz.loc[(300,3600,'CANDLE')].CLOSE
+    p_1h = dfz.loc[(3600,86400,'CANDLE')].CLOSE
+
+    # TODO: append new price to position price history
+    # TODO: take all 5m close prices since buy-in, calc mean
+    # TODO: if mean < price now, hodl. otherwise sell.
+
+    # TODO: remove ifs. take max(c_5m['close_time'], c_1h['close_time'] instead.
+    # TODO: save candle close_time when opening new position, to compare with above dates.
 
     # Evaluate trade status on new 1h candle
-    if new_1h and score_1h < Z_THRESH:
-        sc_diff = (score_1h - stats['mean_score']) / stats['mean_score']
-        pc_diff = (score_1h['close'] - trade['buy_price']) / trade['buy_price']
+    if c_1h['open_time'] > trade['start_time']:
+        if pct_diff(p_1h, trade['buy_price']) < 0:
+            return close_out(pair, x_1h, dfx, dfz)
+    elif c_5m['open_time'] > trade['start_time'] < 0:
+        if pct_diff(p_5m, trade['buy_price']):
+            return close_out(pair, x_5m, dfx, dfz)
 
-        siglog("OPEN: {} 1h score fell {:+.2f}% to {:+.2f}. Price {:+.2f}%.".format(pair, sc_diff, score_1h, pc_diff))
-        close_out(pair, score_1h, df_wtz, df_z)
-    elif new_5m and score_5m < Z_THRESH:
-        sc_diff = (score_5m - stats['mean_score']) / stats['mean_score']
-        pc_diff = (score_5m['close'] - trade['buy_price']) / trade['buy_price']
+    xdelta = (x_5m - stats['xscore']) / stats['xscore']
+    pdelta = (p_5m - trade['buy_price']) / trade['buy_price']
 
-        siglog("OPEN: {} 5m score fell {:+.2f}% to {:+.2f}. Price {:+.2f}%.".format(pair, sc_diff, score_5m, pc_diff))
-        close_out(pair, score_5m, df_wtz, df_z)
-    else:
-        sc_diff = (score_5m - stats['mean_score']) / stats['mean_score']
-        pc_diff = (score_5m['close'] - trade['buy_price']) / trade['buy_price']
-
-        siglog("HODLING: {} score is {:+.2f}% to {:.2f}. Price {:+.2f}%.".format(pair, sc_diff, score_5m, pc_diff))
-
+    siglog("HODLING: {} xscore is {:+.2f}% to {:.2f}. Price {:+.2f}%.".format(
+        pair, xdelta, x_5m, pdelta))
 #------------------------------------------------------------------------------
-def open_new(pair, score, df_wtz, df_z):
+def open_new(pair, xscore, dfx, dfz):
     """Create or update existing position for zscore above threshold value.
-    @score: weighted average trade signal score
-    @df_wtz: pd.dataframe w/ multi-index: (freq, period)
-    @df_z: pd.dataframe w/ multi-index (freq, per, stat)
+    @xscore: weighted average trade signal score
+    @dfx: pd.dataframe w/ multi-index: (freq, period)
+    @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
     FREQ = 3600
     PERIOD = 86400
@@ -87,10 +91,10 @@ def open_new(pair, score, df_wtz, df_z):
     db = app.get_db()
     curs = db.trades.find({'pair':pair, 'status': 'open'})
     if curs.count() > 0:
-        return siglog("OPEN: ({}), {:+.2f} mean zscore.".format(pair, score))
+        return siglog("OPEN: ({}), {:+.2f} xscore.".format(pair, xscore))
 
     # Open new position
-    close = df_z.loc[(FREQ, PERIOD, 'CANDLE')].CLOSE
+    close = dfz.loc[(FREQ, PERIOD, 'CANDLE')].CLOSE
     fee_amt = (fee_pct/100) * vol * close
     buy_amt = (vol * close) - fee_amt
     db.trades.insert_one({
@@ -102,25 +106,31 @@ def open_new(pair, score, df_wtz, df_z):
         'buy_vol': vol,
         'buy_amt': buy_amt,
         'total_fee_pct': fee_pct,
-        'analysis': {
+        'scoring': {
             'start': {
-                'candles': df_to_list(df_z),
-                'zscores': df_to_list(df_wtz),
-                'mean_score':score
+                'zscores': df_to_list(dfz),
+                'xscores': df_to_list(dfx),
+                'xscore':xscore
             }
         }
     })
 
-    signals.print((pair, FREQ, PERIOD), score, df_z.loc[(FREQ, PERIOD)])
-    siglog("OPENING POSITION: ({}), {:+.2f} mean zscore.".format(pair, score))
-
+    signals.print((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
+    siglog("OPENING POSITION: ({}), {:+.2f} xscore.".format(pair, xscore))
 #------------------------------------------------------------------------------
-def close_out(pair, score, df_wtz, df_z):
+def close_out(pair, xscore, dfx, dfz):
     """Close off existing position and calculate earnings.
-    @score: weighted average trade signal score
-    @df_wtz: pd.dataframe w/ multi-index: (freq, period)
-    @df_z: pd.dataframe w/ multi-index (freq, per, stat)
+    @xscore: weighted average trade signal score
+    @dfx: pd.dataframe w/ multi-index: (freq, period)
+    @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
+
+    # TODO: Move into close_out
+    xdelta = pct_diff(x_1h, stats['xscore'])
+    # TODO: Move into close_out
+    siglog("OPEN: {} 1h xscore fell {:+.2f}% to {:+.2f}. Price {:+.2f}%.".format(
+        pair, xdelta, x_1h, pdelta))
+
     FREQ = 3600
     PERIOD = 86400
     fee_pct = BINANCE['trade_fee_pct']
@@ -131,7 +141,7 @@ def close_out(pair, score, df_wtz, df_z):
         return False
 
     trade = list(curs)[0]
-    close = df_z.loc[(FREQ, PERIOD, 'CANDLE')].CLOSE
+    close = dfz.loc[(FREQ, PERIOD, 'CANDLE')].CLOSE
     end_time = now()
     fee_amt = (fee_pct/100) * vol * close
     sell_amt = (vol * close) - fee_amt
@@ -151,25 +161,26 @@ def close_out(pair, score, df_wtz, df_z):
             'gross_earn':gross_earn,
             'net_earn': net_earn,
             'analysis.end': {
-                'candles': df_to_list(df_z),
-                'zscores': df_to_list(df_wtz),
-                'mean_score':score
+                'candles': df_to_list(dfz),
+                'zscores': df_to_list(dfx),
+                'xscore': xscore
             }
         }}
     )
     siglog('CLOSING POSITION: ({}), {:+.2f}% price.'.format(pair, price_pct_change))
-    signals.print((pair, FREQ, PERIOD), score, df_z.loc[(FREQ, PERIOD)])
-
+    signals.print((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
 #------------------------------------------------------------------------------
-def summarize(df_wtz):
+def summarize(dfx):
     t1 = Timer()
 
-    high_5m = df_wtz.xs(300, level=1).sort_values('WA_SCORE').iloc[-1]
-    siglog("Top 5m score is {} at {:+.2f}.".format(high_5m.name[0], high_5m['WA_SCORE']))
-    high_1h = df_wtz.xs(3600, level=1).sort_values('WA_SCORE').iloc[-1]
-    siglog("Top 1h score is {} at {:+.2f}.".format(high_1h.name[0], high_1h['WA_SCORE']))
-    high_1d = df_wtz.xs(86400, level=1).sort_values('WA_SCORE').iloc[-1]
-    siglog("Top 1d score is {} at {:+.2f}.".format(high_1d.name[0], high_1d['WA_SCORE']))
+    dfx = dfx.sort_values('XSCORE')
+    df_5m = dfx.xs(300, level=1).iloc[-1]
+    df_1h = dfx.xs(3600, level=1).iloc[-1]
+    df_1d = dfx.xs(86400, level=1).iloc[-1]
+
+    siglog("Top 5m xscore is {} at {:+.2f}.".format(df_5m.name[0], df_5m['XSCORE']))
+    siglog("Top 1h xscore is {} at {:+.2f}.".format(df_1h.name[0], df_1h['XSCORE']))
+    siglog("Top 1d xscore is {} at {:+.2f}.".format(df_1d.name[0], df_1d['XSCORE']))
 
     db = app.get_db()
     closed = list(db.trades.find({"status":"closed"}))

@@ -1,113 +1,101 @@
-# app.signals
 import logging
 from pymongo import ReplaceOne
 from datetime import datetime, timedelta
 import pandas as pd
 import numpy as np
 import app
-from app import siglog, freqtostr, pertostr, strtofreq, strtoper, candles
+from app import freqtostr, pertostr, strtofreq, strtoper, candles
 from app.timer import Timer
 from app.utils import to_local
-from docs.config import Z_FACTORS, Z_DIMEN, Z_IDX_NAMES
-
+from docs.config import Z_WEIGHTS, Z_FACTORS, Z_DIMEN, Z_IDX_NAMES
+def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def apply_weights(df_z, wt):
-    """Check if any updated datasets have z-scores > 2, track in DB to determine
-    price correlations.
+def xscores(dfz):
+    """Derive x-scores from z-scores dataset.
     """
-    wt_scores = []
-    df_wt = df_z.copy().xs('ZSCORE', level=3)
+    scores = []
+    dfx = dfz.copy().xs('ZSCORE', level=3)
 
-    for idx, row in df_wt.iterrows():
-        wt_scores.append((row * wt).sum() / sum(wt))
+    # Apply weightings
+    for idx, row in dfx.iterrows():
+        scores.append((row * Z_WEIGHTS).sum() / sum(Z_WEIGHTS))
 
-    df_wt['MEAN_SCORE'] = df_wt.mean(axis=1)
-    df_wt['WA_SCORE'] = wt_scores
-
-    return df_wt.sort_index()
-
+    # Mean zscore across close, volume, buy_ratio
+    dfx['ZSCORE'] = dfx.mean(axis=1)
+    # Add new column
+    dfx['XSCORE'] = scores
+    # Hide all other columns
+    dfx = dfx[['XSCORE']]
+    return dfx.sort_index()
 #-----------------------------------------------------------------------------
 def zscore(pair, freq, period, start, end, candle):
-    """Measure deviation from the mean for this candle data across the given
-    historical time period. Separate z-scores are assigned for each candle
-    property.
-        Z-Score of 1: within standard deviation
-        Z-Score of 2.5: large deviation from mean, sign of trading pattern
-        diverging sharply from current historical pattern.
+    """Assign Z-Scores for given candle using period historical average.
+    Can be appended with other pair/freq/periods for easy indexing.
+    Returns:
+        pd.DataFrame of [4x4 INDEX][3x1 DATA] dimensions.
+        Example index:
+        PAIR      FREQ  PERIOD  DIMEN
+        BTCUSDT-->300-->3600--> CANDLE
+        `                  |--> MEAN
+        `                  |--> STD
+        `                  |--> ZSCORE
     """
     data = []
-    # Save as int to enable df index sorting
-    _freq = strtofreq[freq]
-    _period = strtoper[period]
+    # Historical average
+    dfh_avg = candles.load_db(pair, freq, start, end=end).describe()[1::]
 
-    # Statistical data and z-score
-    hist_data = candles.load_db(pair, freq, start, end=end)
-    hist_avg = hist_data.describe()[1::]
-
+    # Stat/z-score data for Close, Volume, BuyRatio
     for x in Z_FACTORS:
         x = x.lower()
         data.append([
             candle[x],
-            hist_avg[x]['mean'],
-            hist_avg[x]['std'],
-            (candle[x] - hist_avg[x]['mean']) / hist_avg[x]['std']
+            dfh_avg[x]['mean'],
+            dfh_avg[x]['std'],
+            (candle[x] - dfh_avg[x]['mean']) / dfh_avg[x]['std']
         ])
 
-    index = pd.MultiIndex.from_product(
-        [[pair],[_freq],[_period], Z_DIMEN],
-        names=Z_IDX_NAMES)
-    # Reverse lists. x-axis: candle_fields, y-axis: stat_data
-    df_h = pd.DataFrame(np.array(data).transpose(),
-        index=index,
-        columns=Z_FACTORS)
-
-    # Enhance floating point precision for small numbers
-    df_h["CLOSE"] = df_h["CLOSE"].astype('float64')
-    return df_h
-
-#-----------------------------------------------------------------------------
-def save_db(df_z):
-    """Given pair signal dataframe, Generate aggregate (sum) signals on each
-    index (pair, freq, period, prop), along with time since last sign change,
-    t(signal > 0) and t(signal < 0).
-    """
-    db = app.get_db()
-    t1 = Timer()
-    ops=[]
-
-    for idx, row in df_z.iterrows():
-        query = dict(zip(['pair', 'freq', 'period'], idx))
-        record = query.copy()
-        record.update(row.to_dict())
-        ops.append(ReplaceOne(query, record, upsert=True))
-    try:
-        res = db.zscores.bulk_write(ops)
-    except Exception as e:
-        return log.exception(str(e))
-    log.debug("%s pair signals saved. [%sms]", res.modified_count, t1)
-
-#-----------------------------------------------------------------------------
-def load_scores(pair, freq, period):
-    """Load pair signal data from DB as multi-index dataframe.
-    Returns:
-        pair signals dataframe
-        index levels: [pair, freq, period, indicator]
-        columns: [candle, mean, std, signal]
-    """
-    curs = app.get_db().zscores.find({"pair":pair, "freq":freq, "period":period})
-
-    if curs.count() == 0:
-        return None
-
-    return pd.DataFrame(list(curs),
-        index = pd.Index(Z_DIMEN, name='stats'),
+    idx_levels = [ [pair], [strtofreq[freq]], [strtoper[period]], Z_DIMEN ]
+    dfz = pd.DataFrame(np.array(data).transpose(),
+        index = pd.MultiIndex.from_product(idx_levels, names=Z_IDX_NAMES),
         columns = Z_FACTORS
-    ).astype('float64')
-
+    )
+    # Small number precision
+    dfz["CLOSE"] = dfz["CLOSE"].astype('float64')
+    return dfz
 #------------------------------------------------------------------------------
-def print(idx, score, df_z):
+def zscores(pairs):
+    """Build dataframe with scores for 5m, 1h, 1d frequencies across various
+    time periods.
+    """
+    t1 = Timer()
+    _1m = timedelta(minutes=1)
+    _1h = timedelta(hours=1)
+    _1d = timedelta(hours=24)
+    dfz = pd.DataFrame()
+
+    # Calculate z-scores for various (pair, freq, period) keys
+    for pair in pairs:
+        c5m = candles.last(pair,"5m")
+        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
+        c1h = candles.last(pair,"1h")
+        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
+        c1d = candles.last(pair,"1d")
+        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
+
+        for n in range(1,4):
+            dfz = dfz.append([
+                zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
+                zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
+                zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
+            ])
+
+    log.debug("[%s rows x %s cols] z-score dataset built. [%ss]",
+        len(dfz), len(dfz.columns), t1.elapsed(unit='s'))
+    return dfz.sort_index()
+#------------------------------------------------------------------------------
+def print(idx, score, dfz):
     """Print statistial analysis for single (pair, freq, period).
     """
     from datetime import timedelta as tdelta
@@ -138,39 +126,45 @@ def print(idx, score, df_z):
         siglog("{} Hist:     {:%m-%d-%Y %I:%M%p} - {:%m-%d-%Y %I:%M%p}".format(
             prd, prd_start, prd_end))
     siglog('')
-    lines = df_z.to_string(col_space=10, line_width=100).title().split("\n")
+    lines = dfz.to_string(col_space=10, line_width=100).title().split("\n")
     [siglog(line) for line in lines]
     siglog('')
     siglog("Mean Zscore: {:+.1f}".format(score))
     siglog('-'*80)
-
-#------------------------------------------------------------------------------
-def generate_dataset(pairs):
-    """Build dataframe with scores for 5m, 1h, 1d frequencies across various
-    time periods.
+#-----------------------------------------------------------------------------
+def save_db(dfz):
+    """Given pair signal dataframe, Generate aggregate (sum) signals on each
+    index (pair, freq, period, prop), along with time since last sign change,
+    t(signal > 0) and t(signal < 0).
     """
+    db = app.get_db()
     t1 = Timer()
-    _1m = timedelta(minutes=1)
-    _1h = timedelta(hours=1)
-    _1d = timedelta(hours=24)
-    df_data = pd.DataFrame()
+    ops=[]
 
-    # Calculate z-scores for various (pair, freq, period) keys
-    for pair in pairs:
-        c5m = candles.last(pair,"5m")
-        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
-        c1h = candles.last(pair,"1h")
-        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
-        c1d = candles.last(pair,"1d")
-        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
+    for idx, row in dfz.iterrows():
+        query = dict(zip(['pair', 'freq', 'period'], idx))
+        record = query.copy()
+        record.update(row.to_dict())
+        ops.append(ReplaceOne(query, record, upsert=True))
+    try:
+        res = db.zscores.bulk_write(ops)
+    except Exception as e:
+        return log.exception(str(e))
+    log.debug("%s pair signals saved. [%sms]", res.modified_count, t1)
+#-----------------------------------------------------------------------------
+def load_scores(pair, freq, period):
+    """Load pair signal data from DB as multi-index dataframe.
+    Returns:
+    pair signals dataframe
+    index levels: [pair, freq, period, indicator]
+    columns: [candle, mean, std, signal]
+    """
+    curs = app.get_db().zscores.find({"pair":pair, "freq":freq, "period":period})
 
-        for n in range(1,4):
-            df_data = df_data.append([
-                zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
-                zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
-                zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
-            ])
+    if curs.count() == 0:
+        return None
 
-    log.debug("[%s rows x %s cols] z-score dataset built. [%ss]",
-        len(df_data), len(df_data.columns), t1.elapsed(unit='s'))
-    return df_data.sort_index()
+    return pd.DataFrame(list(curs),
+        index = pd.Index(Z_DIMEN, name='stats'),
+        columns = Z_FACTORS
+    ).astype('float64')

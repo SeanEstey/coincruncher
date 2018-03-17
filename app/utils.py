@@ -27,37 +27,30 @@ from dateutil.parser import parse
 #------------------------------------------------------------------------------
 def to_ts(dt):
     return int(dt.timestamp())
-
 #------------------------------------------------------------------------------
 def dt_to_ms(dt):
     return int(dt.timestamp()*1000)
-
 #------------------------------------------------------------------------------
 def utc_date():
     """current date in UTC timezone"""
     return datetime.utcnow().replace(tzinfo=pytz.utc).date()
-
 #------------------------------------------------------------------------------
 def utc_dtdate():
     """current date as datetime obj at T:00:00:00:00 in UTC timezone"""
     return datetime.combine(utc_date(), time()).replace(tzinfo=pytz.utc)
-
 #------------------------------------------------------------------------------
 def utc_datetime():
     """tz-aware UTC datetime object"""
     return datetime.utcnow().replace(tzinfo=pytz.utc)
-
 #------------------------------------------------------------------------------
 def duration(_timedelta, units='total_seconds'):
     if units == 'total_seconds':
         return int(_timedelta.total_seconds())
     elif units == 'hours':
         return round(_timedelta.total_seconds()/3600,1)
-
 #------------------------------------------------------------------------------
 def to_local(dt):
     return dt.astimezone(tz.tzlocal())
-
 #------------------------------------------------------------------------------
 def to_dt(val):
     """Convert timestamp or ISOstring to datetime obj
@@ -81,7 +74,6 @@ def to_dt(val):
             except Exception as e:
                 raise
     raise Exception("to_dt(): invalid type '%s'" % type(val))
-
 #----------------------------------------------------------------------
 def to_relative_str(_delta):
     diff_ms = abs(_delta.total_seconds() * 1000)
@@ -125,9 +117,8 @@ def to_relative_str(_delta):
     # Second(s) span
     nSec = int(diff_ms/1000)
     return "{} second{} ago".format(nSec, 's' if nSec > 1 else '')
-
 #------------------------------------------------------------------------------
-def date_to_ms(date_str):
+def datestr_to_ms(date_str):
     """Convert UTC date to milliseconds
     If using offset strings add "UTC" to date string e.g. "now UTC", "11 hours
     ago UTC"
@@ -141,7 +132,13 @@ def date_to_ms(date_str):
     if d.tzinfo is None or d.tzinfo.utcoffset(d) is None:
         d = d.replace(tzinfo=pytz.utc)
     return int((d - epoch).total_seconds() * 1000.0)
-
+#------------------------------------------------------------------------------
+def datestr_to_dt(date_str):
+    epoch = datetime.utcfromtimestamp(0).replace(tzinfo=pytz.utc)
+    d = dateparser.parse(date_str)
+    if d.tzinfo is None or d.tzinfo.utcoffset(d) is None:
+        d = d.replace(tzinfo=pytz.utc)
+    return d
 #------------------------------------------------------------------------------
 def intrvl_to_ms(interval):
     """Convert a Binance interval string to milliseconds
@@ -167,10 +164,9 @@ def intrvl_to_ms(interval):
         except ValueError:
             pass
     return ms
-
+#------------------------------------------------------------------------------
 # Data type methods
 import numpy
-
 #------------------------------------------------------------------------------
 def numpy_to_py(adict):
     """Convert dict containing numpy.int64 values to python int's
@@ -181,7 +177,6 @@ def numpy_to_py(adict):
         elif type(adict[k]) == numpy.float64:
             adict[k] = float(adict[k])
     return adict
-
 #------------------------------------------------------------------------------
 def to_int(val):
     if val is None:
@@ -197,7 +192,6 @@ def to_int(val):
         return int(val)
     else:
         return int(val)
-
 #------------------------------------------------------------------------------
 def is_number(s):
     """ """
@@ -212,7 +206,6 @@ def is_number(s):
     except (TypeError, ValueError):
         pass
     return False
-
 #------------------------------------------------------------------------------
 def to_float(val, dec=None):
     """ """
@@ -231,7 +224,6 @@ def get_global_loggers():
     for key in logging.Logger.manager.loggerDict:
         print(key)
     print("--------")
-
 #------------------------------------------------------------------------------
 def parse_period(p):
     """Return properties tuple (quantity, time_unit, timedelta) from given time
@@ -254,9 +246,7 @@ def parse_period(p):
         tdelta = timedelta(days = qty)
     elif unit in ['y', 'Y']:
         tdelta = timedelta(days = 365 * qty)
-
     return (qty, unit, tdelta)
-
 #----------------------------------------------------------------------
 def getAttributes(obj):
     result = ''

@@ -50,9 +50,9 @@ def main(tckr=None, cndl=None):
     short = Timer(name="MinTimer", expire="in 5 min utc")
 
     if cndl:
-        candles.api_get_all(pairs, "5m", "6 hours ago utc")
-        candles.api_get_all(pairs, "1h", "80 hours ago utc")
-        candles.api_get_all(pairs, "1d", "30 days ago utc")
+        candles.update(pairs, "5m", "6 hours ago utc", force=True)
+        candles.update(pairs, "1h", "80 hours ago utc", force=True)
+        candles.update(pairs, "1d", "30 days ago utc", force=True)
     if tckr:
         try:
             coinmktcap.get_tickers_5t(limit=TICKER_LIMIT)
@@ -61,7 +61,7 @@ def main(tckr=None, cndl=None):
             log.exception(str(e))
             pass
 
-    trades.update_all()
+    trades.update()
 
     while True:
         waitfor=[10]
@@ -73,17 +73,17 @@ def main(tckr=None, cndl=None):
             except Exception as e:
                 log.exception(str(e))
                 pass
-            candles.api_get_all(pairs, "5m", "1 hour ago utc")
-            trades.update_all()
+            candles.update(pairs, "5m", "1 hour ago utc")
+            trades.update()
             short.set_expiry("in 5 min utc")
         else:
             print("%s: %s" % (short.name, short.remain(unit='str')))
 
         if hourly.remain() == 0:
-            candles.api_get_all(pairs, "1h", "4 hours ago utc")
-            candles.api_get_all(pairs, "1d", "2 days ago utc")
+            candles.update(pairs, "1h", "4 hours ago utc")
+            candles.update(pairs, "1d", "2 days ago utc")
             hourly.set_expiry("next hour change")
-            trades.update_all()
+            trades.update()
         else:
             print("%s: %s" % (hourly.name, hourly.remain(unit='str')))
 

@@ -5,7 +5,7 @@ BINANCE = {
     "pairs": [
         "BLZBTC", "BTCUSDT", "BNBUSDT", "BCCUSDT", "ETCBTC", "ETHUSDT", "ETHBTC", "EOSBTC",
         "ICXBTC", "LINKBTC", "LTCUSDT", "NANOBTC", "NCASHBTC", "NEOBTC", "NEBLBTC", "OMGBTC",
-        "VENBTC", "WTCBTC", "XMRBTC", "XRPBTC", "ZECBTC"
+        "VENBTC", "VIABTC", "WTCBTC", "XMRBTC", "XRPBTC", "ZECBTC"
     ]
 }
 

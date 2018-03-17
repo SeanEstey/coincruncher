@@ -113,7 +113,6 @@ logging.basicConfig(
     ]
 )
 
-def siglog(msg): log.log(100, msg)
 def keystostr(keys): return (keys[0], freqtostr[keys[1]], pertostr[keys[2]])
 
 # STFU
