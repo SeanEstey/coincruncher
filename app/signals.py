@@ -87,7 +87,7 @@ def log_scores(idx, score, dfz):
     elif freq == '1d':
         prd_start = open_time - tdelta(days=7)
 
-    siglog('-'*80)
+    #siglog('-'*80)
     siglog(idx_dict['pair'])
     siglog("{} Candle:    {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
         freq, open_time, close_time))
@@ -102,7 +102,7 @@ def log_scores(idx, score, dfz):
     [siglog(line) for line in lines]
     siglog('')
     siglog("Mean Zscore: {:+.1f}".format(score))
-    siglog('-'*80)
+    #siglog('-'*80)
 #-----------------------------------------------------------------------------
 def save_db(dfz):
     """Append scoring data to existing candles db records for each (pair,freq)

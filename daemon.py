@@ -29,6 +29,7 @@ def main(tckr=None, cndl=None):
         candles.update(pairs, '5m', start='3 hours ago utc', force=True)
         candles.update(pairs, '1h', start='48 hours ago utc', force=True)
         candles.update(pairs, '1d', start='21 days ago utc', force=True)
+        trades.update('5m')
     if tckr:
         coinmktcap.tickers(limit=TICKER_LIMIT)
         coinmktcap.global_markets()
@@ -59,7 +60,7 @@ def eod_tasks():
     yday = utc_dtdate() - timedelta(days=1)
     markets.generate_1d(yday)
     log.debug('running mongodump...')
-    os.system("sudo mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
+    os.system("mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
         --authenticationDatabase %s" %(DBUSER, DBPASSWORD, AUTHDB))
     log.info('eod tasks completed')
 #---------------------------------------------------------------------------

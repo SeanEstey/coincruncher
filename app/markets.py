@@ -83,11 +83,11 @@ def generate_1d(_date):
         "mktcap_mean_24h_usd":    int(df_mcap["mean"]),
         "mktcap_std_24h_usd" :    int(df_mcap["std"]),
         "vol_24h_close_usd":      int(g_data[-1]["vol_24h_usd"]),
-    	"n_markets":              g_data[-1]["n_markets"],
+        "n_markets":              g_data[-1]["n_markets"],
 		"n_assets":               g_data[-1]["n_assets"],
-    	"n_currencies":           g_data[-1]["n_currencies"],
+        "n_currencies":           g_data[-1]["n_currencies"],
 		"n_symbols":              g_data[-1]["n_currencies"] + g_data[-1]["n_assets"],
-    	"btc_mcap":               g_data[-1]["pct_mktcap_btc"]
+        "btc_mcap":               g_data[-1]["pct_mktcap_btc"]
     })
 
     log.info("market_idx_1d generated.")

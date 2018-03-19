@@ -2,10 +2,10 @@ import logging
 from datetime import timedelta
 import pandas as pd
 import app
-from app import freqtostr, pertostr, candles, signals
+from app import freqtostr, strtofreq, pertostr, candles, signals
 from app.utils import utc_datetime as now, df_to_list
 from app.timer import Timer
-from docs.config import X_THRESH
+from docs.config import X_THRESH, Z_BEAR_BOUNCE_THRESH
 from docs.data import BINANCE
 def siglog(msg): log.log(100, msg)
 def pct_diff(a,b): return ((b-a)/a)*100
@@ -55,11 +55,20 @@ def update(freqstr):
     for pair in active:
         evaluate(pair, freqstr, dfx.loc[(pair)], dfz.loc[(pair)])
 
+    # Open medium-term trade if X-Score above buy threshold
     if freqstr == '1h':
-        # Open new trades if above threshold
         for pair in list(set(pairs) - set(active)):
             xscore = dfx.loc[(pair,3600,86400)].XSCORE[0]
             if xscore > X_THRESH:
+                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)])
+
+    # Open short-term trade on severe 5m vs 3h historical avg. price dip, expecting bounce.
+    if freqstr == '5m':
+        for pair in list(set(pairs) - set(active)):
+            zscore = dfz.loc[(pair,300,10800)].xs('ZSCORE',level=1).CLOSE[0]
+            xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
+            if zscore < Z_BEAR_BOUNCE_THRESH:
+                siglog("Opening Bounce Trade on ({},300,10800). {:+.2f} Price Z-score.".format(pair, zscore))
                 open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)])
 
     log_summary(dfx)
@@ -190,27 +199,35 @@ def close_position(pair, xscore, dfx, dfz):
 def log_pnl(header, pair, trade, xscore, candle):
     """Log diff in xscore and price of trade since position opening.
     """
+    from app.utils import to_relative_str
+
     xscore_buy = trade['scoring']['start']['xscore']
     xdelta = pct_diff(xscore_buy, xscore)
     pinterim = candles.load_db(pair,'5m',start=trade['start_time'])['close'].mean()
+    duration = to_relative_str(now() - trade['start_time'])[:-3]
 
-    siglog("{}: {} ".format(header.upper(), pair))
+    siglog("{}: {} ({}) ".format(header.upper(), pair, duration))
     siglog("{:>4}Xscore: {:+.2f} (Buy), {:+.2f} (Now).".format('', xscore_buy, xscore))
     siglog("{:>4}Price: {:.8f} (Buy), {:.8f} (Mean, Interim), {:.8f} (Now).".format(
         '', trade['buy_price'], pinterim, candle['close']))
 #------------------------------------------------------------------------------
 def log_summary(dfx):
+    """
+    """
     t1 = Timer()
 
+    # Max/Min X-Scores
     dfx = dfx.sort_values('XSCORE')
-    df_5m = dfx.xs(300, level=1).iloc[-1]
-    df_1h = dfx.xs(3600, level=1).iloc[-1]
-    df_1d = dfx.xs(86400, level=1).iloc[-1]
+    for freq in [300, 3600, 86400]:
+        df_max = dfx.xs(freq, level=1).iloc[-1]
+        log.info("Top {} xscore is {} at {:+.2f}.".format(
+            freqtostr[freq], df_max.name[0], df_max['XSCORE']))
+    for freq in [300, 3600, 86400]:
+        df_min = dfx.xs(freq, level=1).iloc[0]
+        log.info("Lowest {} xscore is {} at {:+.2f}.".format(
+            freqtostr[freq], df_min.name[0], df_min['XSCORE']))
 
-    log.info("Top 5m xscore is {} at {:+.2f}.".format(df_5m.name[0], df_5m['XSCORE']))
-    log.info("Top 1h xscore is {} at {:+.2f}.".format(df_1h.name[0], df_1h['XSCORE']))
-    log.info("Top 1d xscore is {} at {:+.2f}.".format(df_1d.name[0], df_1d['XSCORE']))
-
+    # Trading Summary
     db = app.get_db()
     closed = list(db.trades.find({"status":"closed"}))
     n_loss, n_gain = 0, 0
@@ -225,13 +242,13 @@ def log_summary(dfx):
             n_loss += 1
         pct_gross_gain += n['price_pct_change']
 
-    win_ratio = n_gain/len(closed) if len(closed) >0 else 0
+    win_ratio = (n_gain/len(closed))*100 if len(closed) >0 else 0
     pct_net_gain = pct_gross_gain - (len(closed) * pct_trade_fee)
     n_open = db.trades.find({"status":"open"}).count()
 
     siglog("SUMMARY:")
     siglog("{:>4}{:}/{:} win ratio ({:+.2f}%). {:} open.".format(
-        '', n_gain, n_loss, win_ratio, n_open))
+        '', n_gain, len(closed), win_ratio, n_open))
     siglog("{:>4}{:+.2f}% gross earn, {:+.2f}% net earn.".format(
         '', pct_gross_gain, pct_net_gain))
     log.info('Scores/trades updated. [%ss]', t1)

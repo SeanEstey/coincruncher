@@ -2,7 +2,7 @@ import logging, time
 from time import sleep
 import pandas as pd
 import numpy as np
-from pymongo import ReplaceOne
+from pymongo import UpdateOne, ReplaceOne
 from binance.client import Client
 import app
 from app import freqtostr
@@ -68,12 +68,16 @@ def update(pairs, freq, start=None, force=False):
         db = app.get_db()
 
         if force == True:
+            # TODO: DONT OVERWRITE 'ZSCORE' DATA!!!
             # Upsert one by one to avoid duplicates. Slow.
+            ops = []
             for candle in candles:
-                db.candles.replace_one(
+                ops.append(UpdateOne(
                     {"open_time":candle["open_time"], "pair":candle["pair"], "freq":candle["freq"]},
-                    candle,
-                    upsert=True)
+                    {'$set':candle},
+                    upsert=True
+                ))
+            db.candles.bulk_write(ops)
         else:
             db.candles.insert_many(candles)
 
