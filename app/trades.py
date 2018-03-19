@@ -1,4 +1,6 @@
 import logging
+from datetime import timedelta
+import pandas as pd
 import app
 from app import freqtostr, pertostr, candles, signals
 from app.utils import utc_datetime as now, df_to_list
@@ -8,6 +10,9 @@ from docs.data import BINANCE
 def siglog(msg): log.log(100, msg)
 def pct_diff(a,b): return (b-a)/a
 log = logging.getLogger('trades')
+_1m = timedelta(minutes=1)
+_1h = timedelta(hours=1)
+_1d = timedelta(hours=24)
 
 #------------------------------------------------------------------------------
 def update():
@@ -15,13 +20,35 @@ def update():
     """
     siglog('-'*80)
     siglog('EVALUATING DATA')
-
     pairs = BINANCE['pairs']
     db = app.get_db()
     trades = list(db.trades.find({'status':'open', 'pair':{"$in": pairs}}))
 
-    dfz = signals.zscores(pairs)
-    dfx = signals.xscores(dfz)
+    t1 = Timer()
+    dfz = pd.DataFrame()
+    # Calculate z-scores for various (pair, freq, period) keys
+    for pair in pairs:
+        c5m = candles.last(pair,"5m")
+        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
+        c1h = candles.last(pair,"1h")
+        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
+        c1d = candles.last(pair,"1d")
+        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
+
+        for n in range(1,4):
+            dfz = dfz.append([
+                signals.zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
+                signals.zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
+                signals.zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
+            ])
+    dfz = dfz.sort_index()
+    # Save so don't need to calculate each update caycle
+    signals.save_db(dfz)
+
+    dfx = signals.xscore(dfz)
+
+    log.debug("[%s rows x %s cols] z-score dataset built. [%ss]",
+        len(dfz), len(dfz.columns), t1.elapsed(unit='s'))
 
     # Evaluate existing trades
     active = [ n['pair'] for n in trades]
@@ -30,7 +57,7 @@ def update():
 
     # Open new trades if above threshold
     for pair in list(set(pairs) - set(active)):
-        xscore = dfx.loc[(pair,3600,86400)].XSCORE
+        xscore = dfx.loc[(pair)].xs(3600,level=1).xs(86400,level=1).XSCORE[0]
         if xscore > X_THRESH:
             open_new(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)])
 
@@ -46,16 +73,16 @@ def evaluate(pair, dfx, dfz):
     """
     db = app.get_db()
     trade = db.trades.find_one({'status':'open', 'pair':pair})
-    stats = trade['analysis']['start']
+    stats = trade['scoring']['start']
 
     c_5m = candles.last(pair,300)
     c_1h = candles.last(pair,3600)
 
-    x_5m = dfx.loc[(300,3600)].XSCORE
-    x_1h = dfx.loc[(3600,86400)].XSCORE
+    x_5m = dfx.xs(300,level=1).xs(3600,level=1).XSCORE[0]
+    x_1h = dfx.xs(3600,level=1).xs(86400,level=1).XSCORE[0]
 
-    p_5m = dfz.loc[(300,3600,'CANDLE')].CLOSE
-    p_1h = dfz.loc[(3600,86400,'CANDLE')].CLOSE
+    p_5m = dfz.xs(300, level=1).xs(3600, level=1).CLOSE[0]
+    p_1h = dfz.xs(3600, level=1).xs(86400, level=1).CLOSE[0]
 
     # TODO: append new price to position price history
     # TODO: take all 5m close prices since buy-in, calc mean
@@ -74,6 +101,10 @@ def evaluate(pair, dfx, dfz):
 
     xdelta = (x_5m - stats['xscore']) / stats['xscore']
     pdelta = (p_5m - trade['buy_price']) / trade['buy_price']
+
+    print(xdelta)
+    print(pdelta)
+    print(x_5m)
 
     siglog("HODLING: {} xscore is {:+.2f}% to {:.2f}. Price {:+.2f}%.".format(
         pair, xdelta, x_5m, pdelta))
@@ -111,7 +142,7 @@ def open_new(pair, xscore, dfx, dfz):
         }
     })
 
-    signals.print((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
+    signals.log_scores((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
     siglog("OPENING POSITION: ({}), {:+.2f} xscore.".format(pair, xscore))
 #------------------------------------------------------------------------------
 def close_out(pair, xscore, dfx, dfz):
@@ -155,7 +186,7 @@ def close_out(pair, xscore, dfx, dfz):
             'price_pct_change': price_pct_change,
             'gross_earn':gross_earn,
             'net_earn': net_earn,
-            'analysis.end': {
+            'scoring.end': {
                 'candles': df_to_list(dfz),
                 'zscores': df_to_list(dfx),
                 'xscore': xscore
@@ -163,15 +194,15 @@ def close_out(pair, xscore, dfx, dfz):
         }}
     )
     siglog('CLOSING POSITION: ({}), {:+.2f}% price.'.format(pair, price_pct_change))
-    signals.print((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
+    signals.log_scores((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
 #------------------------------------------------------------------------------
 def summarize(dfx):
     t1 = Timer()
 
     dfx = dfx.sort_values('XSCORE')
-    df_5m = dfx.xs(300, level=1).iloc[-1]
-    df_1h = dfx.xs(3600, level=1).iloc[-1]
-    df_1d = dfx.xs(86400, level=1).iloc[-1]
+    df_5m = dfx.xs(300, level=2).iloc[-1]
+    df_1h = dfx.xs(3600, level=2).iloc[-1]
+    df_1d = dfx.xs(86400, level=2).iloc[-1]
 
     siglog("Top 5m xscore is {} at {:+.2f}.".format(df_5m.name[0], df_5m['XSCORE']))
     siglog("Top 1h xscore is {} at {:+.2f}.".format(df_1h.name[0], df_1h['XSCORE']))

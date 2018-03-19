@@ -12,11 +12,11 @@ def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def xscores(dfz):
+def xscore(dfz):
     """Derive x-scores from z-scores dataset.
     """
     scores = []
-    dfx = dfz.copy().xs('ZSCORE', level=3)
+    dfx = dfz.copy().xs('ZSCORE', level=4)
 
     # Apply weightings
     for idx, row in dfx.iterrows():
@@ -43,11 +43,11 @@ def zscore(pair, freq, period, start, end, candle):
         `                              |--> STD       ###      ###        ###
         `                              |--> ZSCORE    ###      ###        ###
     """
-    data = []
     # Historical average
     dfh_avg = candles.load_db(pair, freq, start, end=end).describe()[1::]
 
     # Stat/z-score data for Close, Volume, BuyRatio
+    data = []
     for x in Z_FACTORS:
         x = x.lower()
         data.append([
@@ -68,37 +68,7 @@ def zscore(pair, freq, period, start, end, candle):
     dfz["CLOSE"] = dfz["CLOSE"].astype('float64')
     return dfz
 #------------------------------------------------------------------------------
-def zscores(pairs):
-    """Build dataframe with scores for 5m, 1h, 1d frequencies across various
-    time periods.
-    """
-    t1 = Timer()
-    _1m = timedelta(minutes=1)
-    _1h = timedelta(hours=1)
-    _1d = timedelta(hours=24)
-    dfz = pd.DataFrame()
-
-    # Calculate z-scores for various (pair, freq, period) keys
-    for pair in pairs:
-        c5m = candles.last(pair,"5m")
-        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
-        c1h = candles.last(pair,"1h")
-        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
-        c1d = candles.last(pair,"1d")
-        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
-
-        for n in range(1,4):
-            dfz = dfz.append([
-                zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
-                zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
-                zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
-            ])
-
-    log.debug("[%s rows x %s cols] z-score dataset built. [%ss]",
-        len(dfz), len(dfz.columns), t1.elapsed(unit='s'))
-    return dfz.sort_index()
-#------------------------------------------------------------------------------
-def zprint(idx, score, dfz):
+def log_scores(idx, score, dfz):
     """Print statistial analysis for single (pair, freq, period).
     """
     from datetime import timedelta as tdelta
@@ -136,7 +106,8 @@ def zprint(idx, score, dfz):
     siglog('-'*80)
 #-----------------------------------------------------------------------------
 def save_db(dfz):
-    """
+    """Append scoring data to existing candles db records for each (pair,freq)
+    candle in dataframe.
     """
     t1 = Timer()
     ops=[]
@@ -149,8 +120,7 @@ def save_db(dfz):
         idx_dict['freq'] = freqtostr[idx_dict['freq']]
         record = dfz.loc[idx].to_dict()
         record = {k.lower():v for k,v in record.items()}
-        record['period'] = pertostr[period]
-        ops.append(UpdateOne(idx_dict, {'$set':{'zscores':record}}))
+        ops.append(UpdateOne(idx_dict, {'$set':{'zscores.'+pertostr[period]:record}}))
 
     try:
         results = app.get_db().candles.bulk_write(ops)
@@ -160,19 +130,30 @@ def save_db(dfz):
     print("%s candle records updated w/ z-scores" % results.modified_count)
     log.debug("%s pair signals saved. [%sms]", results.modified_count, t1)
 #-----------------------------------------------------------------------------
-def load_db(pair, freq, period):
-    """Load pair signal data from DB as multi-index dataframe.
+def load_db(pair, freq):
+    """Load zscore data appended to candle db record.
     Returns:
-    pair signals dataframe
-    index levels: [pair, freq, period, indicator]
-    columns: [candle, mean, std, signal]
+        multi-index pd.DataFrame
+        index levels: (PAIR, CLOSE_TIME, FREQ, PERIOD, DIMEN)
+        columns: (CLOSE, VOLUME, BUY_VOL)
     """
-    curs = app.get_db().zscores.find({"pair":pair, "freq":freq, "period":period})
-
+    curs = app.get_db().candles.find({"pair":pair, "freq":freq}
+        ).sort("close_time",-1).limit(1)
     if curs.count() == 0:
         return None
 
-    return pd.DataFrame(list(curs),
-        index = pd.Index(Z_DIMEN, name='stats'),
+    candle = list(curs)[0]
+    periods = [ strtoper[n] for n in candle['zscores'].keys() ]
+    zscores = candle['zscores']
+    data=[]
+    for period in zscores.keys():
+        x = candle['zscores'][period]
+        for dimen in Z_DIMEN:
+            data.append(np.array([x['close'][dimen], x['volume'][dimen], x['buy_ratio'][dimen]]))
+
+    levels = [[pair], [candle['close_time']], [strtofreq[freq]], periods, Z_DIMEN]
+    dfz = pd.DataFrame(data,
+        index = pd.MultiIndex.from_product(levels, names=Z_IDX_NAMES),
         columns = Z_FACTORS
-    ).astype('float64')
+    )
+    return dfz
