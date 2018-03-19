@@ -76,9 +76,9 @@ def update(freqstr):
         # C) Upward Price Action. 15m MA > 0.1 and X-Score > 0
         for pair in inactive:
             df = candles.load_db(pair, '5m', start=now()-timedelta(hours=2))
-            ma = (df['close'].rolling(3).mean().pct_change()*100).iloc[-1]
+            ma = (df['close'].rolling(5).mean().pct_change()*100).iloc[-1]
             xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
-            if ma > 0.1 and xscore > 0:
+            if ma > 0.1 and xscore > X_THRESH/2:
                 xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
                 siglog('Opening trade on {} on positive price action, ({:+.6f} MA).'.format(pair, ma))
                 open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 3600)
