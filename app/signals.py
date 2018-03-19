@@ -57,8 +57,7 @@ def zscore(pair, freq, period, start, end, candle):
             (candle[x] - dfh_avg[x]['mean']) / dfh_avg[x]['std']
         ])
 
-    levels = [[pair], [candle['close_time']], [strtofreq[freq]],
-        [strtoper[period]], Z_DIMEN]
+    levels = [[pair], [strtofreq[freq]], [strtoper[period]], [candle['close_time']], Z_DIMEN]
 
     dfz = pd.DataFrame(np.array(data).transpose(),
         index = pd.MultiIndex.from_product(levels, names=Z_IDX_NAMES),
@@ -99,7 +98,7 @@ def log_scores(idx, score, dfz):
         siglog("{} Hist:     {:%m-%d-%Y %I:%M%p} - {:%m-%d-%Y %I:%M%p}".format(
             prd, prd_start, prd_end))
     siglog('')
-    lines = dfz.to_string(col_space=10, line_width=100).title().split("\n")
+    lines = dfz.to_string(index=False, col_space=10, line_width=100).title().split("\n")
     [siglog(line) for line in lines]
     siglog('')
     siglog("Mean Zscore: {:+.1f}".format(score))
@@ -127,8 +126,7 @@ def save_db(dfz):
     except Exception as e:
         return log.exception(str(e))
 
-    print("%s candle records updated w/ z-scores" % results.modified_count)
-    log.debug("%s pair signals saved. [%sms]", results.modified_count, t1)
+    log.debug("%s candle records updated w/ z-scores. [%sms]", results.modified_count, t1)
 #-----------------------------------------------------------------------------
 def load_db(pair, freq):
     """Load zscore data appended to candle db record.
@@ -151,7 +149,7 @@ def load_db(pair, freq):
         for dimen in Z_DIMEN:
             data.append(np.array([x['close'][dimen], x['volume'][dimen], x['buy_ratio'][dimen]]))
 
-    levels = [[pair], [candle['close_time']], [strtofreq[freq]], periods, Z_DIMEN]
+    levels = [[pair], [strtofreq[freq]], [strtoper[periods]], [candle['close_time']], Z_DIMEN]
     dfz = pd.DataFrame(data,
         index = pd.MultiIndex.from_product(levels, names=Z_IDX_NAMES),
         columns = Z_FACTORS

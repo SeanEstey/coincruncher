@@ -6,7 +6,7 @@ from app.utils import utc_dtdate
 from app import candles, coinmktcap, forex, markets, trades
 from docs.config import TICKER_LIMIT
 from docs.data import BINANCE
-log = logging.getLogger("daemon")
+log = logging.getLogger('daemon')
 
 #---------------------------------------------------------------------------
 class GracefulKiller:
@@ -21,34 +21,33 @@ class GracefulKiller:
 def main(tckr=None, cndl=None):
     pairs = BINANCE['pairs']
     markets.db_audit()
-    daily = Timer(name="DailyTimer", expire=utc_dtdate()+timedelta(days=1))
-    hourly = Timer(name="HourTimer", expire="next hour change")
-    short = Timer(name="MinTimer", expire="in 5 min utc")
+    daily = Timer(name='DailyTimer', expire=utc_dtdate()+timedelta(days=1))
+    hourly = Timer(name='HourTimer', expire='next hour change')
+    short = Timer(name='MinTimer', expire='every 5 clock min utc')
 
     if cndl:
-        candles.update(pairs, "5m", start="3 hours ago utc", force=True)
-        candles.update(pairs, "1h", start="48 hours ago utc", force=True)
-        candles.update(pairs, "1d", start="21 days ago utc", force=True)
+        candles.update(pairs, '5m', start='3 hours ago utc', force=True)
+        candles.update(pairs, '1h', start='48 hours ago utc', force=True)
+        candles.update(pairs, '1d', start='21 days ago utc', force=True)
     if tckr:
         coinmktcap.tickers(limit=TICKER_LIMIT)
         coinmktcap.global_markets()
-    if cndl or tckr:
-        trades.update()
 
     while True:
         if short.remain() == 0:
+            candles.update(pairs, '5m')
+            trades.update('5m')
             coinmktcap.tickers(limit=500)
             coinmktcap.global_markets()
-            candles.update(pairs, "5m")
-            trades.update()
-            short.set_expiry("in 5 min utc")
+            short.reset()
         if hourly.remain() == 0:
-            candles.update(pairs, "1h")
-            trades.update()
-            hourly.set_expiry("next hour change")
+            candles.update(pairs, '5m')
+            candles.update(pairs, '1h')
+            trades.update('1h')
+            hourly.set_expiry('next hour change')
         if daily.remain() == 0:
-            candles.update(pairs, "1d")
-            trades.update()
+            candles.update(pairs, '1d')
+            trades.update('1h')
             eod_tasks()
             daily.set_expiry(utc_dtdate() + timedelta(days=1))
         time.sleep(5)
@@ -59,10 +58,10 @@ def eod_tasks():
     forex.update_1d()
     yday = utc_dtdate() - timedelta(days=1)
     markets.generate_1d(yday)
-    log.debug("running mongodump...")
+    log.debug('running mongodump...')
     os.system("sudo mongodump -u %s -p %s -d crypto -o ~/Dropbox/mongodumps \
         --authenticationDatabase %s" %(DBUSER, DBPASSWORD, AUTHDB))
-    log.info("eod tasks completed")
+    log.info('eod tasks completed')
 #---------------------------------------------------------------------------
 if __name__ == '__main__':
     import getopt

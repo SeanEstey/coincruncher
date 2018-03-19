@@ -130,10 +130,12 @@ def query_api(pair, freq, start=None, end=None, force=False):
             else:
                 # Don't want candles that aren't closed yet
                 if data[-1][6] >= dt_to_ms(now()):
+                    print("discarding unclosed candle w/ close_time %s" %(
+                        pd.to_datetime(int(data[-1][6]), unit='ms', utc=True)))
                     results += data[:-1]
                     break
                 results += data
-                start_ts = data[len(data) - 1][0] + periodlen
+                start_ts = data[-1][0] + periodlen
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 

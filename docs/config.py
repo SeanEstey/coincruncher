@@ -1,9 +1,9 @@
 # Signals
-Z_IDX_NAMES = ['PAIR', 'CLOSE_TIME', 'FREQ', 'PERIOD', 'DIMEN']
+Z_IDX_NAMES = ['PAIR', 'FREQ', 'PERIOD', 'CLOSE_TIME', 'DIMEN']
 Z_FACTORS = ['CLOSE', 'VOLUME', 'BUY_RATIO']
 Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE']
 Z_WEIGHTS = [1.75, 1.25, 1.5]   # Weights to apply to z-factors
-X_THRESH = 2.0 # TODO: put back to 2.5
+X_THRESH = 1.25 # TODO: put back to 2.5
 
 # App
 HOST="45.79.176.125"
