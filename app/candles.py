@@ -134,8 +134,8 @@ def query_api(pair, freq, start=None, end=None, force=False):
             else:
                 # Don't want candles that aren't closed yet
                 if data[-1][6] >= dt_to_ms(now()):
-                    print("discarding unclosed candle w/ close_time %s" %(
-                        pd.to_datetime(int(data[-1][6]), unit='ms', utc=True)))
+                    #print("discarding unclosed candle w/ close_time %s" %(
+                    #    pd.to_datetime(int(data[-1][6]), unit='ms', utc=True)))
                     results += data[:-1]
                     break
                 results += data
@@ -143,7 +143,7 @@ def query_api(pair, freq, start=None, end=None, force=False):
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 
-    print("%s result(s)" % len(results))
+    #print("%s result(s)" % len(results))
     return results
 #------------------------------------------------------------------------------
 def save_db(candles, freq, df):

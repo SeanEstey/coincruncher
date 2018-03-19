@@ -28,7 +28,7 @@ def main(tckr=None, cndl=None):
     if cndl:
         candles.update(pairs, '5m', start='3 hours ago utc', force=True)
         candles.update(pairs, '1h', start='48 hours ago utc', force=True)
-        candles.update(pairs, '1d', start='21 days ago utc', force=True)
+        #candles.update(pairs, '1d', start='21 days ago utc', force=True)
         trades.update('5m')
     if tckr:
         coinmktcap.tickers(limit=TICKER_LIMIT)

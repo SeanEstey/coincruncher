@@ -87,7 +87,7 @@ def log_scores(idx, score, dfz):
     elif freq == '1d':
         prd_start = open_time - tdelta(days=7)
 
-    #siglog('-'*80)
+    siglog('-'*80)
     siglog(idx_dict['pair'])
     siglog("{} Candle:    {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
         freq, open_time, close_time))
@@ -102,7 +102,7 @@ def log_scores(idx, score, dfz):
     [siglog(line) for line in lines]
     siglog('')
     siglog("Mean Zscore: {:+.1f}".format(score))
-    #siglog('-'*80)
+    siglog('-'*80)
 #-----------------------------------------------------------------------------
 def save_db(dfz):
     """Append scoring data to existing candles db records for each (pair,freq)
@@ -119,7 +119,7 @@ def save_db(dfz):
         idx_dict['freq'] = freqtostr[idx_dict['freq']]
         record = dfz.loc[idx].to_dict()
         record = {k.lower():v for k,v in record.items()}
-        ops.append(UpdateOne(idx_dict, {'$set':{'zscores.'+pertostr[period]:record}}))
+        ops.append(UpdateOne(idx_dict, {'$set':{'signals.zscores.'+pertostr[period]:record}}))
 
     try:
         results = app.get_db().candles.bulk_write(ops)
@@ -141,11 +141,11 @@ def load_db(pair, freq):
         return None
 
     candle = list(curs)[0]
-    periods = [ strtoper[n] for n in candle['zscores'].keys() ]
-    zscores = candle['zscores']
+    periods = [ strtoper[n] for n in candle['signals.zscores'].keys() ]
+    zscores = candle['signals.zscores']
     data=[]
     for period in zscores.keys():
-        x = candle['zscores'][period]
+        x = candle['signals.zscores'][period]
         for dimen in Z_DIMEN:
             data.append(np.array([x['close'][dimen], x['volume'][dimen], x['buy_ratio'][dimen]]))
 

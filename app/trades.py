@@ -1,6 +1,7 @@
 import logging
 from datetime import timedelta
 import pandas as pd
+import numpy as np
 import app
 from app import freqtostr, strtofreq, pertostr, candles, signals
 from app.utils import utc_datetime as now, df_to_list
@@ -18,7 +19,7 @@ _1d = timedelta(hours=24)
 def update(freqstr):
     """
     """
-    siglog('-'*80)
+    siglog('*'*80)
     siglog('EVALUATING {:} CYCLE'.format(freqstr.upper()))
     pairs = BINANCE['pairs']
     db = app.get_db()
@@ -55,21 +56,39 @@ def update(freqstr):
     for pair in active:
         evaluate(pair, freqstr, dfx.loc[(pair)], dfz.loc[(pair)])
 
-    # Open medium-term trade if X-Score above buy threshold
-    if freqstr == '1h':
-        for pair in list(set(pairs) - set(active)):
-            xscore = dfx.loc[(pair,3600,86400)].XSCORE[0]
-            if xscore > X_THRESH:
-                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)])
+    inactive = list(set(pairs) - set(active))
 
-    # Open short-term trade on severe 5m vs 3h historical avg. price dip, expecting bounce.
+    # Evaluate opening new trade positions
+
     if freqstr == '5m':
-        for pair in list(set(pairs) - set(active)):
+        # A) Breakout. 5m vs 3h X-Score > X_TRESHOLD
+        for pair in inactive:
+            xscore = dfx.loc[(pair,300,10800)].XSCORE[0]
+            if xscore > X_THRESH:
+                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 10800)
+        # B) Bounce. 5m vs 3h Close Price Z-Score < Z_BOUNCE_THRESH
+        for pair in inactive:
             zscore = dfz.loc[(pair,300,10800)].xs('ZSCORE',level=1).CLOSE[0]
             xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
             if zscore < Z_BEAR_BOUNCE_THRESH:
                 siglog("Opening Bounce Trade on ({},300,10800). {:+.2f} Price Z-score.".format(pair, zscore))
-                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)])
+                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 10800)
+        # C) Upward Price Action. 15m MA > 0.1 and X-Score > 0
+        for pair in inactive:
+            df = candles.load_db(pair, '5m', start=now()-timedelta(hours=2))
+            ma = (df['close'].rolling(3).mean().pct_change()*100).iloc[-1]
+            xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
+            if ma > 0.1 and xscore > 0:
+                xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
+                siglog('Opening trade on {} on positive price action, ({:+.6f} MA).'.format(pair, ma))
+                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 3600)
+    elif freqstr == '1h':
+        # D) Bullish. 1h vs 24h X-Score > X_THRESHOLD, 5m vs 1h X-Score > 0.
+        for pair in inactive:
+            xscore_1h = dfx.loc[(pair,3600,86400)].XSCORE[0]
+            xscore_5m = dfx.loc[(pair,300,3600)].XSCORE[0]
+            if xscore_1h > X_THRESH and xscore_5m > 0:
+                open_position(pair, xscore_1h, dfx.loc[(pair)], dfz.loc[(pair)], 3600, 86400)
 
     log_summary(dfx)
 
@@ -97,23 +116,28 @@ def evaluate(pair, freqstr, dfx, dfz):
     # TODO: save candle close_time when opening new position, to compare with above dates.
 
     if c['open_time'] > trade['start_time']:
-        pmean = candles.load_db(pair, freqstr, start=trade['start_time']
-            )['close'].mean()
-        if p < pmean or p < trade['buy_price']:
+        if c['close'] < trade['buy_price']:
             log_pnl("Closing Position", pair, trade, x, c)
             return close_position(pair, x, dfx, dfz)
 
+        pmean = candles.load_db(pair, freqstr, start=trade['start_time']
+            )['close'].mean()
+        if not np.isnan(pmean) and p < pmean:
+            log_pnl("Closing Position", pair, trade, x, c)
+            return close_position(pair, x, dfx, dfz)
+
+    print('c.close: %s, p: %s' %(c['close'], p))
     # Position remains open. Log profits.
     log_pnl("HODLING", pair, trade, x, c)
 #------------------------------------------------------------------------------
-def open_position(pair, xscore, dfx, dfz):
+def open_position(pair, xscore, dfx, dfz, freq, period):
     """Create or update existing position for zscore above threshold value.
     @xscore: weighted average trade signal score
     @dfx: pd.dataframe w/ multi-index: (freq, period)
     @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
-    FREQ = 3600
-    PERIOD = 86400
+    #FREQ = 300
+    #PERIOD = 86400
     fee_pct = BINANCE['trade_fee_pct']
     vol = BINANCE['volume']
 
@@ -141,7 +165,7 @@ def open_position(pair, xscore, dfx, dfz):
         }
     })
 
-    signals.log_scores((pair, FREQ, PERIOD), xscore, dfz.loc[(FREQ, PERIOD)])
+    signals.log_scores((pair, freq, period), xscore, dfz.loc[(freq, period)])
     siglog("OPENING POSITION: ({}), {:+.2f} xscore.".format(pair, xscore))
 #------------------------------------------------------------------------------
 def close_position(pair, xscore, dfx, dfz):
@@ -204,7 +228,7 @@ def log_pnl(header, pair, trade, xscore, candle):
     xscore_buy = trade['scoring']['start']['xscore']
     xdelta = pct_diff(xscore_buy, xscore)
     pinterim = candles.load_db(pair,'5m',start=trade['start_time'])['close'].mean()
-    duration = to_relative_str(now() - trade['start_time'])[:-3]
+    duration = to_relative_str(now() - trade['start_time'])[:-4]
 
     siglog("{}: {} ({}) ".format(header.upper(), pair, duration))
     siglog("{:>4}Xscore: {:+.2f} (Buy), {:+.2f} (Now).".format('', xscore_buy, xscore))
@@ -218,11 +242,11 @@ def log_summary(dfx):
 
     # Max/Min X-Scores
     dfx = dfx.sort_values('XSCORE')
-    for freq in [300, 3600, 86400]:
+    for freq in [300, 3600]:
         df_max = dfx.xs(freq, level=1).iloc[-1]
         log.info("Top {} xscore is {} at {:+.2f}.".format(
             freqtostr[freq], df_max.name[0], df_max['XSCORE']))
-    for freq in [300, 3600, 86400]:
+    for freq in [300, 3600]:
         df_min = dfx.xs(freq, level=1).iloc[0]
         log.info("Lowest {} xscore is {} at {:+.2f}.".format(
             freqtostr[freq], df_min.name[0], df_min['XSCORE']))
@@ -252,4 +276,4 @@ def log_summary(dfx):
     siglog("{:>4}{:+.2f}% gross earn, {:+.2f}% net earn.".format(
         '', pct_gross_gain, pct_net_gain))
     log.info('Scores/trades updated. [%ss]', t1)
-    siglog('-'*80)
+    siglog('*'*80)
