@@ -6,7 +6,7 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir)
 import logging, time
 from pprint import pprint, pformat
-from importlib import reload
+import importlib
 from datetime import timedelta, datetime
 import pandas as pd
 import numpy as np
@@ -25,5 +25,12 @@ app.set_db(["localhost", "45.79.176.125"][0])
 db = app.get_db()
 
 #------------------------------------------------------------------------------
+trades.X_THRESH = 0.25
 trades.preload_candles()
+dfc = trades.dfc
+
+candle = trades.last_candle('BNBUSDT','5m')
+candle['CLOSE'] = 0.1
+holding = db.trades.find_one({"pair":"BNBUSDT", "status":"open"})
+
 trades.update('5m')

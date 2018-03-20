@@ -12,16 +12,14 @@ def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def generate(freq_str, dfc, candle):
+def generate(dfc, candle):
     """Generate Z-Scores and X-score.
     """
-    open_time = candle.name
-
-    if freq_str == '5m':
-        hist_end = open_time - timedelta(minutes=5)
+    if candle['FREQ'] == '5m':
+        hist_end = candle['OPEN_TIME'] - timedelta(minutes=5)
         hist_start = hist_end - timedelta(hours=1)
-    elif freq_str == '1h':
-        hist_end = open_time - timedelta(hours=1)
+    elif candle['FREQ'] == '1h':
+        hist_end = candle['OPEN_TIME'] - timedelta(hours=1)
         hist_start = hist_end - timedelta(hours=72)
 
     history = dfc.loc[slice(hist_start, hist_end)]

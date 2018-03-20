@@ -1,6 +1,6 @@
 
 BINANCE = {
-    "volume": 1,
+    "trade_amt": 50.00,
     "trade_fee_pct": 0.05,
     "pairs": [
         "BLZBTC", "BTCUSDT", "BNBUSDT", "BCCUSDT", "ETCBTC", "ETHUSDT", "ETHBTC", "EOSBTC",
