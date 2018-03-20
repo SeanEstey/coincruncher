@@ -11,13 +11,20 @@ from docs.config import Z_WEIGHTS, Z_FACTORS, Z_DIMEN, Z_IDX_NAMES
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
-#------------------------------------------------------------------------------
-def xscore(z_scores):
-    """Derive x-scores from z-scores dataset.
-    """
-    return (z_scores * Z_WEIGHTS).sum() / sum(Z_WEIGHTS)
 #-----------------------------------------------------------------------------
-def generate_scores(history, candle):
+def generate(freq_str, dfc, candle):
+    """Generate Z-Scores and X-score.
+    """
+    open_time = candle.name
+
+    if freq_str == '5m':
+        hist_end = open_time - timedelta(minutes=5)
+        hist_start = hist_end - timedelta(hours=1)
+    elif freq_str == '1h':
+        hist_end = open_time - timedelta(hours=1)
+        hist_start = hist_end - timedelta(hours=72)
+
+    history = dfc.loc[slice(hist_start, hist_end)]
     stats = history.describe()
     data = []
 
@@ -32,9 +39,13 @@ def generate_scores(history, candle):
         ])
 
     df = pd.DataFrame(np.array(data).transpose(), index=pd.Index(Z_DIMEN), columns=Z_FACTORS)
-
     df.loc['XSCORE'] = xscore(df.loc['ZSCORE'])
     return df
+#------------------------------------------------------------------------------
+def xscore(z_scores):
+    """Derive x-scores from z-scores dataset.
+    """
+    return (z_scores * Z_WEIGHTS).sum() / sum(Z_WEIGHTS)
 #------------------------------------------------------------------------------
 def log_scores(idx, score, dfz):
     """Print statistial analysis for single (pair, freq, period).
