@@ -12,60 +12,29 @@ def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
-def xscore(dfz):
+def xscore(z_scores):
     """Derive x-scores from z-scores dataset.
     """
-    scores = []
-    dfx = dfz.copy().xs('ZSCORE', level=4)
-
-    # Apply weightings
-    for idx, row in dfx.iterrows():
-        scores.append((row * Z_WEIGHTS).sum() / sum(Z_WEIGHTS))
-
-    # Mean zscore across close, volume, buy_ratio
-    dfx['ZSCORE'] = dfx.mean(axis=1)
-    # Add new column
-    dfx['XSCORE'] = scores
-    # Hide all other columns
-    dfx = dfx[['XSCORE']]
-    return dfx.sort_index()
+    return (z_scores * Z_WEIGHTS).sum() / sum(Z_WEIGHTS)
 #-----------------------------------------------------------------------------
-def zscore(pair, freq, period, start, end, candle):
-    """Assign Z-Scores for given candle using period historical average.
-    Can be appended with other pair/freq/periods for easy indexing.
-    @candle: dict
-    Returns:
-        pd.DataFrame of [5x4 INDEX][3x1 DATA] dimensions.
-        e.g:
-        PAIR      CLOSE_TIME  FREQ  PERIOD  DIMEN   CLOSE   VOLUME  BUY_RATIO
-        BTCUSDT-->2018-03---->300-->3600--> CANDLE    ###      ###        ###
-        `                              |--> MEAN      ###      ###        ###
-        `                              |--> STD       ###      ###        ###
-        `                              |--> ZSCORE    ###      ###        ###
-    """
-    # Historical average
-    dfh_avg = candles.load_db(pair, freq, start, end=end).describe()[1::]
-
-    # Stat/z-score data for Close, Volume, BuyRatio
+def generate_scores(history, candle):
+    stats = history.describe()
     data = []
+
+    # Generate Z-Scores
     for x in Z_FACTORS:
-        x = x.lower()
         data.append([
             candle[x],
-            dfh_avg[x]['mean'],
-            dfh_avg[x]['std'],
-            (candle[x] - dfh_avg[x]['mean']) / dfh_avg[x]['std']
+            stats[x]['mean'],
+            stats[x]['std'],
+            (candle[x] - stats[x]['mean']) / stats[x]['std'],
+            np.nan
         ])
 
-    levels = [[pair], [strtofreq[freq]], [strtoper[period]], [candle['close_time']], Z_DIMEN]
+    df = pd.DataFrame(np.array(data).transpose(), index=pd.Index(Z_DIMEN), columns=Z_FACTORS)
 
-    dfz = pd.DataFrame(np.array(data).transpose(),
-        index = pd.MultiIndex.from_product(levels, names=Z_IDX_NAMES),
-        columns = Z_FACTORS
-    )
-    # Small number precision
-    dfz["CLOSE"] = dfz["CLOSE"].astype('float64')
-    return dfz
+    df.loc['XSCORE'] = xscore(df.loc['ZSCORE'])
+    return df
 #------------------------------------------------------------------------------
 def log_scores(idx, score, dfz):
     """Print statistial analysis for single (pair, freq, period).

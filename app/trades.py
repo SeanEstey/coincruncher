@@ -6,109 +6,52 @@ import app
 from app import freqtostr, strtofreq, pertostr, candles, signals
 from app.utils import utc_datetime as now, df_to_list
 from app.timer import Timer
-from docs.config import X_THRESH, Z_BEAR_BOUNCE_THRESH
+from docs.config import Z_FACTORS, X_THRESH, Z_BEAR_BOUNCE_THRESH
 from docs.data import BINANCE
+
 def siglog(msg): log.log(100, msg)
 def pct_diff(a,b): return ((b-a)/a)*100
+
 log = logging.getLogger('trades')
-_1m = timedelta(minutes=1)
-_1h = timedelta(hours=1)
-_1d = timedelta(hours=24)
+pairs = BINANCE['pairs']
+dfc = pd.DataFrame()
 
 #------------------------------------------------------------------------------
-def update(freqstr):
+def update(freq_str):
+    """Trading cycle run on each candle refresh. Evaluate open positions and
+    compute data signals for opening new positions.
     """
-    """
-    siglog('*'*80)
-    siglog('EVALUATING {:} CYCLE'.format(freqstr.upper()))
-    pairs = BINANCE['pairs']
-    db = app.get_db()
-    trades = list(db.trades.find({'status':'open', 'pair':{"$in": pairs}}))
-
+    global dfc
     t1 = Timer()
-    dfz = pd.DataFrame()
-    # Calculate z-scores for various (pair, freq, period) keys
-    for pair in pairs:
-        c5m = candles.last(pair,"5m")
-        t5m = [c5m["open_time"] - (5*_1m), c5m["close_time"] - (5*_1m)]
-        c1h = candles.last(pair,"1h")
-        t1h = [c1h["open_time"] - (1*_1h), c1h["close_time"] - (1*_1h)]
-        c1d = candles.last(pair,"1d")
-        t1d = [c1d["open_time"] - (1*_1d), c1d["close_time"] - (1*_1d)]
 
-        for n in range(1,4):
-            dfz = dfz.append([
-                signals.zscore(pair, "5m", str(n*60)+"m", t5m[0]-(n*60*_1m), t5m[1], c5m),
-                signals.zscore(pair, "1h", str(n*24)+"h", t1h[0]-(n*24*_1h), t1h[1], c1h),
-                signals.zscore(pair, "1d", str(n*7)+"d",  t1d[0]-(n*7*_1d), t1d[1], c1d)
-            ])
-    dfz = dfz.sort_index()
-    # Save so don't need to calculate each update cycle
-    signals.save_db(dfz)
+    # Mege new candle data
+    merge_candles(span=timedelta(minutes=10))
 
-    dfx = signals.xscore(dfz)
+    siglog('*'*80)
+    siglog('EVALUATING {:} CYCLE'.format(freq_str.upper()))
 
-    log.debug("[%s rows x %s cols] z-score dataset built. [%ss]",
-        len(dfz), len(dfz.columns), t1.elapsed(unit='s'))
+    # Evaluate open positions
+    holdings = list(app.get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
 
-    # Evaluate existing trades
-    active = [ n['pair'] for n in trades]
-    for pair in active:
-        evaluate(pair, freqstr, dfx.loc[(pair)], dfz.loc[(pair)])
+    for holding in holdings:
+        update_position(holding['pair'], freq_str, holding)
 
-    inactive = list(set(pairs) - set(active))
+    # Evaluate new positions for other tracked pairs
+    inactive = list(set(pairs) - set([n['pair'] for n in holdings]))
 
-    # Evaluate opening new trade positions
+    for pair in inactive:
+        evaluate_new(pair, freq_str)
 
-    if freqstr == '5m':
-        # A) Breakout. 5m vs 3h X-Score > X_TRESHOLD
-        for pair in inactive:
-            xscore = dfx.loc[(pair,300,10800)].XSCORE[0]
-            if xscore > X_THRESH:
-                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 10800)
-        # B) Bounce. 5m vs 3h Close Price Z-Score < Z_BOUNCE_THRESH
-        for pair in inactive:
-            zscore = dfz.loc[(pair,300,10800)].xs('ZSCORE',level=1).CLOSE[0]
-            xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
-            if zscore < Z_BEAR_BOUNCE_THRESH:
-                siglog("Opening Bounce Trade on ({},300,10800). {:+.2f} Price Z-score.".format(pair, zscore))
-                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 10800)
-        # C) Upward Price Action. 15m MA > 0.1 and X-Score > 0
-        for pair in inactive:
-            df = candles.load_db(pair, '5m', start=now()-timedelta(hours=2))
-            ma = (df['close'].rolling(5).mean().pct_change()*100).iloc[-1]
-            xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
-            if ma > 0.1 and xscore > X_THRESH/2:
-                xscore = dfx.loc[(pair,300,3600)].XSCORE[0]
-                siglog('Opening trade on {} on positive price action, ({:+.6f} MA).'.format(pair, ma))
-                open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 3600)
-    elif freqstr == '1h':
-        # D) Bullish. 1h vs 24h X-Score > X_THRESHOLD, 5m vs 1h X-Score > 0.
-        for pair in inactive:
-            xscore_1h = dfx.loc[(pair,3600,86400)].XSCORE[0]
-            xscore_5m = dfx.loc[(pair,300,3600)].XSCORE[0]
-            if xscore_1h > X_THRESH and xscore_5m > 0:
-                open_position(pair, xscore_1h, dfx.loc[(pair)], dfz.loc[(pair)], 3600, 86400)
-
-    log_summary(dfx)
-
-    return (dfz, dfx)
+    #cycle_summary()
 #------------------------------------------------------------------------------
-def evaluate(pair, freqstr, dfx, dfz):
+def update_position(pair, holding, freq_str):
     """
-    @dfx: pd.dataframe w/ multi-index: (freq, period)
-    @dfz: pd.dataframe w/ multi-index (freq, period, dimen)
     """
-    db = app.get_db()
-    trade = db.trades.find_one({'status':'open', 'pair':pair})
-    stats = trade['scoring']['start']
-    freq = strtofreq[freqstr]
-    if freq == 300:
-        period = 3600
-    elif freq == 3600:
-        period = 86400
+    global dfc
+    return True
 
-    c = candles.last(pair,freq)
+    """
+    stats = holding['scoring']['start']
     x = dfx.loc[(freq,period)].XSCORE[0]
     p = dfz.loc[(freq,period)].CLOSE[0]
 
@@ -120,8 +63,8 @@ def evaluate(pair, freqstr, dfx, dfz):
             log_pnl("Closing Position", pair, trade, x, c)
             return close_position(pair, x, dfx, dfz)
 
-        pmean = candles.load_db(pair, freqstr, start=trade['start_time']
-            )['close'].mean()
+        #pmean = candles.load_db(pair, freqstr, start=trade['start_time']
+        #    )['close'].mean()
         if not np.isnan(pmean) and p < pmean:
             log_pnl("Closing Position", pair, trade, x, c)
             return close_position(pair, x, dfx, dfz)
@@ -129,24 +72,66 @@ def evaluate(pair, freqstr, dfx, dfz):
     print('c.close: %s, p: %s' %(c['close'], p))
     # Position remains open. Log profits.
     log_pnl("HODLING", pair, trade, x, c)
+    """
 #------------------------------------------------------------------------------
-def open_position(pair, xscore, dfx, dfz, freq, period):
+def evaluate_new(pair, freq_str):
+    """Evaluate opening new trade positions
+    """
+    global dfc
+
+    freq = strtofreq[freq_str]
+    candle = dfc.loc[pair, freq].iloc[-1]
+    open_time = candle.name
+
+    if freq_str == '5m':
+        hist_end = open_time - timedelta(minutes=5)
+        hist_start = hist_end - timedelta(hours=1)
+    elif freq_str == '1h':
+        hist_end = open_time - timedelta(hours=1)
+        hist_start = hist_end - timedelta(hours=72)
+
+    scores = signals.generate_scores(dfc.loc[pair, freq].loc[slice(hist_start, hist_end)], candle)
+    xscore = scores.iloc[-1]['CLOSE']
+
+    if freq_str == '5m':
+        # A) Breakout. 5m vs 3h X-Score > X_TRESHOLD
+        if xscore > X_THRESH:
+            return open_position(pair, freq, xscore, candle)
+
+        # B) Bounce. 5m vs 3h Close Price Z-Score < Z_BOUNCE_THRESH
+        zscore = scores['CLOSE'].loc['ZSCORE']
+        if zscore < Z_BEAR_BOUNCE_THRESH:
+            siglog("Opening Bounce Trade on ({},300,10800). {:+.2f} Price Z-score.".format(pair, zscore))
+            return open_position(pair, freq, xscore, candle)
+
+        # C) Upward Price Action. 15m MA > 0.1 and X-Score > 0
+        #df = candles.load_db(pair, '5m', start=now()-timedelta(hours=2))
+        #ma = (df['close'].rolling(5).mean().pct_change()*100).iloc[-1]
+        #if ma > 0.1 and xscore > X_THRESH/2:
+        #    siglog('Opening trade on {} on positive price action, ({:+.6f} MA).'.format(pair, ma))
+        #    open_position(pair, xscore, dfx.loc[(pair)], dfz.loc[(pair)], 300, 3600)
+
+    """
+    elif freqstr == '1h':
+        # D) Bullish. 1h vs 24h X-Score > X_THRESHOLD, 5m vs 1h X-Score > 0.
+        xscore_1h = dfx.loc[(pair,3600,86400)].XSCORE[0]
+        xscore_5m = dfx.loc[(pair,300,3600)].XSCORE[0]
+        if xscore_1h > X_THRESH and xscore_5m > 0:
+            open_position(pair, xscore_1h, dfx.loc[(pair)], dfz.loc[(pair)], 3600, 86400)
+    """
+#------------------------------------------------------------------------------
+def open_position(pair, freq, xscore, candle):
     """Create or update existing position for zscore above threshold value.
     @xscore: weighted average trade signal score
     @dfx: pd.dataframe w/ multi-index: (freq, period)
     @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
-    #FREQ = 300
-    #PERIOD = 86400
     fee_pct = BINANCE['trade_fee_pct']
     vol = BINANCE['volume']
-
-    # Open new position
-
-    # Use 5m price as it's usually more recent than 1h price
-    close = dfz.loc[(300,3600)].xs('CANDLE',level=1).CLOSE[0]
+    close = candle.CLOSE
     fee_amt = (fee_pct/100) * vol * close
     buy_amt = (vol * close) - fee_amt
+
     app.get_db().trades.insert_one({
         'pair': pair,
         'status': 'open',
@@ -158,14 +143,14 @@ def open_position(pair, xscore, dfx, dfz, freq, period):
         'total_fee_pct': fee_pct,
         'scoring': {
             'start': {
-                'zscores': df_to_list(dfz),
-                'xscores': df_to_list(dfx),
+                #'zscores': df_to_list(dfz),
+                #'xscores': df_to_list(dfx),
                 'xscore':xscore
             }
         }
     })
 
-    signals.log_scores((pair, freq, period), xscore, dfz.loc[(freq, period)])
+    #signals.log_scores((pair, freq, period), xscore, dfz.loc[(freq, period)])
     siglog("OPENING POSITION: ({}), {:+.2f} xscore.".format(pair, xscore))
 #------------------------------------------------------------------------------
 def close_position(pair, xscore, dfx, dfz):
@@ -235,7 +220,7 @@ def log_pnl(header, pair, trade, xscore, candle):
     siglog("{:>4}Price: {:.8f} (Buy), {:.8f} (Mean, Interim), {:.8f} (Now).".format(
         '', trade['buy_price'], pinterim, candle['close']))
 #------------------------------------------------------------------------------
-def log_summary(dfx):
+def cycle_summary(dfx):
     """
     """
     t1 = Timer()
@@ -277,3 +262,34 @@ def log_summary(dfx):
         '', pct_gross_gain, pct_net_gain))
     log.info('Scores/trades updated. [%ss]', t1)
     siglog('*'*80)
+#------------------------------------------------------------------------------
+def preload_candles():
+    """Preload candles records from mongoDB to global dataframe.
+    Performance: ~3,000ms/100k records
+    """
+    global dfc
+    merge_candles(span=timedelta(days=21))
+#------------------------------------------------------------------------------
+def merge_candles(span=None):
+    """Merge newly updated candle data from daemon into global dataframe.
+    """
+    global dfc
+    t1 = Timer()
+
+    idx, data = [], []
+    span = span if span else timedelta(days=21)
+
+    curs = app.get_db().candles.find(
+        {"pair":{"$in":pairs}, "close_time":{"$gte":now()-span}})
+
+    for candle in curs:
+        idx.append((candle['pair'], strtofreq[candle['freq']], candle['open_time']))
+        data.append([candle[x.lower()] for x in Z_FACTORS])
+
+    df = pd.DataFrame(data,
+        index = pd.Index(idx, names=['PAIR', 'FREQ', 'OPEN_TIME']),
+        columns = Z_FACTORS)
+
+    dfc = pd.concat([dfc, df]).drop_duplicates().sort_index()
+
+    log.debug("%s candle records merged. [%sms]", len(df), t1)

@@ -219,11 +219,12 @@ def load_db(pair, freq, start=None, end=None):
     if start is not None:
         match["open_time"]["$gte"] = start
 
-    data = list(app.get_db().candles.find(match).sort("open_time",1))
+    data = list(app.get_db().candles.find(match)) #.sort("open_time",-1))
     index = pd.Index([pd.to_datetime(n["open_time"], utc=True) for n in data],
         name="open_time")
     df = pd.DataFrame(data, index=index, columns=cols)
 
     df[["trades"]] = df[["trades"]].astype('int32')
     df[cols[4:]] = df[cols[4:]].astype('float64')
+    log.debug('loaded %s candle records into df. [%s]', len(df), t1)
     return df

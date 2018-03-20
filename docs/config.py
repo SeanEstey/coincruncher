@@ -1,8 +1,9 @@
 # Signals
-Z_IDX_NAMES = ['PAIR', 'FREQ', 'PERIOD', 'CLOSE_TIME', 'DIMEN']
-Z_FACTORS = ['CLOSE', 'VOLUME', 'BUY_RATIO']
-Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE']
-Z_WEIGHTS = [1.75, 1.25, 1.5]   # Weights to apply to z-factors
+Z_IDX_NAMES = ['PAIR', 'FREQ', 'CLOSE_TIME']
+Z_FACTORS = ['CLOSE', 'OPEN','TRADES', 'VOLUME', 'BUY_RATIO']
+Z_WEIGHTS = [1.75, 1.75, 1.25, 1.5, 1.75]   # Weights to apply to z-factors
+Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE', 'XSCORE']
+
 
 # Thresholds
 X_THRESH = 1.50
