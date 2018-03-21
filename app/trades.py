@@ -79,7 +79,7 @@ def evaluate(candle):
     pair = candle['PAIR']
     freq = strtofreq[candle['FREQ']]
     scores = signals.generate(dfc.loc[pair,freq], candle)
-    xscore = scores.iloc[-1].CLOSE
+    xscore = signals.xscore(scores.xs('ZSCORE'))
 
     if candle['FREQ'] == '5m':
         # A) Breakout. 5m vs 3h X-Score > X_TRESHOLD
@@ -133,11 +133,14 @@ def update_holding(holding, candle):
     if candle['CLOSE'] < buy_candle['CLOSE']:
         return close_holding(holding, candle, scores)
 
-    pmean = dfc.loc[pair,freq]['CLOSE'].loc[
+    pmean = dfc.loc[pair,freq].loc[
         slice(buy_candle['OPEN_TIME'], dfc.loc[pair,freq].iloc[-2].name
-    )].mean()
+    )]['CLOSE'].mean()
+    pmax = dfc.loc[pair,freq].loc[
+        slice(buy_candle['OPEN_TIME'], dfc.loc[pair,freq].iloc[-2].name
+    )]['CLOSE'].max()
 
-    if not np.isnan(pmean) and candle['CLOSE'] < pmean:
+    if not np.isnan(pmax) and candle['CLOSE'] < pmax:
         return close_holding(holding, candle, scores)
 
     summary(holding)
@@ -171,8 +174,8 @@ def open_holding(candle, scores, extra=None):
         }
     })
     siglog("BOUGHT {}".format(candle['PAIR']))
-    siglog("{:>4}X-Score: {:+.2f}".format('', scores['CLOSE']['XSCORE']))
     siglog("{:>4}Details: {}".format('', extra))
+    siglog("{:>4}Price: {:.8g}, BuyRatio: {:.2f}".format('', candle['CLOSE'], candle['BUY_RATIO']))
 
 #------------------------------------------------------------------------------
 def close_holding(holding, candle, scores):
@@ -288,7 +291,13 @@ def earnings_summary(t1):
         candle = candles.newest(holding['pair'], freq_str, df=dfc)
         pct_change_hold.append(pct_diff(holding['buy']['candle']['CLOSE'], candle['CLOSE']))
 
-    siglog("Holdings: {} Open, {:+.2f}% Mean Value".format(len(active), sum(pct_change_hold)/len(pct_change_hold)))
+    if len(pct_change_hold) > 0:
+        pct_change_hold = sum(pct_change_hold)/len(pct_change_hold)
+    else:
+        pct_change_hold = 0.0
+
+    siglog("Holdings: {} Open, {:+.2f}% Mean Value".format(len(active), pct_change_hold))
+
     siglog('-'*80)
 
     # Log Max/Min X-Scores
@@ -297,15 +306,15 @@ def earnings_summary(t1):
         scores = signals.generate(dfc.loc[pair,freq], candles.newest(pair, '5m', df=dfc))
         scores['PAIR'] = pair
         df = df.append(scores)
-
-    df = df.xs('XSCORE')
-    _max = df[df.CLOSE == df['CLOSE'].max()].iloc[0]
-    log.info("Top {} xscore is {} at {:+.2f}.".format(
-        '5m', _max['PAIR'], _max['CLOSE']))
-
-    _min = df[df.CLOSE == df['CLOSE'].min()].iloc[0]
-    log.info("Lowest {} xscore is {} at {:+.2f}.".format(
-        '5m', _min['PAIR'], _min['CLOSE']))
-
-    lines = df.to_string().split("\n")
-    db.signals.replace_one({"_id":{"$exists":True}}, {"scores":lines}, upsert=True)
+    dfx = df.xs('ZSCORE')
+    dfx = dfx.reset_index().set_index('PAIR')
+    del dfx['index']
+    xscores=[]
+    for i in range(0, len(dfx)):
+        xscores.append(signals.xscore(dfx.iloc[i]))
+    dfx = pd.DataFrame(xscores, index=dfx.index, columns=['XSCORE'])
+    log.info("Top {} xscore is {} at {:+.2f}.".format('5m', dfx['XSCORE'].idxmax(), dfx['XSCORE'].max()))
+    log.info("Lowest {} xscore is {} at {:+.2f}.".format('5m', dfx['XSCORE'].idxmin(), dfx['XSCORE'].min()))
+    zlines = df.to_string().split("\n")
+    xlines = dfx.sort_values('XSCORE').to_string().split("\n")
+    db.signals.replace_one({"_id":{"$exists":True}}, {"zscores":zlines, "xscores":xlines}, upsert=True)

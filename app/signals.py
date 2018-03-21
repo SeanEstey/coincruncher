@@ -1,6 +1,7 @@
 import logging
 from pymongo import UpdateOne, ReplaceOne
 from datetime import datetime, timedelta
+from pprint import pprint
 import pandas as pd
 import numpy as np
 import app
@@ -37,7 +38,9 @@ def generate(dfc, candle):
         ])
 
     df = pd.DataFrame(np.array(data).transpose(), index=pd.Index(Z_DIMEN), columns=Z_FACTORS)
-    df.loc['XSCORE'] = xscore(df.loc['ZSCORE'])
+
+    df.loc['XSCORE'] = df.loc['ZSCORE'] * Z_WEIGHTS #xscore(df.loc['ZSCORE'])
+
     return df
 #------------------------------------------------------------------------------
 def xscore(z_scores):
