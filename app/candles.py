@@ -5,7 +5,7 @@ import numpy as np
 from pymongo import UpdateOne, ReplaceOne
 from binance.client import Client
 import app
-from app import freqtostr
+from app import freqtostr, strtofreq
 from app.timer import Timer
 from app.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms
 from app.utils import utc_datetime as now
@@ -86,6 +86,54 @@ def update(pairs, freq, start=None, force=False):
         len(candles), freq, t1.elapsed(unit='s'))
 
     return candles
+
+#------------------------------------------------------------------------------
+def newest(pair, freq_str, df=None):
+    """Get most recently added candle to either dataframe or mongoDB.
+    """
+    freq = strtofreq[freq_str]
+
+    if df is not None:
+        series = df.loc[pair, freq].iloc[-1]
+        open_time = df.loc[(pair,freq)].index[-1]
+        idx = dict(zip(df.index.names, [pair, freq_str, open_time]))
+        return {**idx, **series}
+    else:
+        log.debug("Doing DB read for candle.newest!")
+
+        db = app.get_db()
+        return list(db.candles.find({"pair":pair,"freq":freq})\
+            .sort("close_time",-1)\
+            .limit(1)
+        )[0]
+
+#------------------------------------------------------------------------------
+def merge(df, pairs, time_span=None):
+    """Merge only newly updated DB records into dataframe to avoid ~150k DB reads
+    every main loop.
+    """
+    from docs.config import Z_FACTORS
+    t1 = Timer()
+    idx, data = [], []
+    time_span = time_span if time_span else timedelta(days=21)
+
+    curs = app.get_db().candles.find(
+        {"pair":{"$in":pairs}, "close_time":{"$gte":now() - time_span}})
+
+    for candle in curs:
+        idx.append((candle['pair'], strtofreq[candle['freq']], candle['open_time']))
+        data.append([candle[x.lower()] for x in Z_FACTORS])
+
+    df_new = pd.DataFrame(data,
+        index = pd.Index(idx, names=['PAIR', 'FREQ', 'OPEN_TIME']),
+        columns = Z_FACTORS)
+
+    df = pd.concat([df, df_new]).drop_duplicates().sort_index()
+
+    log.debug("{:,} candle records merged. [{:,.1f} ms]".format(len(df), t1))
+
+    return df
+
 #------------------------------------------------------------------------------
 def query_api(pair, freq, start=None, end=None, force=False):
     """Get Historical Klines (candles) from Binance.
@@ -96,6 +144,7 @@ def query_api(pair, freq, start=None, end=None, force=False):
     @force: if False, only query unstored data (faster). If True, query all.
     Return: list of OHLCV value
     """
+    t1 = Timer()
     limit = 500
     idx = 0
     results = []
@@ -124,7 +173,8 @@ def query_api(pair, freq, start=None, end=None, force=False):
 
     client = Client("", "")
 
-    while len(results) < 500 and start_ts < end_ts:
+    #while len(results) < 500 and start_ts < end_ts:
+    while start_ts < end_ts:
         try:
             data = client.get_klines(symbol=pair, interval=freq,
                 limit=limit, startTime=start_ts, endTime=end_ts)
@@ -143,8 +193,10 @@ def query_api(pair, freq, start=None, end=None, force=False):
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 
+    log.debug('%s %s %s results. [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
     #print("%s result(s)" % len(results))
     return results
+
 #------------------------------------------------------------------------------
 def save_db(candles, freq, df):
     """
@@ -171,38 +223,7 @@ def save_db(candles, freq, df):
     del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
     #log.debug("stored to db (%sms)", tmr)
     return result
-#------------------------------------------------------------------------------
-def to_df(pair, freq, rawdata):
-    """Convert candle data to pandas DataFrame.
-    https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
-    BTCUSDT:
-        BTC: base asset
-        USDT: quote asset
-    @freq: Binance interval (NOT pandas frequency format!)
-    """
-    df = pd.DataFrame(
-        index = [pd.to_datetime(x[0], unit='ms', utc=True) for x in rawdata],
-        data = [x for x in rawdata],
-        columns = binance_klines
-    )
-    is_npfloat64 = ['open','high','low','close','buy_vol','volume']
-    df[is_npfloat64] = df[is_npfloat64].astype(np.float64)
-    df.index.name="date"
-    del df["ignore"]
-    df["pair"] = pair
-    df["freq"] = freq
-    df["close_time"] = pd.to_datetime(df["close_time"],unit='ms',utc=True)
-    df["open_time"] = pd.to_datetime(df["open_time"],unit='ms',utc=True)
-    df["buy_ratio"] = df["buy_vol"] / df["volume"]
-    df = df[sorted(df.columns)]
-    return df
 
-#------------------------------------------------------------------------------
-def last(pair, freq):
-    if type(freq) == int:
-        freq = freqtostr[freq]
-    return list(app.get_db().candles.find({"pair":pair,"freq":freq}
-        ).sort("open_time",-1).limit(1))[0]
 #------------------------------------------------------------------------------
 def load_db(pair, freq, start=None, end=None):
     """Returns:
@@ -227,4 +248,30 @@ def load_db(pair, freq, start=None, end=None):
     df[["trades"]] = df[["trades"]].astype('int32')
     df[cols[4:]] = df[cols[4:]].astype('float64')
     log.debug('loaded %s candle records into df. [%s]', len(df), t1)
+    return df
+
+#------------------------------------------------------------------------------
+def to_df(pair, freq, rawdata):
+    """Convert candle data to pandas DataFrame.
+    https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
+    BTCUSDT:
+        BTC: base asset
+        USDT: quote asset
+    @freq: Binance interval (NOT pandas frequency format!)
+    """
+    df = pd.DataFrame(
+        index = [pd.to_datetime(x[0], unit='ms', utc=True) for x in rawdata],
+        data = [x for x in rawdata],
+        columns = binance_klines
+    )
+    is_npfloat64 = ['open','high','low','close','buy_vol','volume']
+    df[is_npfloat64] = df[is_npfloat64].astype(np.float64)
+    df.index.name="date"
+    del df["ignore"]
+    df["pair"] = pair
+    df["freq"] = freq
+    df["close_time"] = pd.to_datetime(df["close_time"],unit='ms',utc=True)
+    df["open_time"] = pd.to_datetime(df["open_time"],unit='ms',utc=True)
+    df["buy_ratio"] = df["buy_vol"] / df["volume"]
+    df = df[sorted(df.columns)]
     return df

@@ -53,7 +53,7 @@ def log_scores(idx, score, dfz):
     idx_dict = dict(zip(['pair','freq', 'period'], idx))
     freq = freqtostr[idx_dict['freq']]
     prd = pertostr[idx_dict['period']]
-    candle = candles.last(idx_dict['pair'], freq)
+    candle = candles.newest(idx_dict['pair'], freq)
     open_time = to_local(candle['open_time'])
     close_time = to_local(candle['close_time'])
     prd_end = open_time - tdelta(microseconds=1)

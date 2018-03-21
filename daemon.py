@@ -18,39 +18,49 @@ class GracefulKiller:
     def exit_gracefully(self,signum, frame):
         self.kill_now = True
 #---------------------------------------------------------------------------
-def main(tckr=None, cndl=None):
+def main(force_tick=False, force_candle=False):
+    """Main trade cycle loop. Fetch candle data at timed intervals,
+    update trading positions.
+    """
     pairs = BINANCE['pairs']
-    markets.db_audit()
-    daily = Timer(name='DailyTimer', expire=utc_dtdate()+timedelta(days=1))
-    hourly = Timer(name='HourTimer', expire='next hour change')
-    short = Timer(name='MinTimer', expire='every 5 clock min utc')
 
-    if cndl:
-        candles.update(pairs, '5m', start='3 hours ago utc', force=True)
-        candles.update(pairs, '1h', start='48 hours ago utc', force=True)
-        #candles.update(pairs, '1d', start='21 days ago utc', force=True)
+    timer_5m = Timer(name='MinTimer', expire='every 5 clock min utc')
+    timer_hr = Timer(name='HourTimer', expire='next hour change')
+    timer_1d = Timer(name='DailyTimer', expire=utc_dtdate()+timedelta(days=1))
+
+    markets.db_audit()
+    trades.init()
+
+    if force_candle == True:
+        candles.update(pairs, '5m', start='1 hours ago utc', force=True)
+        candles.update(pairs, '1h', start='4 hours ago utc', force=True)
         trades.update('5m')
-    if tckr:
+
+    if force_tick == True:
         coinmktcap.tickers(limit=TICKER_LIMIT)
         coinmktcap.global_markets()
 
+    # Main loop
     while True:
-        if short.remain() == 0:
+        if timer_5m.remain() == 0:
             candles.update(pairs, '5m')
             trades.update('5m')
             coinmktcap.tickers(limit=500)
             coinmktcap.global_markets()
-            short.reset()
-        if hourly.remain() == 0:
+            timer_5m.reset()
+
+        if timer_hr.remain() == 0:
             candles.update(pairs, '5m')
             candles.update(pairs, '1h')
             trades.update('1h')
-            hourly.set_expiry('next hour change')
-        if daily.remain() == 0:
+            timer_hr.set_expiry('next hour change')
+
+        if timer_1d.remain() == 0:
             candles.update(pairs, '1d')
             trades.update('1h')
             eod_tasks()
-            daily.set_expiry(utc_dtdate() + timedelta(days=1))
+            timer_1d.set_expiry(utc_dtdate() + timedelta(days=1))
+
         time.sleep(5)
 #---------------------------------------------------------------------------
 def eod_tasks():
@@ -85,10 +95,10 @@ if __name__ == '__main__':
             set_db(arg)
         # Preload binance candles w/o waiting on timer
         elif opt in('-c', '--candles'):
-            kwargs["cndl"] = True
+            kwargs["force_candle"] = True
         # Preload cmc tickers w/o waiting on timer
         elif opt in('-t', '--tickers'):
-            kwargs["tckr"] = True
+            kwargs["force_tick"] = True
 
     try:
         data_thread = threading.Thread(

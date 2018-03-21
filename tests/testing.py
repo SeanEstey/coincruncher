@@ -25,12 +25,11 @@ app.set_db(["localhost", "45.79.176.125"][0])
 db = app.get_db()
 
 #------------------------------------------------------------------------------
-trades.X_THRESH = 0.25
-trades.preload_candles()
+
+trades.init()
 dfc = trades.dfc
-
-candle = trades.last_candle('BNBUSDT','5m')
-candle['CLOSE'] = 0.1
-holding = db.trades.find_one({"pair":"BNBUSDT", "status":"open"})
-
+pair = 'BTCUSDT'
+candle = candles.newest(pair,'5m', df=trades.dfc)
+scores = signals.generate(dfc.loc[pair,strtofreq['5m']], candle)
+#holding = db.trades.find_one({"pair":pair, "status":"open"})
 trades.update('5m')
