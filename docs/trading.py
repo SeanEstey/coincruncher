@@ -1,5 +1,4 @@
-"""Config values for trading.
-
+"""Trading strategies and config values.
 Thesis:
     -During sideways trading, pairs exhibit patterns falling into a standard range
     -i.e Price will oscillate above/below a certain mean value with an average deviation
@@ -20,20 +19,25 @@ Observations:
 """
 
 # Signals
-
 Z_IDX_NAMES = ['PAIR', 'FREQ', 'CLOSE_TIME']
 Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE', 'XSCORE']
 Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
-Z_WEIGHTS = [1.25,    0.0,    0.0,      1.5,      2.25]         # Weights to apply to z-factors. Sum == Length of list
+# Weights to apply to z-factors. Sum == Length of list
+Z_WEIGHTS = [1.25,    0.0,    0.0,      1.5,      2.25]
 
-# Buy/Sell
-
-TRADE_CONF = {
+# Trading Criteria for each Candle period
+TRADING = {
     "5m": {
+        # Number of time intervals for Moving Average
         "MA_Period": 10,
+        # Magnitude of positive price trend
         "MA_Threshold": 0.1,
+        # Predicts movement upward toward mean (within standard range)
+        "Z_Score_Bounce_Thresh": -1.5,
+        # Predict movement rising above standard range
         "Z_Score_Breakout_Thresh": 1.75,
-        "Z_Score_Bounce_Thresh": -1.5
+        # Predict movement falling below standard range
+        "Z_Score_Dump_Thresh": -5
     },
     "1h": {
         "MA_Period": 2,

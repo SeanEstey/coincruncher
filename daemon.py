@@ -31,22 +31,22 @@ def main(force_tick=False, force_candle=False):
     markets.db_audit()
     trades.init()
 
+    if force_tick == True:
+        coinmktcap.tickers(limit=TICKER_LIMIT)
+        coinmktcap.global_markets()
+
     if force_candle == True:
         candles.update(pairs, '5m', start='1 hours ago utc', force=True)
         candles.update(pairs, '1h', start='4 hours ago utc', force=True)
         trades.update('5m')
 
-    if force_tick == True:
-        coinmktcap.tickers(limit=TICKER_LIMIT)
-        coinmktcap.global_markets()
-
     # Main loop
     while True:
         if timer_5m.remain() == 0:
             candles.update(pairs, '5m')
+            coinmktcap.global_markets()
             trades.update('5m')
             coinmktcap.tickers(limit=500)
-            coinmktcap.global_markets()
             timer_5m.reset()
 
         if timer_hr.remain() == 0:

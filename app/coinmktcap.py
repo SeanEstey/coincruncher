@@ -1,73 +1,23 @@
 # app.coinmktcap
 from datetime import datetime, timedelta
-import argparse, logging, requests, json, pytz, re, sys, time
-from sys import getsizeof as getsize
+import argparse, logging, requests, json, re
 from pymongo import ReplaceOne
 from .timer import Timer
-from docs.config import CURRENCY as cur
 from app import get_db
-from app.utils import utc_datetime, duration, to_int, to_dt
-log = logging.getLogger('global')
+from app.utils import to_dt
+from docs.data import COINMARKETCAP
 
+log = logging.getLogger('global')
 parser = argparse.ArgumentParser()
 parser.add_argument("currency", help="", type=str)
 parser.add_argument("start_date",  help="", type=str)
 parser.add_argument("end_date", help="", type=str)
 parser.add_argument("--dataframe", help="", action='store_true')
 
-market_f = [
-    {"from":"last_updated", "to":"date", "type":to_dt},
-    {"from":"total_market_cap_usd", "to":"mktcap_usd", "type":to_int},
-    {"from":"total_24h_volume_usd", "to":"vol_24h_usd", "type":to_int},
-    {"from":"bitcoin_percentage_of_market_cap", "to":"pct_mktcap_btc", "type":float},
-    {"from":"active_assets", "to":"n_assets", "type":to_int},
-    {"from":"active_currencies", "to":"n_currencies", "type":to_int},
-    {"from":"active_markets", "to":"n_markets", "type":to_int}
-]
-ticker_f = [
-    {"from":"id", "to":"id", "type":str},
-    {"from":"symbol", "to":"symbol", "type":str},
-    {"from":"name", "to":"name", "type":str},
-    #{"from":"last_updated", "to":"date", "type":to_dt},
-    {"from":"rank", "to":"rank", "type":to_int},
-    {"from":"market_cap_usd", "to":"mktcap_usd", "type":to_int},
-    {"from":"24h_volume_usd", "to":"vol_24h_usd", "type":to_int},
-    {"from":"available_supply", "to":"circulating_supply", "type":to_int},
-    {"from":"total_supply", "to":"total_supply", "type":to_int},
-    {"from":"max_supply", "to":"max_supply", "type":to_int},
-    {"from":"price_usd", "to":"price_usd", "type":float},
-    {"from":"percent_change_1h", "to":"pct_1h", "type":float},
-    {"from":"percent_change_24h", "to":"pct_24h", "type":float},
-    {"from":"percent_change_7d", "to":"pct_7d", "type":float}
-]
-
-#---------------------------------------------------------------------------
-def next_update(collection):
-    """Seconds remaining until next API data refresh.
-    """
-    api_refresh = 400
-    result = collection.find().sort("date",-1).limit(1)
-
-    if result.count() < 1:
-        log.debug("%s empty, refresh now", collection.name)
-        return 0
-
-    elapsed = duration(utc_datetime() - list(result)[0]["date"])
-
-    if elapsed >= api_refresh:
-        return 0
-    else:
-        #log.debug("update in %ss", api_refresh-elapsed)
-        assert(elapsed >= 0)
-        return api_refresh - elapsed + 30
 #------------------------------------------------------------------------------
 def tickers(start=0, limit=None):
     """Update 5T ticker data from coinmarketcap.com REST API.
     """
-    _t = next_update(get_db().tickers_5t)
-    if _t > 0:
-        return _t
-
     idx = start
     t1 = Timer()
     db = get_db()
@@ -95,46 +45,44 @@ def tickers(start=0, limit=None):
 
     for ticker in tickerdata:
         store={"date":updated}
-        for f in ticker_f:
+
+        for f in COINMARKETCAP['API']['TICKERS']:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None
             except Exception as e:
                 log.exception("%s ticker error", ticker["symbol"])
                 continue
+
         ops.append(ReplaceOne(
             {'date':updated, 'symbol':store['symbol']}, store, upsert=True))
 
     if save_capped_db(ops, db.tickers_5t):
         log.info("%s Coinmktcap tickers updated. [%sms]", len(tickerdata), t1)
+
 #---------------------------------------------------------------------------
 def global_markets():
     """Update 5T market index data from coinmarketcap.com REST API.
     """
-    _t = next_update(get_db().market_idx_5t)
-    if _t > 0:
-        return _t
-
     t1 = Timer()
-    #log.debug("querying global market")
 
-    r = requests.get("https://api.coinmarketcap.com/v1/global")
-    if r.status_code != 200:
-        return log.error("%s request error.", r.status_code)
-
-    #log.debug("%s bytes received (%sms)", getsize(r.text), t1)
+    try:
+        r = requests.get("https://api.coinmarketcap.com/v1/global")
+    except Exception as e:
+        if r.status_code != 200:
+            return log.error("API error %s", r.status_code)
 
     data = json.loads(r.text)
     store = {}
-    for m in market_f:
+    for m in COINMARKETCAP['API']['MARKETS']:
         store[m["to"]] = m["type"]( data[m["from"]] )
 
     get_db().market_idx_5t.replace_one(
         {'date':store['date']}, store,
         upsert=True)
 
-    log.info("Coinmktcap markets updated [n=%s, freq='5m', t=%sms]",
-        len(data), t1)
+    log.info("Coinmktcap markets updated. [{}ms]".format(t1))
+
 #---------------------------------------------------------------------------
 def parse_options(currency, start_date, end_date):
     """Extract parameters from command line.

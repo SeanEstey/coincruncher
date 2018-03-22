@@ -52,6 +52,17 @@ def update(freq_str):
     siglog("Data Refresh: '{}'".format(freq_str))
     siglog('-'*80)
 
+    # Get '5m' global market MA
+    from docs.config import MA_WINDOW, MA_THRESH
+    mkt = db.market_idx_5t.find({"date":{"$gt":now()-timedelta(hours=24)}}, {"_id":0})
+    df_mkt = pd.DataFrame(list(mkt))
+    df_mkt.index = df_mkt['date']
+    del df_mkt['date']
+    df_mkt = df_mkt.pct_change().rolling(window=MA_WINDOW).mean()
+    mkt_ma = df_mkt.iloc[-1]['mktcap_usd']
+    log.info("'5m' Market is {} ({:+.6f})".format(
+        "BULLISH" if mkt_ma > 0 else "BEARISH", mkt_ma))
+
     # Evaluate open positions
     holdings = list(app.get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
 
@@ -64,7 +75,7 @@ def update(freq_str):
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=dfc)
-        evaluate(candle)
+        evaluate(candle, mkt_ma=mkt_ma)
 
     earnings_summary(t1)
 
@@ -72,36 +83,35 @@ def update(freq_str):
     n_cycles +=1
 
 #------------------------------------------------------------------------------
-def evaluate(candle):
+def evaluate(candle, mkt_ma=None):
     """Evaluate opening new trade positions
     """
+    from docs.config import MA_WINDOW, MA_THRESH
     global dfc
     pair = candle['PAIR']
     freq = strtofreq[candle['FREQ']]
+    start = candle['OPEN_TIME'] - timedelta(hours=4)
+    df_rng = dfc.loc[pair,freq].loc[slice(start, candle['OPEN_TIME'])]
+
     scores = signals.generate(dfc.loc[pair,freq], candle)
+    pzscore = scores['CLOSE'].loc['ZSCORE']
     xscore = signals.xscore(scores.xs('ZSCORE'))
+    pma = (df_rng['CLOSE'].pct_change().rolling(MA_WINDOW).mean() * 100).iloc[-1]
 
     if candle['FREQ'] == '5m':
-        # A) Breakout. 5m vs 3h X-Score > X_TRESHOLD
+        # A) Breakout. X-Score > threshold
         if xscore > X_THRESH:
             msg="{:+.2f} X-Score > {:.2f} Threshold.".format(xscore, X_THRESH)
             return open_holding(candle, scores, extra=msg)
 
-        # B) Bounce. 5m vs 3h Close Price Z-Score < Z_BOUNCE_THRESH
-        zscore = scores['CLOSE'].loc['ZSCORE']
-        if zscore < Z_BOUNCE_THRESH:
+        # B) Bounce. Bullish market AND price Z-Score < threshold
+        if mkt_ma > 0 and pzscore < Z_BOUNCE_THRESH:
             msg = "{:+.2f} Close Z-score < {:.2f} Bounce Threshold.".format(
-                zscore, Z_BOUNCE_THRESH)
+                pzscore, Z_BOUNCE_THRESH)
             return open_holding(candle, scores, extra=msg)
 
-        # C) Upward Price action on MA and X-Score > THRESH/2
-        from docs.config import MA_10_PERIOD, MA_THRESH
-        start = candle['OPEN_TIME'] - timedelta(hours=4)
-        df_rng = dfc.loc[pair,freq].loc[slice(start, candle['OPEN_TIME'])]
-        ma = df_rng['CLOSE'].rolling(MA_10_PERIOD).mean().pct_change() * 100
-        pma = ma.iloc[-1]
-
-        if pma > MA_THRESH and xscore > X_THRESH/2:
+        # C) Uptrend. Bullish market AND Upward price action on MA AND X-Score > THRESH/2
+        if mkt_ma > 0 and pma > MA_THRESH and xscore > X_THRESH/2:
             msg = '{:+.6f}% MA% > {:.2f}% Threshold (Window={}).'.format(
                 pma, MA_THRESH, MA_WINDOW)
             return open_holding(candle, scores, extra=msg)
@@ -248,18 +258,17 @@ def summary(holding):
         x2 = signals.generate(df, candle)['CLOSE']['XSCORE']
     elif holding['status'] == 'closed':
         profit = holding['net_earn'] > 0
-        siglog("Sold {} ({:+.2f} {})".format(pair,
+        siglog("Sold {} ({:+.2f}% {})".format(pair,
             holding['pct_earn'], 'PROFIT' if profit else 'LOSS'))
         p2 = holding['sell']['candle']['CLOSE']
         x2 = holding['sell']['signals']['CLOSE']['XSCORE']
 
-    siglog("{:>4}X-Score: {:.2f} ({:+.0f}%)".format(
-        '', x2, pct_diff(x1, x2)))
+    duration = to_relative_str(now() - holding['start_time'])[:-4]
 
     siglog("{:>4}Price: {:.8g} ({:+.2f}%, {:.2f}% > mean)".format(
         '', p2, pct_diff(p1, p2), pct_diff(pmean, p2)))
-
-    duration = to_relative_str(now() - holding['start_time'])[:-4]
+    siglog("{:>4}X-Score: {:.2f} ({:+.0f}%)".format(
+        '', x2, pct_diff(x1, x2)))
     siglog("{:>4}Duration: {}".format('', duration))
 
 #------------------------------------------------------------------------------
