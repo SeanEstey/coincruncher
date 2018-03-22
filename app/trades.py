@@ -95,10 +95,10 @@ def evaluate(candle):
             return open_holding(candle, scores, extra=msg)
 
         # C) Upward Price action on MA and X-Score > THRESH/2
-        from docs.config import MA_WINDOW, MA_THRESH
+        from docs.config import MA_10_PERIOD, MA_THRESH
         start = candle['OPEN_TIME'] - timedelta(hours=4)
         df_rng = dfc.loc[pair,freq].loc[slice(start, candle['OPEN_TIME'])]
-        ma = df_rng['CLOSE'].rolling(MA_WINDOW).mean().pct_change() * 100
+        ma = df_rng['CLOSE'].rolling(MA_10_PERIOD).mean().pct_change() * 100
         pma = ma.iloc[-1]
 
         if pma > MA_THRESH and xscore > X_THRESH/2:
@@ -163,14 +163,14 @@ def open_holding(candle, scores, extra=None):
         'exchange': 'Binance',
         'buy': {
             'time': now(),
-            'price': candle['CLOSE'],
-            'volume': quote / candle['CLOSE'],
+            'price': candle['CLOSE'].round(8),
+            'volume': np.float64(quote / candle['CLOSE']).round(8),
             'quote': quote + fee,
             'fee': fee,
             'pct_fee': pct_fee,
             'candle': candle,
             'signals': scores.to_dict(),
-            'extra': extra if extra else None
+            'details': extra if extra else None
         }
     })
     siglog("BOUGHT {}".format(candle['PAIR']))
@@ -185,10 +185,11 @@ def close_holding(holding, candle, scores):
     @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
     pct_fee = BINANCE['trade_fee_pct']
-    buy_candle = holding['buy']['candle']
-    buy_vol = holding['buy']['volume']
-    buy_quote = holding['buy']['quote']
-    p1, p2 = buy_candle['CLOSE'], candle['CLOSE']
+    buy_vol = np.float64(holding['buy']['volume'])
+    buy_quote = np.float64(holding['buy']['quote'])
+    p1 = np.float64(holding['buy']['candle']['CLOSE'])
+
+    p2 =candle['CLOSE']
     pct_pdiff = pct_diff(p1, p2)
     quote = (p2 * buy_vol) * (1 - pct_fee/100)
     fee = (p2 * buy_vol) * (pct_fee/100)
@@ -196,20 +197,24 @@ def close_holding(holding, candle, scores):
     net_earn = quote - buy_quote
     pct_net = pct_diff(buy_quote, quote)
 
+    duration = now() - holding['start_time']
+    candle['BUY_RATIO'] = candle['BUY_RATIO'].round(4)
+
     db = app.get_db()
     holding = db.trades.find_one_and_update(
         {'_id': holding['_id']},
         {'$set': {
             'status': 'closed',
             'end_time': now(),
-            'pct_pdiff': pct_pdiff,
-            'pct_earn': pct_net,
-            'net_earn': net_earn,
+            'duration': int(duration.total_seconds()),
+            'pct_pdiff': pct_pdiff.round(4),
+            'pct_earn': pct_net.round(4),
+            'net_earn': net_earn.round(4),
             'sell': {
                 'time': now(),
-                'price': p2,
-                'volume': buy_vol,
-                'quote': quote,
+                'price': p2.round(8),
+                'volume': buy_vol.round(8),
+                'quote': quote.round(8),
                 'fee': fee,
                 'pct_fee': pct_fee,
                 'candle': candle,

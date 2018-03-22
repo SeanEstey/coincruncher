@@ -15,7 +15,10 @@ log = logging.getLogger('signals')
 #-----------------------------------------------------------------------------
 def generate(dfc, candle):
     """Generate Z-Scores and X-score.
+    Performance: ~20ms
     """
+    t1 = Timer()
+
     if candle['FREQ'] == '5m':
         hist_end = candle['OPEN_TIME'] - timedelta(minutes=5)
         hist_start = hist_end - timedelta(hours=1)
@@ -27,7 +30,7 @@ def generate(dfc, candle):
     stats = history.describe()
     data = []
 
-    # Generate Z-Scores
+    # Insert mean/std/z-score etc for each column
     for x in Z_FACTORS:
         data.append([
             candle[x],
@@ -37,9 +40,13 @@ def generate(dfc, candle):
             np.nan
         ])
 
-    df = pd.DataFrame(np.array(data).transpose(), index=pd.Index(Z_DIMEN), columns=Z_FACTORS)
+    df = pd.DataFrame(np.array(data).transpose(),
+        index=pd.Index(Z_DIMEN), columns=Z_FACTORS
+    ).astype('float64').round(4)
 
-    df.loc['XSCORE'] = df.loc['ZSCORE'] * Z_WEIGHTS #xscore(df.loc['ZSCORE'])
+    df.loc['XSCORE'] = (df.loc['ZSCORE'] * Z_WEIGHTS).round(4)
+
+    log.debug('Scores generated [{:,.0f}ms]'.format(t1))
 
     return df
 #------------------------------------------------------------------------------

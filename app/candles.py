@@ -58,7 +58,7 @@ def update(pairs, freq, start=None, force=False):
             _dict = dict(zip(binance_kline, x))
             _dict.update({'pair': pair, 'freq': freq})
             if _dict['volume'] > 0:
-                _dict['buy_ratio'] = _dict['buy_vol'] / _dict['volume']
+                _dict['buy_ratio'] = round(_dict['buy_vol'] / _dict['volume'], 4)
             else:
                 _dict['buy_ratio'] = 0.0
             data[i] = _dict
@@ -82,7 +82,7 @@ def update(pairs, freq, start=None, force=False):
             db.candles.insert_many(candles)
 
     #print("%s %s candles updated." % (len(candles), freq))
-    log.info("%s %s candle records updated. [%ss]",
+    log.info("%s %s candle records queried/stored. [%ss]",
         len(candles), freq, t1.elapsed(unit='s'))
 
     return candles
@@ -161,13 +161,10 @@ def query_api(pair, freq, start=None, end=None, force=False):
         newer = app.get_db().candles.find(query).sort('open_time',-1).limit(1)
 
         if newer.count() > 0:
-            print("skipping %s already stored" % newer.count())
-
             dt = list(newer)[0]['open_time']
             start_ts = int(dt.timestamp()*1000 + periodlen)
 
             if start_ts > end_ts:
-                print("All records for %s already stored" % pair)
                 log.debug("All records for %s already stored.", pair)
                 return []
 
@@ -193,8 +190,7 @@ def query_api(pair, freq, start=None, end=None, force=False):
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 
-    log.debug('%s %s %s results. [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
-    #print("%s result(s)" % len(results))
+    log.debug('%s %s %s candles queried [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
     return results
 
 #------------------------------------------------------------------------------
@@ -272,6 +268,6 @@ def to_df(pair, freq, rawdata):
     df["freq"] = freq
     df["close_time"] = pd.to_datetime(df["close_time"],unit='ms',utc=True)
     df["open_time"] = pd.to_datetime(df["open_time"],unit='ms',utc=True)
-    df["buy_ratio"] = df["buy_vol"] / df["volume"]
+    df["buy_ratio"] = round(df["buy_vol"] / df["volume"], 4)
     df = df[sorted(df.columns)]
     return df

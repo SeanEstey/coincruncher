@@ -33,3 +33,7 @@ candle = candles.newest(pair,'5m', df=trades.dfc)
 scores = signals.generate(dfc.loc[pair,strtofreq['5m']], candle)
 #holding = db.trades.find_one({"pair":pair, "status":"open"})
 trades.update('5m')
+
+def analyze_trades():
+    closed = db.trades.find({'status':'closed'})
+

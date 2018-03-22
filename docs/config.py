@@ -5,14 +5,24 @@ Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
 # Weights to apply to z-factors. Sum == Length of list
 Z_WEIGHTS = [1.25,    0.0,    0.0,      1.5,      2.25]
 
-MA_WINDOW = 8
+MA_10_PERIOD = 10
+MA_20_PERIOD = 20
 MA_THRESH = 0.1
-
-
 # Thresholds
 X_THRESH = 1.75
 # BTCUSDT (300,10800) Close Z-score of -3 good setting for bounce.
-Z_BOUNCE_THRESH = -5.00
+Z_BOUNCE_THRESH = -1.5
+TRADE_CONF = {
+    "5m": {
+        "MA_Period": 10,
+        "MA_Threshold": 0.1,
+        "Z_Breakout_Thresh": 1.75,
+        "Z_Bounce_Thresh": -1.5
+    },
+    "1h": {
+    }
+
+}
 
 # App
 HOST="45.79.176.125"
