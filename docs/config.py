@@ -2,15 +2,6 @@
 Z_IDX_NAMES = ['PAIR', 'FREQ', 'CLOSE_TIME']
 Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE', 'XSCORE']
 Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
-# Weights to apply to z-factors. Sum == Length of list
-Z_WEIGHTS = [1.25,    0.0,    0.0,      1.5,      2.25]
-
-MA_WINDOW = 10
-MA_THRESH = 0.1
-# Thresholds
-X_THRESH = 5.0
-# BTCUSDT (300,10800) Close Z-score of -3 good setting for bounce.
-Z_BOUNCE_THRESH = -3.0
 
 # App
 HOST="45.79.176.125"

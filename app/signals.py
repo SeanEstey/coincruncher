@@ -8,7 +8,8 @@ import app
 from app import freqtostr, pertostr, strtofreq, strtoper, candles
 from app.timer import Timer
 from app.utils import to_local
-from docs.config import Z_WEIGHTS, Z_FACTORS, Z_DIMEN, Z_IDX_NAMES
+from docs.config import Z_FACTORS, Z_DIMEN, Z_IDX_NAMES
+from docs.trading import RULES
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
@@ -47,16 +48,14 @@ def generate(dfc, candle):
         index=pd.Index(Z_DIMEN), columns=Z_FACTORS
     ).astype('float64').round(4)
 
-    df.loc['XSCORE'] = (df.loc['ZSCORE'] * Z_WEIGHTS).round(4)
-
     log.debug('Scores generated [{:,.0f}ms]'.format(t1))
-
     return df
 #------------------------------------------------------------------------------
-def xscore(z_scores):
-    """Derive x-scores from z-scores dataset.
+def xscore(z_scores, freq_str):
+    """Apply weightings to Z-Scores.
     """
-    return (z_scores * Z_WEIGHTS).sum() / sum(Z_WEIGHTS)
+    weights = RULES[freq_str]['X-SCORE']['WEIGHTS']
+    return (z_scores * weights).sum() / sum(weights)
 #------------------------------------------------------------------------------
 def log_scores(idx, score, dfz):
     """Print statistial analysis for single (pair, freq, period).

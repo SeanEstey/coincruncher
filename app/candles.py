@@ -68,8 +68,6 @@ def update(pairs, freq, start=None, force=False):
         db = app.get_db()
 
         if force == True:
-            # TODO: DONT OVERWRITE 'ZSCORE' DATA!!!
-            # Upsert one by one to avoid duplicates. Slow.
             ops = []
             for candle in candles:
                 ops.append(UpdateOne(

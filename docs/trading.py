@@ -13,34 +13,68 @@ Thesis:
     -In a bull or bear market, the patterns are similar with the addition that the mean itself is now
     moving up and down. It needs to be recalculated in order to assess where new candle properties
     fall within the range.
-
-Observations:
-    BTCUSDT (300,10800) Close Z-score of -3 good setting for bounce.
 """
 
-# Signals
-Z_IDX_NAMES = ['PAIR', 'FREQ', 'CLOSE_TIME']
-Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE', 'XSCORE']
-Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
-# Weights to apply to z-factors. Sum == Length of list
-Z_WEIGHTS = [1.25,    0.0,    0.0,      1.5,      2.25]
-
-# Trading Criteria for each Candle period
-TRADING = {
-    "5m": {
-        # Number of time intervals for Moving Average
-        "MA_Period": 10,
-        # Magnitude of positive price trend
-        "MA_Threshold": 0.1,
-        # Predicts movement upward toward mean (within standard range)
-        "Z_Score_Bounce_Thresh": -3.0,
-        # Predict movement rising above standard range
-        "Z_Score_Breakout_Thresh": 5.0,
-        # Predict movement falling below standard range
-        "Z_Score_Dump_Thresh": -5.0
+RULES = {
+    "5m": {                                 # 5 minute Binance candle
+        "MOVING_AVG": {
+            "PERIODS": 10,                  # Num periods
+            "MARKET_THRESH": 0,             # Minimum
+            "CANDLE_THRESH": 0.1            # Minimum
+        },
+        "Z-SCORE": {
+            "TOP_RESIST":  3.0,             # Max num deviations from μ within {a,b}
+            "BOT_RESIST": -3.0              # Min num deviations from μ within {a,b}
+        },
+        "X-SCORE": {                        # Units: number deviations from μ
+            "WEIGHTS": [                    # Applied to Z-Scores
+                1.25, 0, 0, 1.5, 2.25
+            ],
+            "BREAKOUT": 5.0,                # Num deviations > b in {a,b}
+            "DUMP": -5.0                    # Num deviations < a in {a,b}
+        },
+        "PAIRS": {                          # Custom settings for specific pairs
+            "EOSBTC": None,                 # -2% ΔP often followed by +0.5-1.0% ΔP candle.
+            "BTCUSDT": None                 # Close Z-score of -3 good setting for bounce.
+        }
     },
-    "1h": {
-        "MA_Period": 2,
-        "MA_Threshold": 0.1
+    "1m": {                                 # 1 minute Binance candle
+        "MOVING_AVG": {
+            "PERIODS": 10,
+            "MARKET_THRESH": None,
+            "CANDLE_THRESH": 0.1
+        },
+        "Z-SCORE": {
+            "TOP_RESIST": None,
+            "BOT_RESIST": None
+
+        },
+        "X-SCORE": {
+            "WEIGHTS": [                    # FIXME: 0.95+ buy_ratio but low volume gives false positive.
+                1.25, 0, 0, 1.5, 2.25
+            ],
+            "BREAKOUT": None,
+            "DUMP": 0
+        },
+        "PAIRS": {}
+    },
+    "1h": {                                 # 1 hour Binance candle
+        "MOVING_AVG": {
+            "PERIODS": 2,
+            "MARKET_THRESH": None,
+            "CANDLE_THRESH": None
+        },
+        "Z-SCORE": {
+            "TOP_RESIST": None,
+            "BOT_RESIST": None
+        },
+        "X-SCORE": {
+            "WEIGHTS": [
+                1.25, 0, 0, 1.5, 2.25
+            ],
+            "BREAKOUT": None,
+            "DUMP": None
+        },
+        "PAIRS": {}
     }
 }
