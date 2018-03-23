@@ -24,9 +24,10 @@ def main(force_tick=False, force_candle=False):
     """
     pairs = BINANCE['pairs']
 
-    timer_5m = Timer(name='MinTimer', expire='every 5 clock min utc')
-    timer_hr = Timer(name='HourTimer', expire='next hour change')
-    timer_1d = Timer(name='DailyTimer', expire=utc_dtdate()+timedelta(days=1))
+    timer_1m = Timer(name='1mTimer', expire='every 1 clock min utc')
+    timer_5m = Timer(name='5mTimer', expire='every 5 clock min utc')
+    timer_hr = Timer(name='1hTimer', expire='next hour change')
+    timer_1d = Timer(name='1dTimer', expire=utc_dtdate()+timedelta(days=1))
 
     markets.db_audit()
     trades.init()
@@ -36,12 +37,18 @@ def main(force_tick=False, force_candle=False):
         coinmktcap.global_markets()
 
     if force_candle == True:
+        candles.update(pairs, '1m', start='4 hours ago utc', force=True)
         candles.update(pairs, '5m', start='1 hours ago utc', force=True)
         candles.update(pairs, '1h', start='4 hours ago utc', force=True)
         trades.update('5m')
 
     # Main loop
     while True:
+        if timer_1m.remain() == 0:
+            candles.update(pairs, '1m')
+            trades.update('1m')
+            timer_1m.reset()
+
         if timer_5m.remain() == 0:
             candles.update(pairs, '5m')
             coinmktcap.global_markets()

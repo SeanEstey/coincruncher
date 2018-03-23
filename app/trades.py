@@ -46,29 +46,28 @@ def update(freq_str):
     # Merge new candle data
     dfc = candles.merge(dfc, pairs, time_span=timedelta(minutes=10))
 
-    siglog('')
-    siglog('-'*80)
-    siglog("Cycle #{}: Start".format(n_cycles))
-    siglog("Data Refresh: '{}'".format(freq_str))
-    siglog('-'*80)
-
     # Get '5m' global market MA
     from docs.config import MA_WINDOW, MA_THRESH
     mkt = db.market_idx_5t.find({"date":{"$gt":now()-timedelta(hours=24)}}, {"_id":0})
     df_mkt = pd.DataFrame(list(mkt))
     df_mkt.index = df_mkt['date']
     del df_mkt['date']
-    df_mkt = df_mkt.pct_change().rolling(window=MA_WINDOW).mean()
+    df_mkt = df_mkt.pct_change().rolling(window=int(MA_WINDOW/2)).mean() * 100
     mkt_ma = df_mkt.iloc[-1]['mktcap_usd']
-    log.info("'5m' Market is {} ({:+.6f})".format(
-        "BULLISH" if mkt_ma > 0 else "BEARISH", mkt_ma))
+
+    siglog('')
+    siglog('-'*80)
+    siglog("Cycle #{}: Start".format(n_cycles))
+    siglog("Data Refresh: '{}'".format(freq_str))
+    siglog("Market is {} ({:+.3f}%)".format("BULLISH" if mkt_ma > 0 else "BEARISH", mkt_ma))
+    siglog('-'*80)
 
     # Evaluate open positions
     holdings = list(app.get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
 
     for holding in holdings:
         candle = candles.newest(holding['pair'], freq_str, df=dfc)
-        update_holding(holding, candle)
+        update_holding(holding, candle, mkt_ma=mkt_ma)
 
     # Evaluate new positions for other tracked pairs
     inactive = list(set(pairs) - set([n['pair'] for n in holdings]))
@@ -77,7 +76,7 @@ def update(freq_str):
         candle = candles.newest(pair, freq_str, df=dfc)
         evaluate(candle, mkt_ma=mkt_ma)
 
-    earnings_summary(t1)
+    earnings_summary(freq_str, t1)
 
     log.info('Trade cycle completed. [%sms]', t1)
     n_cycles +=1
@@ -94,9 +93,11 @@ def evaluate(candle, mkt_ma=None):
     df_rng = dfc.loc[pair,freq].loc[slice(start, candle['OPEN_TIME'])]
 
     scores = signals.generate(dfc.loc[pair,freq], candle)
-    pzscore = scores['CLOSE'].loc['ZSCORE']
     xscore = signals.xscore(scores.xs('ZSCORE'))
+    pzscore = scores['CLOSE'].loc['ZSCORE']
     pma = (df_rng['CLOSE'].pct_change().rolling(MA_WINDOW).mean() * 100).iloc[-1]
+
+    log.info('{} X-Score: {:+.2f}'.format(pair, xscore))
 
     if candle['FREQ'] == '5m':
         # A) Breakout. X-Score > threshold
@@ -111,9 +112,9 @@ def evaluate(candle, mkt_ma=None):
             return open_holding(candle, scores, extra=msg)
 
         # C) Uptrend. Bullish market AND Upward price action on MA AND X-Score > THRESH/2
-        if mkt_ma > 0 and pma > MA_THRESH and xscore > X_THRESH/2:
-            msg = '{:+.6f}% MA% > {:.2f}% Threshold (Window={}).'.format(
-                pma, MA_THRESH, MA_WINDOW)
+        if mkt_ma > 0 and pma > 0 and xscore > 0.5:
+            msg = '{:+.2f}% MA > {:.2f}% Threshold, {:+.2f} X-Score.'.format(
+                pma, MA_THRESH, xscore)
             return open_holding(candle, scores, extra=msg)
 
     """
@@ -126,7 +127,7 @@ def evaluate(candle, mkt_ma=None):
     """
 
 #------------------------------------------------------------------------------
-def update_holding(holding, candle):
+def update_holding(holding, candle, mkt_ma=None):
     """
     # TODO: remove ifs. take max(c_5m['close_time'], c_1h['close_time'] instead.
     # TODO: save candle close_time when opening new position, to compare with above dates.
@@ -135,25 +136,34 @@ def update_holding(holding, candle):
     pair = holding['pair']
     freq = strtofreq[candle['FREQ']]
     scores = signals.generate(dfc.loc[pair, freq], candle)
+    xscore = signals.xscore(scores.xs('ZSCORE'))
     buy_candle = holding['buy']['candle']
 
     if candle['OPEN_TIME'] < buy_candle['OPEN_TIME']:
         return False
 
-    if candle['CLOSE'] < buy_candle['CLOSE']:
-        return close_holding(holding, candle, scores)
+    if candle['FREQ'] == '1m':
+        # Dump if bearish market AND low X-Score, OR price < buy_price
+        if xscore < 0 or candle['CLOSE'] < buy_candle['CLOSE']:
+            return close_holding(holding, candle, scores)
 
-    pmean = dfc.loc[pair,freq].loc[
-        slice(buy_candle['OPEN_TIME'], dfc.loc[pair,freq].iloc[-2].name
-    )]['CLOSE'].mean()
-    pmax = dfc.loc[pair,freq].loc[
-        slice(buy_candle['OPEN_TIME'], dfc.loc[pair,freq].iloc[-2].name
-    )]['CLOSE'].max()
+    elif candle['FREQ'] == '5m':
+        # Dump if bearish market AND low X-Score, OR price < buy_price
+        if (mkt_ma < 0 and xscore < 1.0) or candle['CLOSE'] < buy_candle['CLOSE']:
+            return close_holding(holding, candle, scores)
 
-    if not np.isnan(pmax) and candle['CLOSE'] < pmax:
-        return close_holding(holding, candle, scores)
+        pmean = dfc.loc[pair,freq].loc[
+            slice(buy_candle['OPEN_TIME'], dfc.loc[pair,freq].iloc[-2].name
+        )]['CLOSE'].mean()
+        pmax = dfc.loc[pair,freq].loc[
+            slice(buy_candle['OPEN_TIME'], dfc.loc[pair,freq].iloc[-2].name
+        )]['CLOSE'].max()
 
-    summary(holding)
+        # Take profits
+        if not np.isnan(pmax) and candle['CLOSE'] < pmax:
+            return close_holding(holding, candle, scores)
+
+    summary(holding, candle, scores=scores)
 
 #------------------------------------------------------------------------------
 def open_holding(candle, scores, extra=None):
@@ -165,6 +175,7 @@ def open_holding(candle, scores, extra=None):
     pct_fee = BINANCE['trade_fee_pct']
     quote = BINANCE['trade_amt']
     fee = quote * (pct_fee/100)
+    xscore = signals.xscore(scores.xs('ZSCORE'))
 
     app.get_db().trades.insert_one({
         'pair': candle['PAIR'],
@@ -179,7 +190,7 @@ def open_holding(candle, scores, extra=None):
             'fee': fee,
             'pct_fee': pct_fee,
             'candle': candle,
-            'signals': scores.to_dict(),
+            'signals': {**scores.to_dict(), **{'xscore':xscore}},
             'details': extra if extra else None
         }
     })
@@ -233,21 +244,21 @@ def close_holding(holding, candle, scores):
         }},
         return_document=ReturnDocument.AFTER
     )
-    summary(holding)
+    summary(holding, candle, scores=scores)
 
 #------------------------------------------------------------------------------
-def summary(holding):
+def summary(holding, candle, scores=None):
     """Log diff in xscore and price of trade since position opening.
     """
+    from docs.config import MA_WINDOW, MA_THRESH
     global dfc
     pair = holding['pair']
-    # TODO: FIXME
-    #freq = strtofreq[candle['FREQ']]
-    freq = 300
+    freq = strtofreq[candle['FREQ']]
     df = dfc.loc[pair,freq]
-    candle = candles.newest(pair, freqtostr[freq], df=dfc)
 
-    x1 = holding['buy']['signals']['CLOSE']['XSCORE']
+    x1 = holding['buy']['signals']['xscore']
+    x2 = signals.xscore(scores.xs('ZSCORE'))
+
     p1 = holding['buy']['candle']['CLOSE']
     t1 = holding['buy']['candle']['OPEN_TIME']
     pmean = df.loc[slice(t1, df.iloc[-2].name)]['CLOSE'].mean()
@@ -255,30 +266,30 @@ def summary(holding):
     if holding['status'] == 'open':
         siglog("Hodling {}".format(pair))
         p2 = candle['CLOSE']
-        x2 = signals.generate(df, candle)['CLOSE']['XSCORE']
     elif holding['status'] == 'closed':
         profit = holding['net_earn'] > 0
         siglog("Sold {} ({:+.2f}% {})".format(pair,
             holding['pct_earn'], 'PROFIT' if profit else 'LOSS'))
         p2 = holding['sell']['candle']['CLOSE']
-        x2 = holding['sell']['signals']['CLOSE']['XSCORE']
 
     duration = to_relative_str(now() - holding['start_time'])[:-4]
 
+    df_rng = df.loc[slice(candle['OPEN_TIME'] - timedelta(hours=4), candle['OPEN_TIME'])]
+    pma = (df_rng['CLOSE'].pct_change().rolling(MA_WINDOW).mean() * 100).iloc[-1]
+
     siglog("{:>4}Price: {:.8g} ({:+.2f}%, {:.2f}% > mean)".format(
         '', p2, pct_diff(p1, p2), pct_diff(pmean, p2)))
+    siglog("{:>4}MA: {:+.2f}%".format('', pma))
     siglog("{:>4}X-Score: {:.2f} ({:+.0f}%)".format(
         '', x2, pct_diff(x1, x2)))
     siglog("{:>4}Duration: {}".format('', duration))
 
 #------------------------------------------------------------------------------
-def earnings_summary(t1):
+def earnings_summary(freq_str, t1):
     """
     """
     global dfc, n_cycles
     db = app.get_db()
-    # TODO: FIXME
-    freq_str = '5m'
     freq = strtofreq[freq_str]
 
     siglog('-'*80)

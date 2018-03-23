@@ -8,7 +8,7 @@ Z_WEIGHTS = [1.25,    0.0,    0.0,      1.5,      2.25]
 MA_WINDOW = 10
 MA_THRESH = 0.1
 # Thresholds
-X_THRESH = 1.75
+X_THRESH = 5.0
 # BTCUSDT (300,10800) Close Z-score of -3 good setting for bounce.
 Z_BOUNCE_THRESH = -3.0
 

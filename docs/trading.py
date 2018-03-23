@@ -33,11 +33,11 @@ TRADING = {
         # Magnitude of positive price trend
         "MA_Threshold": 0.1,
         # Predicts movement upward toward mean (within standard range)
-        "Z_Score_Bounce_Thresh": -1.5,
+        "Z_Score_Bounce_Thresh": -3.0,
         # Predict movement rising above standard range
-        "Z_Score_Breakout_Thresh": 1.75,
+        "Z_Score_Breakout_Thresh": 5.0,
         # Predict movement falling below standard range
-        "Z_Score_Dump_Thresh": -5
+        "Z_Score_Dump_Thresh": -5.0
     },
     "1h": {
         "MA_Period": 2,

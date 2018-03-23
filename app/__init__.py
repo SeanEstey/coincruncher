@@ -9,9 +9,10 @@ log = logging.getLogger('app')
 
 # Frequency in seconds to str
 freqtostr = {
-    300:"5m",
-    3600:"1h",
-    86400:"1d"
+    60: "1m",
+    300: "5m",
+    3600: "1h",
+    86400: "1d"
 }
 # Period in seconds to str
 pertostr = {

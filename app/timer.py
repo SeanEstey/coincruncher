@@ -1,7 +1,7 @@
 '''app.lib.timer'''
 import time, pytz
 import dateparser
-from datetime import datetime, time, timedelta
+from datetime import datetime, date, time, timedelta
 from app.utils import utc_datetime as now, utc_dtdate as today
 
 #------------------------------------------------------------------------------
@@ -97,7 +97,6 @@ class Timer():
             inc = int(self.words[1])
 
             # Intervals relative to clock time instead of absolute.
-            # TODO: handle date wrapping edge case
             if self.words[2] == 'clock':
                 unit = self.words[3]
 
@@ -107,13 +106,18 @@ class Timer():
                 solutions = [n for n in range(0,60) if n % inc == 0]
                 t_now = now().time()
                 gt_min = list(filter(lambda x: (x > t_now.minute), solutions))
+                _date = today().date()
 
                 if len(gt_min) == 0:
-                    _time = time(t_now.hour+1, solutions[0])
+                    if t_now.hour == 23:
+                        _time = time(0, solutions[0])
+                        _date = date(_date.year, _date.month, _date.day+1)
+                    else:
+                        _time = time(t_now.hour+1, solutions[0])
                 else:
                     _time = time(t_now.hour, gt_min[0])
 
-                self.expire = datetime.combine(today().date(), _time
+                self.expire = datetime.combine(_date, _time
                     ).replace(tzinfo=pytz.utc)
                 self.expire_str = target_str
                 return True

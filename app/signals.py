@@ -19,7 +19,10 @@ def generate(dfc, candle):
     """
     t1 = Timer()
 
-    if candle['FREQ'] == '5m':
+    if candle['FREQ'] == '1m':
+        hist_end = candle['OPEN_TIME'] - timedelta(minutes=1)
+        hist_start = hist_end - timedelta(hours=1)
+    elif candle['FREQ'] == '5m':
         hist_end = candle['OPEN_TIME'] - timedelta(minutes=5)
         hist_start = hist_end - timedelta(hours=1)
     elif candle['FREQ'] == '1h':
