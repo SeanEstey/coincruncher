@@ -1,31 +1,15 @@
-import logging, time
-from time import sleep
+import logging
 import pandas as pd
-import numpy as np
-from pymongo import UpdateOne, ReplaceOne
+from pymongo import UpdateOne
 from binance.client import Client
 import app
-from app import freqtostr, strtofreq
+from app import strtofreq
+from docs.data import BINANCE
 from app.timer import Timer
-from app.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms
-from app.utils import utc_datetime as now
+from app.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
 from app.mongo import locked
-log = logging.getLogger('candles')
 
-binance_kline=[
-    'open_time',
-    'open',
-    'high',
-    'low',
-    'close',
-    'volume',
-    'close_time',
-    'quote_vol',        # Total quote asset vol
-    'trades',
-    'buy_vol',          # Taker buy base asset vol
-    'buy_quote_vol',    # Taker buy quote asset vol
-    'ignore'
-]
+log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
 def update(pairs, freq, start=None, force=False):
@@ -35,7 +19,6 @@ def update(pairs, freq, start=None, force=False):
 
     for pair in pairs:
         data = query_api(pair, freq, start=start, force=force)
-
         if len(data) == 0:
             continue
 
@@ -55,7 +38,7 @@ def update(pairs, freq, start=None, force=False):
                 float(x[10]),
                 None
             ]
-            _dict = dict(zip(binance_kline, x))
+            _dict = dict(zip(BINANCE['KLINE_FIELDS'], x))
             _dict.update({'pair': pair, 'freq': freq})
             if _dict['volume'] > 0:
                 _dict['buy_ratio'] = round(_dict['buy_vol'] / _dict['volume'], 4)
@@ -77,9 +60,10 @@ def update(pairs, freq, start=None, force=False):
                 ))
             db.candles.bulk_write(ops)
         else:
+            # Should not create any duplicates because of force==False
+            # check in query_api()
             db.candles.insert_many(candles)
 
-    #print("%s %s candles updated." % (len(candles), freq))
     log.info("%s %s candle records queried/stored. [%ss]",
         len(candles), freq, t1.elapsed(unit='s'))
 
@@ -110,7 +94,7 @@ def merge(df, pairs, time_span=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k DB reads
     every main loop.
     """
-    from docs.config import Z_FACTORS
+    from docs.config import DFC_COLUMNS
     t1 = Timer()
     idx, data = [], []
     time_span = time_span if time_span else timedelta(days=21)
@@ -120,11 +104,11 @@ def merge(df, pairs, time_span=None):
 
     for candle in curs:
         idx.append((candle['pair'], strtofreq[candle['freq']], candle['open_time']))
-        data.append([candle[x.lower()] for x in Z_FACTORS])
+        data.append( [candle.get(x.lower(), None) for x in DFC_COLUMNS] )
 
     df_new = pd.DataFrame(data,
         index = pd.Index(idx, names=['PAIR', 'FREQ', 'OPEN_TIME']),
-        columns = Z_FACTORS)
+        columns = DFC_COLUMNS)
 
     df = pd.concat([df, df_new]).drop_duplicates().sort_index()
 
@@ -190,82 +174,3 @@ def query_api(pair, freq, start=None, end=None, force=False):
 
     log.debug('%s %s %s candles queried [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
     return results
-
-#------------------------------------------------------------------------------
-def save_db(candles, freq, df):
-    """
-    """
-    tmr = Timer()
-    bulk=[]
-    db = app.get_db()
-
-    for idx, row in df.iterrows():
-        record = row.to_dict()
-        bulk.append(ReplaceOne(
-            {"pair":pair, "freq":freq, "open_time":record["open_time"]},
-            record,
-            upsert=True))
-
-    if len(bulk) < 1:
-        return log.debug("No candle data")
-
-    try:
-        result = app.get_db().candles.bulk_write(bulk)
-    except Exception as e:
-        return log.exception("mongodb write error. locked=%s, result=%s", locked(), result)
-
-    del result["upserted"], result["writeErrors"], result["writeConcernErrors"]
-    #log.debug("stored to db (%sms)", tmr)
-    return result
-
-#------------------------------------------------------------------------------
-def load_db(pair, freq, start=None, end=None):
-    """Returns:
-        pd.DataFrame w/ OHLC candle data
-        df.index: open_time
-    """
-    t1 = Timer()
-    cols = ["pair", "freq", "close_time", "trades", "open", "high", "low", "close",
-        "buy_vol", "buy_ratio", "volume"]
-
-    match = {"pair":pair, "freq":freq}
-    match["open_time"] = {"$lt": end if end else now()}
-
-    if start is not None:
-        match["open_time"]["$gte"] = start
-
-    data = list(app.get_db().candles.find(match)) #.sort("open_time",-1))
-    index = pd.Index([pd.to_datetime(n["open_time"], utc=True) for n in data],
-        name="open_time")
-    df = pd.DataFrame(data, index=index, columns=cols)
-
-    df[["trades"]] = df[["trades"]].astype('int32')
-    df[cols[4:]] = df[cols[4:]].astype('float64')
-    log.debug('loaded %s candle records into df. [%s]', len(df), t1)
-    return df
-
-#------------------------------------------------------------------------------
-def to_df(pair, freq, rawdata):
-    """Convert candle data to pandas DataFrame.
-    https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
-    BTCUSDT:
-        BTC: base asset
-        USDT: quote asset
-    @freq: Binance interval (NOT pandas frequency format!)
-    """
-    df = pd.DataFrame(
-        index = [pd.to_datetime(x[0], unit='ms', utc=True) for x in rawdata],
-        data = [x for x in rawdata],
-        columns = binance_klines
-    )
-    is_npfloat64 = ['open','high','low','close','buy_vol','volume']
-    df[is_npfloat64] = df[is_npfloat64].astype(np.float64)
-    df.index.name="date"
-    del df["ignore"]
-    df["pair"] = pair
-    df["freq"] = freq
-    df["close_time"] = pd.to_datetime(df["close_time"],unit='ms',utc=True)
-    df["open_time"] = pd.to_datetime(df["open_time"],unit='ms',utc=True)
-    df["buy_ratio"] = round(df["buy_vol"] / df["volume"], 4)
-    df = df[sorted(df.columns)]
-    return df

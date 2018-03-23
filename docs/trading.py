@@ -16,7 +16,7 @@ Thesis:
 """
 
 RULES = {
-    "5m": {                                 # 5 minute Binance candle
+    "5m": {                                 # 5 minute candle
         "MOVING_AVG": {
             "PERIODS": 10,                  # Num periods
             "MARKET_THRESH": 0,             # Minimum
@@ -24,13 +24,13 @@ RULES = {
         },
         "Z-SCORE": {
             "TOP_RESIST":  3.0,             # Max num deviations from μ within {a,b}
-            "BOT_RESIST": -3.0              # Min num deviations from μ within {a,b}
+            "BOT_RESIST": -3.0,              # Min num deviations from μ within {a,b}
+            "BREAKOUT": 5.0,                # Num deviations > b in {a,b}
         },
         "X-SCORE": {                        # Units: number deviations from μ
             "WEIGHTS": [                    # Applied to Z-Scores
                 1.25, 0, 0, 1.5, 2.25
             ],
-            "BREAKOUT": 5.0,                # Num deviations > b in {a,b}
             "DUMP": -5.0                    # Num deviations < a in {a,b}
         },
         "PAIRS": {                          # Custom settings for specific pairs
@@ -38,7 +38,7 @@ RULES = {
             "BTCUSDT": None                 # Close Z-score of -3 good setting for bounce.
         }
     },
-    "1m": {                                 # 1 minute Binance candle
+    "1m": {
         "MOVING_AVG": {
             "PERIODS": 10,
             "MARKET_THRESH": None,
@@ -46,19 +46,18 @@ RULES = {
         },
         "Z-SCORE": {
             "TOP_RESIST": None,
-            "BOT_RESIST": None
-
+            "BOT_RESIST": -2.0,
+            "BREAKOUT": 5.0
         },
         "X-SCORE": {
-            "WEIGHTS": [                    # FIXME: 0.95+ buy_ratio but low volume gives false positive.
+            "WEIGHTS": [
                 1.25, 0, 0, 1.5, 2.25
             ],
-            "BREAKOUT": None,
             "DUMP": 0
         },
         "PAIRS": {}
     },
-    "1h": {                                 # 1 hour Binance candle
+    "1h": {
         "MOVING_AVG": {
             "PERIODS": 2,
             "MARKET_THRESH": None,
@@ -66,13 +65,13 @@ RULES = {
         },
         "Z-SCORE": {
             "TOP_RESIST": None,
-            "BOT_RESIST": None
+            "BOT_RESIST": None,
+            "BREAKOUT": None
         },
         "X-SCORE": {
             "WEIGHTS": [
                 1.25, 0, 0, 1.5, 2.25
             ],
-            "BREAKOUT": None,
             "DUMP": None
         },
         "PAIRS": {}

@@ -1,12 +1,50 @@
 from app.utils import to_dt, to_int
 
 BINANCE = {
-    "trade_amt": 50.00,
-    "trade_fee_pct": 0.05,
-    "pairs": [
-        "BLZBTC", "BTCUSDT", "BNBUSDT", "BCCUSDT", "ETCBTC", "ETHUSDT", "ETHBTC", "EOSBTC",
-        "ICXBTC", "LINKBTC", "LTCUSDT", "NANOBTC", "NCASHBTC", "NEOBTC", "NEBLBTC", "OMGBTC",
-        "VENBTC", "VIABTC", "WTCBTC", "XMRBTC", "XRPBTC", "ZECBTC"
+    "TRADE_AMT": 50.00,
+    "PCT_FEE": 0.05,
+    "PAIRS": [
+        #"BLZBTC",
+        "BNBUSDT",
+        "QTUMUSDT",
+        "BTCUSDT",
+        "BCCUSDT",
+        "ENGBTC",
+        #"EOSBTC",
+        #"ETCBTC",
+        #"ETHBTC",
+        "ETHUSDT",
+        "ICXBTC",
+        #"LINKBTC",
+        "LTCUSDT",
+        "NANOBTC",
+        "NCASHBTC",
+        #"NEBLBTC",
+        #"NEOBTC",
+        "NEOUSDT",
+        #"OMGBTC",
+        #"VENBTC",
+        #"VIABTC",
+        "WANBTC",
+        #"WTCBTC",
+        #"XMRBTC",
+        #"XRPBTC",
+        "XVGBTC",
+        #"ZECBTC"
+    ],
+    "KLINE_FIELDS": [
+        'open_time',
+        'open',
+        'high',
+        'low',
+        'close',
+        'volume',
+        'close_time',
+        'quote_vol',        # Total quote asset vol
+        'trades',
+        'buy_vol',          # Taker buy base asset vol
+        'buy_quote_vol',    # Taker buy quote asset vol
+        'ignore'
     ]
 }
 

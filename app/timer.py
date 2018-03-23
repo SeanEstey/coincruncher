@@ -2,7 +2,7 @@
 import time, pytz
 import dateparser
 from datetime import datetime, date, time, timedelta
-from app.utils import utc_datetime as now, utc_dtdate as today
+from app.utils import utc_datetime as now, utc_dtdate as today, to_relative_str
 
 #------------------------------------------------------------------------------
 class Timer():
@@ -50,6 +50,11 @@ class Timer():
         if self.expire is None:
             return None
 
+        if self.expire > now():
+            print("{}: {}".format(self.name, to_relative_str(self.expire - now())))
+        else:
+            print("{} expired!".format(self.name))
+
         rem_ms = int((self.expire - now()).total_seconds()*1000)
 
         if unit == 'ms':
@@ -59,6 +64,7 @@ class Timer():
                 return "expired"
             else:
                 return "%s min" % round((rem_ms/1000/3600)*60,1)
+
     #--------------------------------------------------------------------------
     def set_expiry(self, target):
         """target can be datetime.datetime obj or recognizable
@@ -71,7 +77,7 @@ class Timer():
             self.start = now()
             self.parse(target)
 
-        print("Timer expiry set for %s" % self.expire)
+        print("{} expires in {}".format(self.name, to_relative_str(self.expire - now())))
 
     #--------------------------------------------------------------------------
     def parse(self, target_str):

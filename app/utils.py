@@ -87,36 +87,37 @@ def to_relative_str(_delta):
     if diff_ms >= year_ms:
         # Year(s) span
         nYears = int(diff_ms/year_ms)
-        return "{} year{} ago".format(nYears, 's' if nYears > 1 else '')
+        return "{} year{}".format(nYears, 's' if nYears > 1 else '')
 
     if diff_ms >= month_ms:
         # Month(s) span
         nMonths = int(diff_ms/month_ms)
-        return "{} month{} ago".format(nMonths, 's' if nMonths > 1 else '')
+        return "{} month{}".format(nMonths, 's' if nMonths > 1 else '')
 
     if diff_ms >= week_ms:
         # Week(s) span
         nWeeks = int(diff_ms/week_ms)
-        return "{} week{} ago".format(nWeeks, 's' if nWeeks > 1 else '')
+        return "{} week{}".format(nWeeks, 's' if nWeeks > 1 else '')
 
     if diff_ms >= day_ms:
         # Day(s) span
         nDays = int(diff_ms/day_ms)
-        return "{} day{} ago".format(nDays, 's' if nDays > 1 else '')
+        return "{} day{}".format(nDays, 's' if nDays > 1 else '')
 
     if diff_ms >= hour_ms:
         # Hour(s) span
         nHours = int(diff_ms/hour_ms)
-        return "{} hour{} ago".format(nHours, 's' if nHours > 1 else '')
+        return "{} hour{}".format(nHours, 's' if nHours > 1 else '')
 
     if diff_ms >= min_ms:
         # Minute(s) span
         nMin = int(diff_ms/min_ms)
-        return "{} min ago".format(nMin)
+        return "{} min".format(nMin)
 
     # Second(s) span
     nSec = int(diff_ms/1000)
-    return "{} second{} ago".format(nSec, 's' if nSec > 1 else '')
+    return "{} second{}".format(nSec, 's' if nSec > 1 else '')
+
 #------------------------------------------------------------------------------
 def datestr_to_ms(date_str):
     """Convert UTC date to milliseconds

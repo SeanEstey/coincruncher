@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
-from pymongo import ReturnDocument
+from pymongo import UpdateOne, ReturnDocument
 from pprint import pprint
 import app
 from app import freqtostr, strtofreq, pertostr, candles, signals
@@ -15,7 +15,7 @@ def siglog(msg): log.log(100, msg)
 def pct_diff(a,b): return ((b-a)/a)*100
 
 log = logging.getLogger('trades')
-pairs = BINANCE['pairs']
+pairs = BINANCE['PAIRS']
 dfc = pd.DataFrame()
 dfz = pd.DataFrame()
 n_cycles = 0
@@ -40,6 +40,9 @@ def init():
 def update(_freq_str):
     """Called from main app loop on refreshing candle data. Update active
     holdings and evaluate new positions.
+    TODO: calculate bearishness/bulliness from Binance candle data
+    instead of CMC due to low CMC refresh rate.
+    Calculate 5m global market moving avg
     """
     global dfc, n_cycles, freq_str, freq
     freq_str = _freq_str
@@ -50,7 +53,7 @@ def update(_freq_str):
     # Merge new candle data
     dfc = candles.merge(dfc, pairs, time_span=delta(minutes=10))
 
-    # Calculate 5m global market moving avg
+    # Calculate global market Moving Avg (Coinmarketcap data)
     n_periods = RULES[freq_str]['MOVING_AVG']['PERIODS']
     mkt = db.market_idx_5t.find({"date":{"$gt":now()-delta(hours=24)}}, {"_id":0})
     df_mkt = pd.DataFrame(list(mkt))
@@ -58,6 +61,19 @@ def update(_freq_str):
     del df_mkt['date']
     df_mkt = df_mkt.pct_change().rolling(window=int(n_periods/2)).mean() * 100
     mkt_ma = df_mkt.iloc[-1]['mktcap_usd']
+
+    # Calculate Z-Scores, store in dataframe/mongodb
+    ops=[]
+    for pair in pairs:
+        candle = candles.newest(pair, freq_str, df=dfc)
+        scores = signals.generate(dfc.loc[pair,freq], candle, mkt_ma=mkt_ma)
+        name = 'ZSCORE_' + freq_str.upper()
+        dfc[name].loc[pair,freq][-1] = scores['CLOSE']['ZSCORE'].round(3)
+        ops.append(UpdateOne(
+            {"open_time":candle["OPEN_TIME"], "pair":candle["PAIR"], "freq":candle["FREQ"]},
+            {'$set': {name: scores['CLOSE']['ZSCORE']}}
+        ))
+    db.candles.bulk_write(ops)
 
     siglog('')
     siglog('-'*80)
@@ -67,14 +83,14 @@ def update(_freq_str):
     siglog('-'*80)
 
     # Evaluate open positions
-    holdings = list(app.get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
+    holdings = list(db.trades.find({'status':'open', 'pair':{"$in":pairs}}))
 
     for holding in holdings:
         candle = candles.newest(holding['pair'], freq_str, df=dfc)
         update_holding(holding, candle)
 
     # Evaluate new positions for other tracked pairs
-    inactive = list(set(pairs) - set([n['pair'] for n in holdings]))
+    inactive = sorted(list(set(pairs) - set([n['pair'] for n in holdings])))
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=dfc)
@@ -92,38 +108,66 @@ def evaluate(candle, mkt_ma=None):
     df = dfc.loc[candle['PAIR'],freq]
     rules = RULES[freq_str]
 
-    scores = signals.generate(df, candle)
-    xscore = signals.xscore(scores.xs('ZSCORE'), freq_str)
-    pzscore = scores['CLOSE'].loc['ZSCORE']
-    log.info('{} X-Score: {:+.2f}'.format(candle['PAIR'], xscore))
+    scores = signals.generate(df, candle, mkt_ma=mkt_ma)
+    pzscore = scores['CLOSE']['ZSCORE']
 
-    if freq_str == '5m':
-        # A) Breakout (high x-score)
-        breakout = rules['X-SCORE']['BREAKOUT']
+    log.info("'{}' {}: {:+.2f} Z-Score ({:+.2f}Δ, {:.8g}P, {:.8g}μ)".format(
+        freq_str, candle['PAIR'], scores['CLOSE']['ZSCORE'],
+        scores['CLOSE']['ZSCORE'] - scores['OPEN']['ZSCORE'],
+        candle['CLOSE'], scores['CLOSE']['MEAN']))
 
-        if xscore > breakout:
-            msg="{:+.2f} X-Score > {:.2f} Breakout Threshold.".format(xscore, breakout)
+    # Adjust lower resistance proportional to bearishness
+    # i.e. bearish score of -0.1%, change z-score resist from -2.0 to -3.0
+    if mkt_ma < 0:
+        adjuster = 1.25
+    else:
+        adjuster = 1
+
+    if freq_str == '1m':
+        # A) Breakout (high Z-Score)
+        breakout = rules['Z-SCORE']['BREAKOUT']
+
+        if pzscore > breakout:
+            msg="{:+.2f} Z-Score > {:.2f} Breakout Threshold.".format(pzscore, breakout)
             return open_holding(candle, scores, extra=msg)
 
         # B) Bounce (bullish, bottom z-score)
-        bot_resist = rules['Z-SCORE']['BOT_RESIST']
+        bot_resist = rules['Z-SCORE']['BOT_RESIST'] * adjuster
+
+        if mkt_ma > -0.1 and pzscore < bot_resist:
+            msg = "{:+.2f} Close Z-score < {:.2f} Bottom Resistance.".format(
+                pzscore, bot_resist)
+            return open_holding(candle, scores, extra=msg)
+
+    elif freq_str == '5m':
+        # A) Breakout (high Z-Score)
+        breakout = rules['Z-SCORE']['BREAKOUT']
+
+        if pzscore > breakout:
+            msg="{:+.2f} Z-Score > {:.2f} Breakout Threshold.".format(pzscore, breakout)
+            return open_holding(candle, scores, extra=msg)
+
+        # B) Bounce (bullish, bottom z-score)
+        bot_resist = rules['Z-SCORE']['BOT_RESIST'] * adjuster
 
         if mkt_ma > 0 and pzscore < bot_resist:
             msg = "{:+.2f} Close Z-score < {:.2f} Bottom Resistance.".format(
                 pzscore, bot_resist)
             return open_holding(candle, scores, extra=msg)
 
-        # C) Uptrend (bullish, +MA, +x-score)
+        # C) Uptrend (bullish, +MA, +Z-score)
+        """
         ma_periods = rules['MOVING_AVG']['PERIODS']
         ma_thresh = rules['MOVING_AVG']['CANDLE_THRESH']
 
         rng = df.loc[slice(candle['OPEN_TIME'] - delta(hours=4), candle['OPEN_TIME'])]
         pma = (rng['CLOSE'].pct_change().rolling(ma_periods).mean() * 100).iloc[-1]
 
-        if mkt_ma > 0 and pma > ma_thresh and xscore > 0.5:
+        if mkt_ma > 0 and pma > ma_thresh and pzscore > 0.5:
             msg = '{:+.2f}% MA > {:.2f}% Threshold, {:+.2f} X-Score.'.format(
                 pma, ma_thresh, xscore)
             return open_holding(candle, scores, extra=msg)
+        """
 
     """
     elif candle['FREQ'] == '1h':
@@ -142,17 +186,14 @@ def update_holding(holding, candle):
     """
     c1, c2 = holding['buy']['candle'], candle
     df = dfc.loc[holding['pair'],freq]
-    xthresh = RULES[freq_str]['X-SCORE']['DUMP']
-
     scores = signals.generate(df, candle)
-    xscore = signals.xscore(scores.xs('ZSCORE'), freq_str)
 
     if c2['OPEN_TIME'] < c1['OPEN_TIME']:
         return False
 
     if freq_str == '1m':
-        # Dump if 1m x-score too low or price below buy
-        if xscore < xthresh or c2['CLOSE'] < c1['CLOSE']:
+        # Dump if price below buy
+        if c2['CLOSE'] < c1['CLOSE']:
             return close_holding(holding, c2, scores)
 
     # Sell if price < peak since position opened
@@ -167,14 +208,11 @@ def update_holding(holding, candle):
 #------------------------------------------------------------------------------
 def open_holding(candle, scores, extra=None):
     """Create or update existing position for zscore above threshold value.
-    @xscore: weighted average trade signal score
-    @dfx: pd.dataframe w/ multi-index: (freq, period)
-    @dfz: pd.dataframe w/ multi-index (freq, per, stat)
+    @scores: z-scores
     """
-    pct_fee = BINANCE['trade_fee_pct']
-    quote = BINANCE['trade_amt']
+    pct_fee = BINANCE['PCT_FEE']
+    quote = BINANCE['TRADE_AMT']
     fee = quote * (pct_fee/100)
-    xscore = signals.xscore(scores.xs('ZSCORE'), freq_str)
 
     app.get_db().trades.insert_one({
         'pair': candle['PAIR'],
@@ -189,7 +227,7 @@ def open_holding(candle, scores, extra=None):
             'fee': fee,
             'pct_fee': pct_fee,
             'candle': candle,
-            'signals': {**scores.to_dict(), **{'xscore':xscore}},
+            'signals': scores.to_dict(),
             'details': extra if extra else None
         }
     })
@@ -200,11 +238,8 @@ def open_holding(candle, scores, extra=None):
 #------------------------------------------------------------------------------
 def close_holding(holding, candle, scores):
     """Close off existing position and calculate earnings.
-    @xscore: weighted average trade signal score
-    @dfx: pd.dataframe w/ multi-index: (freq, period)
-    @dfz: pd.dataframe w/ multi-index (freq, per, stat)
     """
-    pct_fee = BINANCE['trade_fee_pct']
+    pct_fee = BINANCE['PCT_FEE']
     buy_vol = np.float64(holding['buy']['volume'])
     buy_quote = np.float64(holding['buy']['quote'])
     p1 = np.float64(holding['buy']['candle']['CLOSE'])
@@ -247,15 +282,11 @@ def close_holding(holding, candle, scores):
 
 #------------------------------------------------------------------------------
 def summary(holding, candle, scores=None):
-    """Log diff in xscore and price of trade since position opening.
+    """
     """
     rules = RULES[freq_str]
     pair = holding['pair']
     df = dfc.loc[holding['pair'],freq]
-
-    x1 = holding['buy']['signals']['xscore']
-    x2 = signals.xscore(scores.xs('ZSCORE'), freq_str)
-
     p1 = holding['buy']['candle']['CLOSE']
     t1 = holding['buy']['candle']['OPEN_TIME']
     pmean = df.loc[slice(t1, df.iloc[-2].name)]['CLOSE'].mean()
@@ -269,7 +300,7 @@ def summary(holding, candle, scores=None):
             holding['pct_earn'], 'PROFIT' if profit else 'LOSS'))
         p2 = holding['sell']['candle']['CLOSE']
 
-    duration = to_relative_str(now() - holding['start_time'])[:-4]
+    duration = to_relative_str(now() - holding['start_time'])
 
     df_rng = df.loc[slice(candle['OPEN_TIME'] - delta(hours=4), candle['OPEN_TIME'])]
     ma_periods = rules['MOVING_AVG']['PERIODS']
@@ -278,7 +309,8 @@ def summary(holding, candle, scores=None):
     siglog("{:>4}Price: {:.8g} ({:+.2f}%, {:.2f}% > mean)".format(
         '', p2, pct_diff(p1, p2), pct_diff(pmean, p2)))
     siglog("{:>4}MA: {:+.2f}%".format('', pma))
-    siglog("{:>4}X-Score: {:.2f} ({:+.0f}%)".format('', x2, pct_diff(x1, x2)))
+    siglog("{:>4}Z-Score: {:.2f} ({:+.4g}Δ)".format('', scores['CLOSE']['ZSCORE'],
+        scores['CLOSE']['ZSCORE'] - scores['OPEN']['ZSCORE']))
     siglog("{:>4}Duration: {}".format('', duration))
 
 #------------------------------------------------------------------------------

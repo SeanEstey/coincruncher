@@ -185,7 +185,7 @@ def show_markets(stdscr):
     stdscr.addstr(0, 2, "< Home")
     page_title = "Markets (%s)" % CURRENCY.upper()
     stdscr.addstr(0, int(stdscr.getmaxyx()[1]/2 - len(page_title)/2), page_title)
-    updated = "Updated " + to_relative_str(utc_datetime() - mktdata[0]["date"])
+    updated = "Updated " + to_relative_str(utc_datetime() - mktdata[0]["date"]) + " ago"
     stdscr.addstr(0, stdscr.getmaxyx()[1]-len(updated) - 2, updated)
     stdscr.addstr(2, 0, "")
 
@@ -325,7 +325,7 @@ def show_watchlist(stdscr):
 
     # Print
     stdscr.clear()
-    updated = to_relative_str(utc_datetime() - to_dt(max(updated)))
+    updated = to_relative_str(utc_datetime() - to_dt(max(updated))) + " ago"
     stdscr.addstr(0, 2, "Updated %s" % updated)
     stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
     stdscr.addstr(1, 0, "")
@@ -400,7 +400,7 @@ def show_portfolio(stdscr):
 
     # Print title Row
     stdscr.clear()
-    updated = to_relative_str(utc_datetime() - to_dt(max(updated)))
+    updated = to_relative_str(utc_datetime() - to_dt(max(updated))) + " ago"
     stdscr.addstr(0, 2, "Updated %s" % updated)
     stdscr.addstr(0, stdscr.getmaxyx()[1]-5, CURRENCY.upper())
     stdscr.addstr(1, 0, "")

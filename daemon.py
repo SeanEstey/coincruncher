@@ -22,32 +22,38 @@ def main(force_tick=False, force_candle=False):
     """Main trade cycle loop. Fetch candle data at timed intervals,
     update trading positions.
     """
-    pairs = BINANCE['pairs']
+    pairs = BINANCE['PAIRS']
 
-    timer_1m = Timer(name='1mTimer', expire='every 1 clock min utc')
-    timer_5m = Timer(name='5mTimer', expire='every 5 clock min utc')
-    timer_hr = Timer(name='1hTimer', expire='next hour change')
-    timer_1d = Timer(name='1dTimer', expire=utc_dtdate()+timedelta(days=1))
+    timer_1m = Timer(name='1M_Timer', expire='every 1 clock min utc')
+    timer_5m = Timer(name='5M_Timer', expire='every 5 clock min utc')
+    timer_1h = Timer(name='1H_Timer', expire='next hour change')
+    timer_1d = Timer(name='1D_Timer', expire=utc_dtdate()+timedelta(days=1))
 
     markets.db_audit()
     trades.init()
 
     if force_tick == True:
-        coinmktcap.tickers(limit=TICKER_LIMIT)
+        coinmktcap.tickers(limit=1500)
         coinmktcap.global_markets()
 
     if force_candle == True:
         candles.update(pairs, '1m', start='4 hours ago utc', force=True)
-        candles.update(pairs, '5m', start='1 hours ago utc', force=True)
+        candles.update(pairs, '5m', start='4 hours ago utc', force=True)
         candles.update(pairs, '1h', start='4 hours ago utc', force=True)
         trades.update('5m')
 
     # Main loop
     while True:
-        if timer_1m.remain() == 0:
-            candles.update(pairs, '1m')
-            trades.update('1m')
-            timer_1m.reset()
+        if timer_1d.remain() == 0:
+            candles.update(pairs, '1d')
+            trades.update('1h')
+            eod_tasks()
+            timer_1d.set_expiry(utc_dtdate() + timedelta(days=1))
+
+        if timer_1h.remain() == 0:
+            candles.update(pairs, '1h')
+            trades.update('1h')
+            timer_1h.set_expiry('next hour change')
 
         if timer_5m.remain() == 0:
             candles.update(pairs, '5m')
@@ -56,17 +62,10 @@ def main(force_tick=False, force_candle=False):
             coinmktcap.tickers(limit=500)
             timer_5m.reset()
 
-        if timer_hr.remain() == 0:
-            candles.update(pairs, '5m')
-            candles.update(pairs, '1h')
-            trades.update('1h')
-            timer_hr.set_expiry('next hour change')
-
-        if timer_1d.remain() == 0:
-            candles.update(pairs, '1d')
-            trades.update('1h')
-            eod_tasks()
-            timer_1d.set_expiry(utc_dtdate() + timedelta(days=1))
+        if timer_1m.remain() == 0:
+            candles.update(pairs, '1m')
+            trades.update('1m')
+            timer_1m.reset()
 
         time.sleep(5)
 #---------------------------------------------------------------------------
