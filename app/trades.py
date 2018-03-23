@@ -66,7 +66,7 @@ def update(_freq_str):
     ops=[]
     for pair in pairs:
         candle = candles.newest(pair, freq_str, df=dfc)
-        scores = signals.generate(dfc.loc[pair,freq], candle, mkt_ma=mkt_ma)
+        scores = signals.z_score(dfc.loc[pair,freq], candle, mkt_ma=mkt_ma)
         name = 'ZSCORE_' + freq_str.upper()
         dfc[name].loc[pair,freq][-1] = scores['CLOSE']['ZSCORE'].round(3)
         ops.append(UpdateOne(
@@ -107,101 +107,64 @@ def evaluate(candle, mkt_ma=None):
     """
     df = dfc.loc[candle['PAIR'],freq]
     rules = RULES[freq_str]
-
-    scores = signals.generate(df, candle, mkt_ma=mkt_ma)
-    pzscore = scores['CLOSE']['ZSCORE']
+    scores = signals.z_score(df, candle, mkt_ma=mkt_ma)
+    z_score = scores['CLOSE']['ZSCORE']
 
     log.info("'{}' {}: {:+.2f} Z-Score ({:+.2f}Δ, {:.8g}P, {:.8g}μ)".format(
         freq_str, candle['PAIR'], scores['CLOSE']['ZSCORE'],
         scores['CLOSE']['ZSCORE'] - scores['OPEN']['ZSCORE'],
         candle['CLOSE'], scores['CLOSE']['MEAN']))
 
-    # Adjust lower resistance proportional to bearishness
-    # i.e. bearish score of -0.1%, change z-score resist from -2.0 to -3.0
-    if mkt_ma < 0:
-        adjuster = 1.25
-    else:
-        adjuster = 1
+    # A) Breakout (Close Z-Score > Threshold)
+    breakout = rules['Z-SCORE']['BUY_BREAK_REST']
+    if z_score > breakout:
+        msg="{:+.2f} Z-Score > {:.2f} Breakout.".format(z_score, breakout)
+        return open_holding(candle, scores, extra=msg)
 
-    if freq_str == '1m':
-        # A) Breakout (high Z-Score)
-        breakout = rules['Z-SCORE']['BREAKOUT']
+    # B) Bounce (Bullish Mkt, Close Z-Score < Support)
+    z_support = signals.adjust_support_level(freq_str, mkt_ma)
+    if z_score < z_support:
+        return open_holding(candle, scores, extra=\
+            "{:+.2f} Close Z-score < {:.2f} Support.".format(z_score, z_support))
 
-        if pzscore > breakout:
-            msg="{:+.2f} Z-Score > {:.2f} Breakout Threshold.".format(pzscore, breakout)
+    # C) Uptrend (Bullish Mkt, +MA, +Z-Scores for Close/Volume/BuyRatio)
+    ma_periods = rules['MOVING_AVG']['PERIODS']
+    ma_thresh = rules['MOVING_AVG']['CANDLE_THRESH']
+    rng = df.loc[slice(candle['OPEN_TIME'] - delta(hours=2), candle['OPEN_TIME'])]
+    ma = (rng['CLOSE'].pct_change().rolling(ma_periods).mean() * 100).iloc[-1]
+    if mkt_ma > 0.1 and ma > ma_thresh and z_score > 0.5:
+        if scores['VOLUME']['ZSCORE'] > 0.5 and scores['BUY_RATIO']['ZSCORE'] > 0.5:
+            msg = '{:+.2f}% MA > {:.2f}% Threshold, {:+.2f} Z-Score.'.format(
+                ma, ma_thresh, z_score)
             return open_holding(candle, scores, extra=msg)
-
-        # B) Bounce (bullish, bottom z-score)
-        bot_resist = rules['Z-SCORE']['BOT_RESIST'] * adjuster
-
-        if mkt_ma > -0.1 and pzscore < bot_resist:
-            msg = "{:+.2f} Close Z-score < {:.2f} Bottom Resistance.".format(
-                pzscore, bot_resist)
-            return open_holding(candle, scores, extra=msg)
-
-    elif freq_str == '5m':
-        # A) Breakout (high Z-Score)
-        breakout = rules['Z-SCORE']['BREAKOUT']
-
-        if pzscore > breakout:
-            msg="{:+.2f} Z-Score > {:.2f} Breakout Threshold.".format(pzscore, breakout)
-            return open_holding(candle, scores, extra=msg)
-
-        # B) Bounce (bullish, bottom z-score)
-        bot_resist = rules['Z-SCORE']['BOT_RESIST'] * adjuster
-
-        if mkt_ma > 0 and pzscore < bot_resist:
-            msg = "{:+.2f} Close Z-score < {:.2f} Bottom Resistance.".format(
-                pzscore, bot_resist)
-            return open_holding(candle, scores, extra=msg)
-
-        # C) Uptrend (bullish, +MA, +Z-score)
-        """
-        ma_periods = rules['MOVING_AVG']['PERIODS']
-        ma_thresh = rules['MOVING_AVG']['CANDLE_THRESH']
-
-        rng = df.loc[slice(candle['OPEN_TIME'] - delta(hours=4), candle['OPEN_TIME'])]
-        pma = (rng['CLOSE'].pct_change().rolling(ma_periods).mean() * 100).iloc[-1]
-
-        if mkt_ma > 0 and pma > ma_thresh and pzscore > 0.5:
-            msg = '{:+.2f}% MA > {:.2f}% Threshold, {:+.2f} X-Score.'.format(
-                pma, ma_thresh, xscore)
-            return open_holding(candle, scores, extra=msg)
-        """
-
-    """
-    elif candle['FREQ'] == '1h':
-        # D) Bullish. 1h vs 24h X-Score > X_THRESHOLD, 5m vs 1h X-Score > 0.
-        xscore_1h = dfx.loc[(pair,3600,86400)].XSCORE[0]
-        xscore_5m = dfx.loc[(pair,300,3600)].XSCORE[0]
-        if xscore_1h > X_THRESH and xscore_5m > 0:
-            open_holding(pair, xscore_1h, dfx.loc[(pair)], dfz.loc[(pair)], 3600, 86400)
-    """
 
 #------------------------------------------------------------------------------
 def update_holding(holding, candle):
-    """
-    # TODO: remove ifs. take max(c_5m['close_time'], c_1h['close_time'] instead.
-    # TODO: save candle close_time when opening new position, to compare with above dates.
+    """Evaluate sell potential of holding.
     """
     c1, c2 = holding['buy']['candle'], candle
     df = dfc.loc[holding['pair'],freq]
-    scores = signals.generate(df, candle)
+    scores = signals.z_score(df, candle)
 
     if c2['OPEN_TIME'] < c1['OPEN_TIME']:
         return False
 
-    if freq_str == '1m':
-        # Dump if price below buy
-        if c2['CLOSE'] < c1['CLOSE']:
+    # Dump if price below buy
+    if c2['CLOSE'] < c1['CLOSE']:
+        if 'Resistance' not in holding['buy']['details']:
             return close_holding(holding, c2, scores)
 
-    # Sell if price < peak since position opened
-    pmax = df.loc[slice(c1['OPEN_TIME'], df.iloc[-2].name)]['CLOSE'].max()
-    log.info("pmax for {} is {:.6f}".format(holding['pair'], pmax))
+        margin = signals.adjust_support_margin(freq_str, mkt_ma)
 
-    if not np.isnan(pmax) and candle['CLOSE'] < pmax:
-        return close_holding(holding, c2, scores)
+        if (c2['CLOSE'] * margin) < c1['CLOSE']:
+            return close_holding(holding, c2, scores)
+    # Sell if price < peak since position opened
+    else:
+        p_max = df.loc[slice(c1['OPEN_TIME'], df.iloc[-2].name)]['CLOSE'].max()
+        log.info("pmax for {} is {:.6f}".format(holding['pair'], p_max))
+
+        if not np.isnan(pmax) and candle['CLOSE'] < p_max:
+            return close_holding(holding, c2, scores)
 
     summary(holding, c2, scores=scores)
 
@@ -289,7 +252,6 @@ def summary(holding, candle, scores=None):
     df = dfc.loc[holding['pair'],freq]
     p1 = holding['buy']['candle']['CLOSE']
     t1 = holding['buy']['candle']['OPEN_TIME']
-    pmean = df.loc[slice(t1, df.iloc[-2].name)]['CLOSE'].mean()
 
     if holding['status'] == 'open':
         siglog("Hodling {}".format(pair))
@@ -306,11 +268,11 @@ def summary(holding, candle, scores=None):
     ma_periods = rules['MOVING_AVG']['PERIODS']
     pma = (df_rng['CLOSE'].pct_change().rolling(ma_periods).mean() * 100).iloc[-1]
 
-    siglog("{:>4}Price: {:.8g} ({:+.2f}%, {:.2f}% > mean)".format(
-        '', p2, pct_diff(p1, p2), pct_diff(pmean, p2)))
+    siglog("{:>4}Price: {:.8g} ({:+.2f}%)".format(
+        '', p2, pct_diff(p1, p2)))
     siglog("{:>4}MA: {:+.2f}%".format('', pma))
     siglog("{:>4}Z-Score: {:.2f} ({:+.4g}Δ)".format('', scores['CLOSE']['ZSCORE'],
-        scores['CLOSE']['ZSCORE'] - scores['OPEN']['ZSCORE']))
+        scores['CLOSE']['ZSCORE'] - holding['buy']['signals']['CLOSE']['ZSCORE']))
     siglog("{:>4}Duration: {}".format('', duration))
 
 #------------------------------------------------------------------------------

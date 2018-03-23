@@ -25,11 +25,12 @@ def tickers(start=0, limit=None):
     try:
         r = requests.get("https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
             .format(idx, limit or 0))
-    except Exception as e:
-        if r.status_code != 200:
-            return log.error("API error %s", r.status_code)
-    else:
         data = json.loads(r.text)
+    except Exception as e:
+        return log.error("API error %s", r.status_code)
+
+    if r.status_code != 200:
+        return log.error("API error %s", r.status_code)
 
     # Sort by timestamp in descending order
     data = sorted(data, key=lambda x: int(x["last_updated"] or 1))[::-1]
@@ -68,11 +69,15 @@ def global_markets():
 
     try:
         r = requests.get("https://api.coinmarketcap.com/v1/global")
+        data = json.loads(r.text)
     except Exception as e:
-        if r.status_code != 200:
-            return log.error("API error %s", r.status_code)
+        return log.error("API error %s", r.status_code)
 
-    data = json.loads(r.text)
+    if r.status_code != 200:
+        return log.error("API error %s", r.status_code)
+
+    print(r.status_code)
+
     store = {}
     for m in COINMARKETCAP['API']['MARKETS']:
         store[m["to"]] = m["type"]( data[m["from"]] )

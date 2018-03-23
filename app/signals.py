@@ -14,16 +14,24 @@ def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def generate(dfc, candle, mkt_ma=None):
-    """Generate Z-Scores and X-score.
+def z_score(dfc, candle, mkt_ma=None):
+    """Generate Mean/STD/Z-Score for given candle properties.
+    Attempts to correct distorted Mean values in bearish/bullish markets by
+    adjusting length of historic period.
     Performance: ~20ms
+    Returns:
+        pd.DataFrame w/ [5 x 4] dimensions
     """
     t1 = Timer()
 
-    mkt_ma = mkt_ma if mkt_ma else 0
-    shorten = 1.0
+    # ********************************************************************
+    # TODO: Optimize by trying to group period logically via new "settled"
+    # price range, if possible.
+    # ********************************************************************
 
     # If bull/bear market, shorten historic period range
+    mkt_ma = mkt_ma if mkt_ma else 0
+    shorten = 1.0
     if abs(mkt_ma) > 0.05 and abs(mkt_ma) < 0.1:
         shorten = 0.75
     elif abs(mkt_ma) >= 0.1 and abs(mkt_ma) < 0.15:
@@ -62,46 +70,30 @@ def generate(dfc, candle, mkt_ma=None):
     return df
 
 #------------------------------------------------------------------------------
-def xscore(z_scores, freq_str):
-    """Apply weightings to Z-Scores.
+def adjust_support_level(freq_str, mkt_ma):
+    """Correct for distorted Z-Score values in sudden bearish/bullish swings.
+    A volatile bearish swing pushes Z-Scores downwards faster than the mean
+    adjusts to represent the new "price level", creating innacurate deviation
+    values for Z-Scores. Offset by temporarily lowering support threshold.
     """
-    weights = RULES[freq_str]['X-SCORE']['WEIGHTS']
-    return (z_scores * weights).sum() / sum(weights)
+    # Example: -0.1% MA and -2.0 support => -3.0 support
+    if mkt_ma < 0:
+        return RULES[freq_str]['Z-SCORE']['BUY_SUPT'] * (1 + (abs(mkt_ma) * 5))
+    # Example: +0.1% MA and +2.0 support => +0.83 support
+    else:
+        return RULES[freq_str]['Z-SCORE']['BUY_SUPT'] * (1 - (mkt_ma * 1.75))
 
 #------------------------------------------------------------------------------
-def log_scores(idx, score, dfz):
-    """Print statistial analysis for single (pair, freq, period).
+def adjust_support_margin(freq_str, mkt_ma):
+    """If bought as a bounce trade, allow some wiggle room for price to bottom
+    out before bouncing up.
+    ADDME: category field in holding to avoid this hack.
+    ADDME: adjust value closer to 1.0 in bearish markets, closer to 1.01 in
+    bull markets, to optimize risk/reward.
     """
-    from datetime import timedelta as tdelta
+    margin = RULES[freq_str]['Z-SCORE']['SELL_SUPT_MARG']
 
-    idx_dict = dict(zip(['pair','freq', 'period'], idx))
-    freq = freqtostr[idx_dict['freq']]
-    prd = pertostr[idx_dict['period']]
-    candle = candles.newest(idx_dict['pair'], freq)
-    open_time = to_local(candle['open_time'])
-    close_time = to_local(candle['close_time'])
-    prd_end = open_time - tdelta(microseconds=1)
-
-    if freq == '5m':
-        prd_start = open_time - tdelta(minutes=60)
-    elif freq == '1h':
-        prd_start = open_time - tdelta(hours=24)
-    elif freq == '1d':
-        prd_start = open_time - tdelta(days=7)
-
-    siglog('-'*80)
-    siglog(idx_dict['pair'])
-    siglog("{} Candle:    {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
-        freq, open_time, close_time))
-    if prd_start.day == prd_end.day:
-        siglog("{} Hist:     {:%m-%d-%Y %I:%M%p}-{:%I:%M%p}".format(
-            prd, prd_start, prd_end))
+    if mkt_ma > 0:
+        return margin
     else:
-        siglog("{} Hist:     {:%m-%d-%Y %I:%M%p} - {:%m-%d-%Y %I:%M%p}".format(
-            prd, prd_start, prd_end))
-    siglog('')
-    lines = dfz.to_string(index=False, col_space=10, line_width=100).title().split("\n")
-    [siglog(line) for line in lines]
-    siglog('')
-    siglog("Mean Zscore: {:+.1f}".format(score))
-    siglog('-'*80)
+        return 1.0

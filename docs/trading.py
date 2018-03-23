@@ -16,64 +16,24 @@ Thesis:
 """
 
 RULES = {
-    "5m": {                                 # 5 minute candle
+    "1m": {
         "MOVING_AVG": {
-            "PERIODS": 10,                  # Num periods
-            "MARKET_THRESH": 0,             # Minimum
-            "CANDLE_THRESH": 0.1            # Minimum
+            "PERIODS": 5,                   # Num candle periods
+            "MARKET_THRESH": None,          # Minimum
+            "CANDLE_THRESH": 0.05           # Minimum
         },
         "Z-SCORE": {
-            "TOP_RESIST":  3.0,             # Max num deviations from μ within {a,b}
-            "BOT_RESIST": -3.0,              # Min num deviations from μ within {a,b}
-            "BREAKOUT": 5.0,                # Num deviations > b in {a,b}
-        },
-        "X-SCORE": {                        # Units: number deviations from μ
-            "WEIGHTS": [                    # Applied to Z-Scores
-                1.25, 0, 0, 1.5, 2.25
-            ],
-            "DUMP": -5.0                    # Num deviations < a in {a,b}
+            "BUY_BREAK_REST": 5.0           # Buy breakouts when score rises above (deviations from μ)
+            "BUY_SUPT": -2.0,               # Buy when score falls below (deviations from μ)
+            "BUY_SUPT_BEAR_COEF": None,     # FIXME: Support * (1 + (abs(MKT_MA) * 5))
+            "BUY_SUPT_BULL_COEF": None,     # FIXME: Support * (1 - (MKT_MA * 1.75))
+            "SELL_SUPT_MARG": 1.01,         # Extra z-score margin below support in case we buy slightly
+                                            # before price reverses upward.
         },
         "PAIRS": {                          # Custom settings for specific pairs
             "EOSBTC": None,                 # -2% ΔP often followed by +0.5-1.0% ΔP candle.
             "BTCUSDT": None                 # Close Z-score of -3 good setting for bounce.
+            "ENGBTC":
         }
-    },
-    "1m": {
-        "MOVING_AVG": {
-            "PERIODS": 10,
-            "MARKET_THRESH": None,
-            "CANDLE_THRESH": 0.1
-        },
-        "Z-SCORE": {
-            "TOP_RESIST": None,
-            "BOT_RESIST": -2.0,
-            "BREAKOUT": 5.0
-        },
-        "X-SCORE": {
-            "WEIGHTS": [
-                1.25, 0, 0, 1.5, 2.25
-            ],
-            "DUMP": 0
-        },
-        "PAIRS": {}
-    },
-    "1h": {
-        "MOVING_AVG": {
-            "PERIODS": 2,
-            "MARKET_THRESH": None,
-            "CANDLE_THRESH": None
-        },
-        "Z-SCORE": {
-            "TOP_RESIST": None,
-            "BOT_RESIST": None,
-            "BREAKOUT": None
-        },
-        "X-SCORE": {
-            "WEIGHTS": [
-                1.25, 0, 0, 1.5, 2.25
-            ],
-            "DUMP": None
-        },
-        "PAIRS": {}
     }
 }
