@@ -40,7 +40,7 @@ def main(force_tick=False, force_candle=False):
         candles.update(pairs, '1m', start='4 hours ago utc', force=True)
         candles.update(pairs, '5m', start='4 hours ago utc', force=True)
         candles.update(pairs, '1h', start='4 hours ago utc', force=True)
-        trades.update('5m')
+        trades.update('1m')
 
     # Main loop
     while True:

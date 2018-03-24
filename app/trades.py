@@ -8,7 +8,7 @@ import app
 from app import freqtostr, strtofreq, pertostr, candles, signals
 from app.utils import utc_datetime as now, df_to_list, to_relative_str
 from app.timer import Timer
-from docs.trading import RULES
+from docs.rules import RULES
 from docs.data import BINANCE
 
 def siglog(msg): log.log(100, msg)
@@ -53,33 +53,42 @@ def update(_freq_str):
     # Merge new candle data
     dfc = candles.merge(dfc, pairs, time_span=delta(minutes=10))
 
-    # Calculate global market Moving Avg (Coinmarketcap data)
+    # *********************************************************************
+    # FIXME Replace CMC mkt data w/ Binance
+    # FIXME: Test if EMA results are better than MA
+    signals.pct_market_change(dfc, freq_str)
+
     n_periods = RULES[freq_str]['MOVING_AVG']['PERIODS']
-    mkt = db.market_idx_5t.find({"date":{"$gt":now()-delta(hours=24)}}, {"_id":0})
+    mkt = db.market_idx_5t.find(
+        {"date":{"$gt":now()-delta(hours=24)}},{"_id":0}).sort("date",1)
     df_mkt = pd.DataFrame(list(mkt))
     df_mkt.index = df_mkt['date']
     del df_mkt['date']
-    df_mkt = df_mkt.pct_change().rolling(window=int(n_periods/2)).mean() * 100
+    #df_mkt = df_mkt.pct_change().rolling(window=int(n_periods/2)).mean() * 100
+    df_mkt = df_mkt.pct_change().ewm(span=5).mean() * 100
     mkt_ma = df_mkt.iloc[-1]['mktcap_usd']
+    # *********************************************************************
 
     # Calculate Z-Scores, store in dataframe/mongodb
     ops=[]
     for pair in pairs:
         candle = candles.newest(pair, freq_str, df=dfc)
-        scores = signals.z_score(dfc.loc[pair,freq], candle, mkt_ma=mkt_ma)
+        scores = signals.z_score(
+            dfc.loc[pair,freq], candle, mkt_ma=mkt_ma)
         name = 'ZSCORE_' + freq_str.upper()
-        dfc[name].loc[pair,freq][-1] = scores['CLOSE']['ZSCORE'].round(3)
-        ops.append(UpdateOne(
-            {"open_time":candle["OPEN_TIME"], "pair":candle["PAIR"], "freq":candle["FREQ"]},
-            {'$set': {name: scores['CLOSE']['ZSCORE']}}
-        ))
-    db.candles.bulk_write(ops)
+        #dfc[name].loc[pair,freq][-1] = scores['CLOSE']['ZSCORE'].round(3)
+        #ops.append(UpdateOne({"open_time":candle["OPEN_TIME"],
+        #    "pair":candle["PAIR"], "freq":candle["FREQ"]},
+        #    {'$set': {name: scores['CLOSE']['ZSCORE']}}
+        #))
+    #db.candles.bulk_write(ops)
 
     siglog('')
     siglog('-'*80)
     siglog("Cycle #{}: Start".format(n_cycles))
     siglog("Data Refresh: '{}'".format(freq_str))
-    siglog("Market is {} ({:+.3f}%)".format("BULLISH" if mkt_ma > 0 else "BEARISH", mkt_ma))
+    siglog("Market is {} ({:+.3f}%)".format(
+        "BULLISH" if mkt_ma > 0 else "BEARISH", mkt_ma))
     siglog('-'*80)
 
     # Evaluate open positions
@@ -87,7 +96,7 @@ def update(_freq_str):
 
     for holding in holdings:
         candle = candles.newest(holding['pair'], freq_str, df=dfc)
-        update_holding(holding, candle)
+        update_holding(holding, candle, mkt_ma=mkt_ma)
 
     # Evaluate new positions for other tracked pairs
     inactive = sorted(list(set(pairs) - set([n['pair'] for n in holdings])))
@@ -97,11 +106,9 @@ def update(_freq_str):
         evaluate(candle, mkt_ma=mkt_ma)
 
     earnings_summary(t1)
-
-    log.info('Trade cycle completed. [%sms]', t1)
     n_cycles +=1
 
-#------------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def evaluate(candle, mkt_ma=None):
     """Evaluate opening new trade positions
     """
@@ -110,7 +117,7 @@ def evaluate(candle, mkt_ma=None):
     scores = signals.z_score(df, candle, mkt_ma=mkt_ma)
     z_score = scores['CLOSE']['ZSCORE']
 
-    log.info("'{}' {}: {:+.2f} Z-Score ({:+.2f}Δ, {:.8g}P, {:.8g}μ)".format(
+    log.debug("'{}' {}: {:+.2f} Z-Score ({:+.2f}Δ, {:.8g}P, {:.8g}μ)".format(
         freq_str, candle['PAIR'], scores['CLOSE']['ZSCORE'],
         scores['CLOSE']['ZSCORE'] - scores['OPEN']['ZSCORE'],
         candle['CLOSE'], scores['CLOSE']['MEAN']))
@@ -139,7 +146,7 @@ def evaluate(candle, mkt_ma=None):
             return open_holding(candle, scores, extra=msg)
 
 #------------------------------------------------------------------------------
-def update_holding(holding, candle):
+def update_holding(holding, candle, mkt_ma=None):
     """Evaluate sell potential of holding.
     """
     c1, c2 = holding['buy']['candle'], candle
@@ -161,9 +168,9 @@ def update_holding(holding, candle):
     # Sell if price < peak since position opened
     else:
         p_max = df.loc[slice(c1['OPEN_TIME'], df.iloc[-2].name)]['CLOSE'].max()
-        log.info("pmax for {} is {:.6f}".format(holding['pair'], p_max))
+        #log.info("pmax for {} is {:.6f}".format(holding['pair'], p_max))
 
-        if not np.isnan(pmax) and candle['CLOSE'] < p_max:
+        if not np.isnan(p_max) and candle['CLOSE'] < p_max:
             return close_holding(holding, c2, scores)
 
     summary(holding, c2, scores=scores)

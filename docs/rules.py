@@ -23,17 +23,15 @@ RULES = {
             "CANDLE_THRESH": 0.05           # Minimum
         },
         "Z-SCORE": {
-            "BUY_BREAK_REST": 5.0           # Buy breakouts when score rises above (deviations from μ)
-            "BUY_SUPT": -2.0,               # Buy when score falls below (deviations from μ)
-            "BUY_SUPT_BEAR_COEF": None,     # FIXME: Support * (1 + (abs(MKT_MA) * 5))
-            "BUY_SUPT_BULL_COEF": None,     # FIXME: Support * (1 - (MKT_MA * 1.75))
+            "BUY_BREAK_REST": 5.0,          # Buy breakouts when score rises above (deviations from μ)
+            "BUY_SUPT": -3.0,               # Buy when score falls below (deviations from μ)
             "SELL_SUPT_MARG": 1.01,         # Extra z-score margin below support in case we buy slightly
                                             # before price reverses upward.
         },
         "PAIRS": {                          # Custom settings for specific pairs
             "EOSBTC": None,                 # -2% ΔP often followed by +0.5-1.0% ΔP candle.
-            "BTCUSDT": None                 # Close Z-score of -3 good setting for bounce.
-            "ENGBTC":
+            "BTCUSDT": None,                # Close Z-score of -3 good setting for bounce.
+            "ENGBTC": None
         }
     }
 }
