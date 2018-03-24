@@ -27,25 +27,16 @@ dfc=None
 candle=None
 scores=None
 
-"""# Auto-remove non-number columns:
-    df.select_dtypes(include=[np.number])
-# Stacked column indexes:
-    pd.DataFrame({'stacked_idx_col1':df, 'stacked_idx_col2':df})
-"""
-
 #------------------------------------------------------------------------------
 def init():
     global dfc, candle, scores
     trades.init()
     dfc = trades.dfc
-    del dfc['ZSCORE_1M'], dfc['ZSCORE_5M'], dfc['ZSCORE_1H']#, dfc['TRADES']
-
     pair = 'BTCUSDT'
     candle = candles.newest(pair,'1m', df=trades.dfc)
     scores = signals.z_score(dfc.loc[pair,strtofreq['1m']], candle)
     #holding = db.trades.find_one({"pair":pair, "status":"open"})
     #trades.update('1m')
-
 
 #------------------------------------------------------------------------------
 def thresholding_algo(y, lag, threshold, influence):
@@ -77,37 +68,5 @@ def thresholding_algo(y, lag, threshold, influence):
                 avgFilter = np.asarray(avgFilter),
                 stdFilter = np.asarray(stdFilter))
 
-#------------------------------------------------------------------------------
-def weighted_avg(grp):
-    """1m freq * 4hrs = 240 periods
-    """
-    _df = grp.xs(60, level=1)
-    _df = _df.iloc[len(_df)-240:-1]
-    close = _df['CLOSE']
-    w = np.linspace(start=0, stop=1, num=len(close))
-    zscore = (close - (close * w).mean()) / close.std()
-    pprint(len(zscore))
-    return pd.DataFrame(
-        {"close":close, "weight":w, "zscore":zscore},
-        index = f[['PAIR','OPEN_TIME']]
-    )
-
 ##### MAIN #####
 init()
-
-
-
-"""
-np.random.seed(0)
-df = pd.DataFrame({
-    "Date": pd.date_range(start='2018-01-01', end='2018-01-03 18:00:00', freq='6H'),
-    "Weight": np.random.uniform(3, 5, 12),
-    "V1": np.random.uniform(10, 15, 12),
-    "V2": np.random.uniform(10, 15, 12),
-    "V3": np.random.uniform(10, 15, 12)
-})
-
-df.index = df["Date"]
-df_agg = df.groupby(pd.Grouper(freq='1D')).apply(weighted_average_std).unstack(-1)
-print(df_agg)
-"""

@@ -24,7 +24,7 @@ RULES = {
         },
         "Z-SCORE": {
             "BUY_BREAK_REST": 5.0,          # Buy breakouts when score rises above (deviations from μ)
-            "BUY_SUPT": -3.0,               # Buy when score falls below (deviations from μ)
+            "THRESH": -3.0,                 # Buy when score falls below (deviations from μ)
             "SELL_SUPT_MARG": 1.01,         # Extra z-score margin below support in case we buy slightly
                                             # before price reverses upward.
         },

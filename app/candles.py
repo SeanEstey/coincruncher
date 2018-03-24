@@ -8,7 +8,6 @@ from docs.data import BINANCE
 from app.timer import Timer
 from app.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
 from app.mongo import locked
-
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------

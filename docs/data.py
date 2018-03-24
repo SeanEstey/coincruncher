@@ -4,7 +4,7 @@ BINANCE = {
     "TRADE_AMT": 50.00,
     "PCT_FEE": 0.05,
     "PAIRS": [
-        #"BLZBTC",
+        "BLZBTC",
         "BNBUSDT",
         "QTUMUSDT",
         "BTCUSDT",
@@ -24,14 +24,14 @@ BINANCE = {
         "NEOUSDT",
         "OMGBTC",
         "STORMBTC",
-        #"VENBTC",
-        #"VIABTC",
+        "VENBTC",
+        "VIABTC",
         "WANBTC",
         "WTCBTC",
         "XMRBTC",
-        #"XRPBTC",
+        "XRPBTC",
         "XVGBTC",
-        #"ZECBTC"
+        "ZECBTC"
     ],
     "KLINE_FIELDS": [
         'open_time',
