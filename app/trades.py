@@ -6,6 +6,7 @@ import logging
 from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
+from binance.client import Client
 from pymongo import UpdateOne, ReturnDocument
 from pprint import pprint
 import app
@@ -20,25 +21,28 @@ def pct_diff(a,b): return ((b-a)/a)*100
 log = logging.getLogger('trades')
 
 rules = RULES['1m'] # FIXME
+start = now()
 dfc = pd.DataFrame()
 n_cycles = 0
 mkt_move, freq, freq_str = None, None, None
 pairs = BINANCE['PAIRS']
 ema_span = rules['EMA']['SPAN']
 z_thresh = rules['Z-SCORE']['THRESH']
-
+client = None
 
 #------------------------------------------------------------------------------
 def init():
     """Preload candles records from mongoDB to global dataframe.
     Performance: ~3,000ms/100k records
     """
-    global dfc
+    global dfc, client
     t1 = Timer()
     log.info('Preloading historic data...')
 
     dfc = pd.DataFrame()
     dfc = candles.merge(dfc, pairs, time_span=delta(days=21))
+
+    client = Client("", "")
 
     log.info('{:,} records loaded in {:,.1f}s.'.format(
         len(dfc), t1.elapsed(unit='s')))
@@ -59,7 +63,9 @@ def update(_freq_str):
     mkt_move = signals.pct_mkt_change(dfc, freq_str)
 
     siglog('*'*80)
-    siglog("Cycle #{}".format(n_cycles))
+    duration = to_relative_str(now() - start)
+    hdr = "Cycle #{} {:>%s}" % (80 - 7 - 1 - len(str(n_cycles)))
+    siglog(hdr.format(n_cycles, duration))
     siglog('*'*80)
     siglog("{} trading pair(s):".format(len(pairs)))
     [siglog(x) for x in agg_mkt().to_string().split('\n')]
@@ -98,7 +104,7 @@ def calc_signals(candle):
     ema_slope = ema_slope.round(3)
 
     return {
-        'z_score': signals.z_score(df, candle),
+        'z-score': signals.z_score(df, candle),
         'ema_slope': ema_slope
     }
 
@@ -106,25 +112,40 @@ def calc_signals(candle):
 def eval_buy(candle):
     """New trade criteria.
     """
-    cc,cp = candle['close'], candle['pair']
     sig = calc_signals(candle)
     z = sig['z_score']
 
-    log.debug("{} {:+.2f} ZP, {:.8g} P".format(cp.lower(), z.close, cc))
-
     # A. Z-Score below threshold
     if z.close < z_thresh:
-        return buy(candle, sig, 'zthresh', extra="{:+.2f} ZP < {:.2f}.".format(
-            z.close, z_thresh))
+        return buy(candle, decision={
+            'category': 'z-score',
+            'signals': sig,
+            'details': {
+                'close:z-score < thresh': '{:+.2f} < {:+.2f}'.format(
+                    z.close, z_thresh)
+            }
+        })
 
     # B) Positive market & candle EMA (within Z-Score threshold)
-    mslope = mkt_move.iloc[0][0]
+    agg_slope = mkt_move.iloc[0][0]
 
     if (sig['ema_slope'].tail(5) > 0).all():
-        if mslope > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
-            details = '{:+.8g} mslope, {:+.5f}% pslope, {:+.2f} z.close.'.format(
-                mslope, sig['ema_slope'].iloc[-1], z.close)
-            return buy(candle, sig, 'pslope', extra=details)
+        if agg_slope > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
+            return buy(candle, decision={
+                'category': 'slope',
+                'signals': sig,
+                'details': {
+                    'ema:slope:tail(5):min > thresh': '{:+.2f}% > 0'.format(
+                        sig['ema_slope'].tail(5).min()),
+                    'agg:ema:slope > thresh': '{:+.2f}% > 0'.format(agg_slope),
+                    'volume:z-score > thresh': '{+.2f} > 0.5'.format(z.volume),
+                    'buy-ratio:z-score > thresh': '{+.2f} > 0.5'.format(z.buy_ratio)
+                }
+            })
+
+    # No buy executed.
+    log.debug("{}{:<5}{:+.2f} Z-Score{:<5}{:+.2f} Slope".format(
+        candle['pair'], '', z.close, '', sig['ema_slope'].iloc[-1]))
     return None
 
 #------------------------------------------------------------------------------
@@ -132,70 +153,99 @@ def eval_sell(hold, candle):
     """Avoid losses, maximize profits.
     """
     sig = calc_signals(candle)
-    reason = hold['buy'].get('reason','')
+    reason = hold['buy']['decision']['category']
 
     # A. Predict price peak as we approach mean value.
-    if reason == 'zthresh':
-        if sig['z_score'].close > -0.75:
-            return sell(hold, candle, sig, 'zthresh')
+    if reason == 'z-score':
+        if sig['z-score'].close > -0.75:
+            if sig['ema_slope'].iloc[-1] <= 0.10:
+                return sell(hold, candle, decision={
+                    'category': 'z-score',
+                    'signals': sig,
+                    'details': {
+                        'close:z-score > thresh': '{:+.2f} > -0.75'.format(sig['z-score'].close),
+                        'ema:slope < thresh': '{:+.2f}% <= 0.10'.format(sig['ema_slope'].iloc[-1])
+                    }
+                })
+
     # B. Sell when price slope < 0
-    elif reason == 'pslope':
-        if sig['ema_slope'].iloc[-1] <= 0 or (candle['close'] - hold['buy']['price']) < 0:
-            return sell(hold, candle, sig, 'pslope')
+    elif reason == 'slope':
+        ob = client.get_orderbook_ticker(symbol=candle['pair'])
+        bid = float(ob['bidPrice'])
+
+        if sig['ema_slope'].iloc[-1] <= 0 or bid < hold['buy']['order']['price']:
+            return sell(hold, candle, decision={
+                'category': 'slope',
+                'signals': sig,
+                'details': {
+                    'ema:slope <= thresh': '{:+.2f}% <= 0'.format(sig['ema_slope'].iloc[-1]),
+                    'OR bid < buy': '{:.8f} < {:.8f}'.format(bid, hold['buy']['order']['price'])
+                }
+            }, orderbook=ob)
     return None
 
 #------------------------------------------------------------------------------
-def buy(candle, sig, reason, extra=None):
+def buy(candle, decision=None):
     """Create or update existing position for zscore above threshold value.
     """
-    pct_fee = BINANCE['PCT_FEE']
-    quote = BINANCE['TRADE_AMT']
-    fee = quote * (pct_fee/100)
-
-    sig['z_score'] = sig['z_score'].to_dict()
-    sig['ema_slope'] = sig['ema_slope'].to_dict()
+    decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
+    decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
+    orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
+    order = {
+        'exchange': 'Binance',
+        'price': float(orderbook['askPrice']),
+        'volume': 1.0,  # FIXME
+        'quote': BINANCE['TRADE_AMT'],
+        'pct_fee': BINANCE['PCT_FEE'],
+        'fee': BINANCE['TRADE_AMT'] * (BINANCE['PCT_FEE']/100),
+    }
 
     return app.get_db().trades.insert_one({
         'pair': candle['pair'],
         'status': 'open',
         'start_time': now(),
-        'exchange': 'Binance',
         'buy': {
             'time': now(),
-            'reason': reason,
-            'price': candle['close'].round(8),
-            'volume': np.float64(quote / candle['close']).round(8),
-            'quote': quote + fee,
-            'fee': fee,
-            'pct_fee': pct_fee,
             'candle': candle,
-            'signals': sig,
-            'details': extra if extra else None
+            'decision': decision,
+            'orderbook': orderbook,
+            'order': order
         }
     }).inserted_id
 
 #------------------------------------------------------------------------------
-def sell(hold, candle, sig, reason):
+def sell(hold, candle, orderbook=None, decision=None):
     """Close off existing position and calculate earnings.
     """
-    pct_fee = BINANCE['PCT_FEE']
-    buy_vol = np.float64(hold['buy']['volume'])
-    buy_quote = np.float64(hold['buy']['quote'])
-    p1 = np.float64(hold['buy']['candle']['close'])
+    ob = orderbook if orderbook else client.get_orderbook_ticker(symbol=candle['pair'])
+    bid = np.float64(ob['bidPrice'])
 
-    p2 = candle['close']
-    pct_pdiff = pct_diff(p1, p2)
-    quote = (p2 * buy_vol) * (1 - pct_fee/100)
-    fee = (p2 * buy_vol) * (pct_fee/100)
+    pct_fee = BINANCE['PCT_FEE']
+    buy_vol = np.float64(hold['buy']['order']['volume'])
+    buy_quote = np.float64(hold['buy']['order']['quote'])
+    p1 = np.float64(hold['buy']['order']['price']
+
+    pct_pdiff = pct_diff(p1, bid)
+    quote = (bid * buy_vol) * (1 - pct_fee/100)
+    fee = (bid * buy_vol) * (pct_fee/100)
 
     net_earn = quote - buy_quote
     pct_net = pct_diff(buy_quote, quote)
 
+    order = {
+        'exchange':'Binance',
+        'price': bid,
+        'volume': 1.0,
+        'quote': quote,
+        'pct_fee': pct_fee,
+        'fee': fee
+    }
+
     duration = now() - hold['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
 
-    sig['z_score'] = sig['z_score'].to_dict()
-    sig['ema_slope'] = sig['ema_slope'].to_dict()
+    decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
+    decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
 
     db = app.get_db()
     db.trades.update_one(
@@ -209,14 +259,10 @@ def sell(hold, candle, sig, reason):
             'net_earn': net_earn.round(4),
             'sell': {
                 'time': now(),
-                'reason': reason,
-                'price': p2.round(8),
-                'volume': buy_vol.round(8),
-                'quote': quote.round(8),
-                'fee': fee,
-                'pct_fee': pct_fee,
                 'candle': candle,
-                'signals': sig
+                'decision': decision,
+                'orderbook': orderbook,
+                'order': order
             }
         }}
     )
@@ -283,7 +329,6 @@ def cycle_summary(trade_ids):
             ])
         # Buy trade
         else:
-            # TODO: include buy_ratio / volume?
             data.append([
                 'BUY',
                 0.0,
@@ -325,8 +370,9 @@ def total_summary(t1):
     ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
 
     #siglog("Cycle time: {:,.0f} ms".format(t1.elapsed()))
-    siglog("{} of {} trade(s) profited".format(n_win, len(closed)))  #, ratio))
-    siglog("{:+.2f}% net earnings".format(pct_earn))
+    siglog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))  #, ratio))
+    duration = to_relative_str(now() - start)
+    siglog("{:+.2f}% net profit today.".format(pct_earn)) #, duration))
 
 #-----------------------------------------------------------------------------
 def agg_mkt():
