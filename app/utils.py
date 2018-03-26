@@ -116,7 +116,7 @@ def to_relative_str(_delta):
 
     # Second(s) span
     nSec = int(diff_ms/1000)
-    return "{} second{}".format(nSec, 's' if nSec > 1 else '')
+    return "{} sec{}".format(nSec, 's' if nSec > 1 else '')
 
 #------------------------------------------------------------------------------
 def datestr_to_ms(date_str):

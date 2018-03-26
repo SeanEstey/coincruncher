@@ -9,31 +9,31 @@ import app
 from app import freqtostr, pertostr, strtofreq, strtoper, candles
 from app.timer import Timer
 from app.utils import to_local, to_relative_str, utc_datetime as now
-from docs.config import Z_FACTORS, Z_DIMEN, Z_IDX_NAMES, DFC_COLUMNS
+from docs.config import Z_FACTORS
 from docs.rules import RULES
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def pct_market_change(dfc, freq_str):
+def pct_mkt_change(dfc, freq_str, span=None, label=None):
     """Aggregate percent market change in last 1 minute.
     # FIXME: only pull up to date candle data. slice by date
     # to make sure no other data is distorting the results.
     """
     freq = strtofreq[freq_str]
-    pct_mkt = dfc.xs(freq, level=1).groupby('PAIR').pct_change().tail(1).mean()
-    df = pd.DataFrame(pct_mkt, columns=['']).round(4)
-    df = df.rename(index={ x:x.title() for x in DFC_COLUMNS})
 
-    if df.loc['Close'][0] < 0:
-        sentiment = 'Bearish'
-    else:
-        sentiment = 'Bullish'
+    span = span if span else 2
+    group = dfc.xs(freq, level=1).groupby('pair')
 
-    dt = dfc.xs(freq,level=1).iloc[-1].name[1] +delta(minutes=1)
-    dt = dt.replace(tzinfo=pytz.utc)
-    rel_str = to_relative_str(now() - dt) + " ago"
-    df.index.name = "('{}' Market, {}, {})".format(freq_str, rel_str, sentiment)
+    if span == 2:
+        pct_mkt = group.tail(2).groupby('pair').pct_change().mean()
+    elif span > 2:
+        pct_mkt = group.tail(span).dropna().groupby('pair').agg(
+            lambda x: ((x.iloc[-1] - x.iloc[0]) / x.iloc[0])*100
+        ).mean()
+
+    df = pd.DataFrame(pct_mkt, columns=[label]).round(4)[0:1]
+    df.index = ['Pct Change']
     return df
 
 #-----------------------------------------------------------------------------
@@ -45,7 +45,7 @@ def z_score(dfc, candle):
     """
     t1 = Timer()
     period = 1.0
-    co,cf = candle['OPEN_TIME'], candle['FREQ']
+    co,cf = candle['open_time'], candle['freq']
 
     if cf == '1m':
         end = co - delta(minutes=1)
@@ -64,20 +64,16 @@ def z_score(dfc, candle):
 
     # Mean and SD
     stats = ema.describe()
-    data = []
+    cols = ['close', 'volume', 'buy_ratio']
 
-    # Calc Z-Score
-    for x in Z_FACTORS:
-        data.append([
-            candle[x],
-            stats[x]['mean'],
-            stats[x]['std'],
-            (candle[x] - stats[x]['mean']) / stats[x]['std']
-        ])
+    # Calc Z-Scores
+    data = [
+        (candle['close'] - stats['close']['mean']) / stats['close']['std'],
+        (candle['volume'] - stats['volume']['mean']) / stats['volume']['std'],
+        (candle['buy_ratio'] - stats['buy_ratio']['mean']) / stats['buy_ratio']['std']
+    ]
 
-    return pd.DataFrame(np.array(data).transpose(),
-        index=pd.Index(Z_DIMEN), columns=Z_FACTORS
-    ).astype('float64').round(8)
+    return pd.Series(data, index=cols).astype('float64').round(8)
 
 #------------------------------------------------------------------------------
 def weighted_avg(df, col):
@@ -118,7 +114,7 @@ def thresh_adapt():
     #       msg="{:+.2f} Z-Score > {:.2f} Breakout.".format(z_score, breakout)
     #    return open_holding(candle, scores, extra=msg)
     # ********************************************************************
-    z_thresh = RULES[freq_str]['Z-SCORE']['THRESH']
+    #z_thresh = RULES[freq_str]['Z-SCORE']['THRESH']
     # Example: -0.1% MA and -2.0 support => -3.0 support
     if mkt_ma < 0:
         return z_thresh * (1 + (abs(mkt_ma) * 5))
@@ -206,3 +202,33 @@ def pca(df):
                     ktau, kpvalue = stats.kendalltau(ts1, ts2)
                     print(r2, pvalue)
                     print(ktau, kpvalue)
+
+#------------------------------------------------------------------------------
+def thresholding_algo(y, lag, threshold, influence):
+
+    signals = np.zeros(len(y))
+    filteredY = np.array(y)
+    avgFilter = [0]*len(y)
+    stdFilter = [0]*len(y)
+    avgFilter[lag - 1] = np.mean(y[0:lag])
+    stdFilter[lag - 1] = np.std(y[0:lag])
+
+    for i in range(lag, len(y)):
+        if abs(y[i] - avgFilter[i-1]) > threshold * stdFilter [i-1]:
+            if y[i] > avgFilter[i-1]:
+                signals[i] = 1
+            else:
+                signals[i] = -1
+
+            filteredY[i] = influence * y[i] + (1 - influence) * filteredY[i-1]
+            avgFilter[i] = np.mean(filteredY[(i-lag):i])
+            stdFilter[i] = np.std(filteredY[(i-lag):i])
+        else:
+            signals[i] = 0
+            filteredY[i] = y[i]
+            avgFilter[i] = np.mean(filteredY[(i-lag):i])
+            stdFilter[i] = np.std(filteredY[(i-lag):i])
+
+    return dict(signals = np.asarray(signals),
+                avgFilter = np.asarray(avgFilter),
+                stdFilter = np.asarray(stdFilter))

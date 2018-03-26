@@ -8,23 +8,6 @@ from app.utils import duration, utc_dtdate, utc_datetime
 log = logging.getLogger('markets')
 
 #---------------------------------------------------------------------------
-def next_update():
-    """Seconds remaining until next API data refresh.
-    """
-    updated_dt = list(collection.find().sort("date",-1).limit(1))[0]['date']
-    elapsed = int((utc_dt() - updated_dt).total_seconds())
-
-    log.debug("%s sec since '%s' last_updated timestamp",
-        collection.name, elapsed.total_seconds())
-
-    if elapsed >= api_refresh:
-
-        return 0
-    else:
-        assert(elapsed >= 0)
-        return api_refresh - elapsed
-
-#---------------------------------------------------------------------------
 def db_audit():
     """Verifies the completeness of the db collections, generates any
     necessary documents to fill gaps if possible.
@@ -95,45 +78,6 @@ def generate_1d(_date):
 
     return 75000
 
-#------------------------------------------------------------------------------
-def update_1d_series(start, end):
-    """TODO: refactor so this calls aggregate inside loop
-    """
-    db = get_db()
-
-    dt = start
-    while dt <= end:
-        # Build market analysis for yesterday's data
-        results = db.market_idx_5t.find(
-            {"date": {"$gte":dt, "$lt":dt + timedelta(days=1)}},
-            {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
-
-        if results.count() < 1:
-            log.debug("no datapoints for '%s'", dt)
-            dt += timedelta(days=1)
-            continue
-
-        log.debug("resampling %s data points", results.count())
-
-        # Build pandas dataframe and resample to 1D
-        df = pd.DataFrame(list(results))
-        df.index = df['date']
-        df = df.resample("1D").mean()
-        cols = ["mktcap_usd", "vol_24h_usd"]
-        df[cols] = df[cols].fillna(0.0).astype(int)
-        df_dict = df.to_dict(orient='records')
-
-        if len(df_dict) != 1:
-            log.error("dataframe length is %s!", len(df_dict))
-            raise Exception("invalid df length")
-
-        df_dict = df_dict[0]
-        df_dict["date"] = dt
-        db.market_idx_1d.insert_one(df_dict)
-
-        log.info("market_idx_1d inserted for '%s'.", dt)
-
-        dt += timedelta(days=1)
 
 #------------------------------------------------------------------------------
 def diff(period, to_format):
@@ -169,34 +113,3 @@ def diff(period, to_format):
     pct = round((diff / mkts[0]['mktcap_usd']) * 100, 2)
 
     return pct if to_format == 'percentage' else diff
-
-#------------------------------------------------------------------------------
-def resample(start, end, freq):
-    """Resample datetimes from '5M' to given frequency
-    @freq: '1H', '1D', '7D'
-    """
-    import pytz
-    from app.utils import parse_period
-    db = get_db()
-    qty, unit, tdelta = parse_period(freq)
-    dt = datetime.now(tz=pytz.UTC) - tdelta
-
-    results = db.market_idx_5t.find(
-        {'date':{'$gte':from_dt}},
-        {'_id':0,'n_assets':0,'n_currencies':0,'n_markets':0,'pct_mktcap_btc':0})
-
-    df = pd.DataFrame(list(results))
-    df.index = df['date']
-    del df['date']
-    df = df.resample(freq).mean()
-    return df
-
-#------------------------------------------------------------------------------
-def mcap_avg_diff(freq):
-    """@freq: '1H', '1D', '7D'
-    """
-    caps = list(mktcap_resample(freq)['mktcap_usd'])
-    if len(caps) < 2:
-        return 0.0
-    diff = round(((caps[-1] - caps[-2]) / caps[-2]) * 100, 2)
-    return diff

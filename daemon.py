@@ -39,7 +39,7 @@ def main(force_tick=False, force_candle=False):
     if force_candle == True:
         candles.update(pairs, '1m', start='4 hours ago utc', force=True)
         candles.update(pairs, '5m', start='4 hours ago utc', force=True)
-        candles.update(pairs, '1h', start='4 hours ago utc', force=True)
+        candles.update(pairs, '1h', start='36 hours ago utc', force=True)
         trades.update('1m')
 
     # Main loop
@@ -50,22 +50,20 @@ def main(force_tick=False, force_candle=False):
             eod_tasks()
             timer_1d.set_expiry(utc_dtdate() + timedelta(days=1))
 
-        if timer_1m.remain() == 0:
-            candles.update(pairs, '1m')
-            trades.update('1m')
-            timer_1m.reset()
+        if timer_1h.remain() == 0:
+            candles.update(pairs, '1h')
+            timer_1h.set_expiry('next hour change')
 
         if timer_5m.remain() == 0:
             candles.update(pairs, '5m')
             coinmktcap.global_markets()
-            #trades.update('5m')
             coinmktcap.tickers(limit=500)
             timer_5m.reset()
 
-        if timer_1h.remain() == 0:
-            candles.update(pairs, '1h')
-            #trades.update('1h')
-            timer_1h.set_expiry('next hour change')
+        if timer_1m.remain() == 0:
+            candles.update(pairs, '1m')
+            trades.update('1m')
+            timer_1m.reset()
 
         time.sleep(5)
 #---------------------------------------------------------------------------

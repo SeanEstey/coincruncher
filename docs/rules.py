@@ -17,21 +17,11 @@ Thesis:
 
 RULES = {
     "1m": {
-        "MOVING_AVG": {
-            "PERIODS": 5,                   # Num candle periods
-            "MARKET_THRESH": None,          # Minimum
-            "CANDLE_THRESH": 0.05           # Minimum
+        "EMA": {
+            "SPAN": 20                     # Num candle periods
         },
         "Z-SCORE": {
-            "BUY_BREAK_REST": 5.0,          # Buy breakouts when score rises above (deviations from μ)
-            "THRESH": -3.0,                 # Buy when score falls below (deviations from μ)
-            "SELL_SUPT_MARG": 1.01,         # Extra z-score margin below support in case we buy slightly
-                                            # before price reverses upward.
-        },
-        "PAIRS": {                          # Custom settings for specific pairs
-            "EOSBTC": None,                 # -2% ΔP often followed by +0.5-1.0% ΔP candle.
-            "BTCUSDT": None,                # Close Z-score of -3 good setting for bounce.
-            "ENGBTC": None
+            "THRESH": -3.0                 # Buy when score falls below (deviations from μ)
         }
     }
 }

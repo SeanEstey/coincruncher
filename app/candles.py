@@ -57,13 +57,13 @@ def update(pairs, freq, start=None, force=False):
                     {'$set':candle},
                     upsert=True
                 ))
-            db.candles.bulk_write(ops)
+            result = db.candles.bulk_write(ops)
         else:
             # Should not create any duplicates because of force==False
             # check in query_api()
-            db.candles.insert_many(candles)
+            result = db.candles.insert_many(candles)
 
-    log.info("%s %s candle records queried/stored. [%ss]",
+    log.info("%s %s records queried/stored. [%ss]",
         len(candles), freq, t1.elapsed(unit='s'))
 
     return candles
@@ -93,7 +93,7 @@ def merge(df, pairs, time_span=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k DB reads
     every main loop.
     """
-    from docs.config import DFC_COLUMNS
+    columns = ['close', 'open', 'trades', 'volume', 'buy_ratio']
     t1 = Timer()
     idx, data = [], []
     time_span = time_span if time_span else timedelta(days=21)
@@ -103,11 +103,11 @@ def merge(df, pairs, time_span=None):
 
     for candle in curs:
         idx.append((candle['pair'], strtofreq[candle['freq']], candle['open_time']))
-        data.append( [candle.get(x.lower(), None) for x in DFC_COLUMNS] )
+        data.append( [candle.get(x, None) for x in columns] )
 
     df_new = pd.DataFrame(data,
-        index = pd.Index(idx, names=['PAIR', 'FREQ', 'OPEN_TIME']),
-        columns = DFC_COLUMNS)
+        index = pd.Index(idx, names=['pair', 'freq', 'open_time']),
+        columns = columns)
 
     df = pd.concat([df, df_new]).drop_duplicates().sort_index()
 
@@ -171,5 +171,5 @@ def query_api(pair, freq, start=None, end=None, force=False):
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 
-    log.debug('%s %s %s candles queried [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
+    log.debug('%s %s %s queried [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
     return results

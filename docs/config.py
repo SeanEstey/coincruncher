@@ -1,8 +1,9 @@
 # Signals
 Z_IDX_NAMES = ['PAIR', 'FREQ', 'CLOSE_TIME']
-Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE']
-Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
-DFC_COLUMNS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO'] #, 'ZSCORE_1M', 'ZSCORE_5M', 'ZSCORE_1H']
+#Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE']
+#Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
+Z_FACTORS = ['close', 'volume', 'buy_ratio']
+DFC_COLUMNS = ['close', 'open', 'trades', 'volume', 'buy_volume']
 
 # App
 HOST="45.79.176.125"
