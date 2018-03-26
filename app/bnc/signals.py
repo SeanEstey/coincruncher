@@ -1,40 +1,28 @@
 import logging
-from pymongo import UpdateOne, ReplaceOne
-from datetime import datetime, timedelta as delta
-from pprint import pprint
-import pytz
+from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
 import app
-from app import freqtostr, pertostr, strtofreq, strtoper, candles
-from app.timer import Timer
-from app.utils import to_local, to_relative_str, utc_datetime as now
-from docs.config import Z_FACTORS
-from docs.rules import RULES
-def siglog(msg): log.log(100, msg)
+from app import strtofreq
 log = logging.getLogger('signals')
 
-#-----------------------------------------------------------------------------
-def pct_mkt_change(dfc, freq_str, span=None, label=None):
-    """Aggregate percent market change in last 1 minute.
-    # FIXME: only pull up to date candle data. slice by date
-    # to make sure no other data is distorting the results.
+#------------------------------------------------------------------------------
+def generate(candle):
+    """Generate Z-Scores and EMA slope.
     """
-    freq = strtofreq[freq_str]
+    df = dfc.loc[candle['pair'],freq]
+    rng = df.loc[slice(
+        candle['open_time'] - delta(hours=2),
+        candle['open_time']
+    )]['close'].copy()
+    ema_slope = rng.ewm(span=ema_span).mean().pct_change().tail(10) * 100
+    ema_slope.index = [ str(n)[:-10] for n in ema_slope.index.values ]
+    ema_slope = ema_slope.round(3)
 
-    span = span if span else 2
-    group = dfc.xs(freq, level=1).groupby('pair')
-
-    if span == 2:
-        pct_mkt = group.tail(2).groupby('pair').pct_change().mean()
-    elif span > 2:
-        pct_mkt = group.tail(span).dropna().groupby('pair').agg(
-            lambda x: ((x.iloc[-1] - x.iloc[0]) / x.iloc[0])*100
-        ).mean()
-
-    df = pd.DataFrame(pct_mkt, columns=[label]).round(4)[0:1]
-    df.index = ['Pct Change']
-    return df
+    return {
+        'z-score': signals.z_score(df, candle),
+        'ema_slope': ema_slope
+    }
 
 #-----------------------------------------------------------------------------
 def z_score(dfc, candle):
@@ -43,7 +31,6 @@ def z_score(dfc, candle):
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
-    t1 = Timer()
     period = 1.0
     co,cf = candle['open_time'], candle['freq']
 

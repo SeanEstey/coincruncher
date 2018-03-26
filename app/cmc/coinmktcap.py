@@ -2,8 +2,8 @@
 from datetime import datetime, timedelta
 import argparse, logging, requests, json, re
 from pymongo import ReplaceOne
-from .timer import Timer
 from app import get_db
+from app.timer import Timer
 from app.utils import to_dt
 from docs.data import COINMARKETCAP
 

@@ -3,7 +3,9 @@ import logging, time, signal
 from datetime import datetime, timedelta
 from app.timer import Timer
 from app.utils import utc_dtdate
-from app import candles, coinmktcap, forex, markets, trades
+from app.bnc import candles, trades
+from app.cmc import coinmktcap, markets
+from app import forex
 from docs.config import TICKER_LIMIT
 from docs.data import BINANCE
 log = logging.getLogger('daemon')

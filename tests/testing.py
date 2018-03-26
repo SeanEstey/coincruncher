@@ -12,7 +12,8 @@ import pandas as pd
 import numpy as np
 from pymongo import ReplaceOne, UpdateOne
 import app
-from app import freqtostr, strtofreq, pertostr, candles, signals, trades
+from app import freqtostr, strtofreq, pertostr
+from app.bnc import candles, signals, trades
 from app.timer import Timer
 from app.utils import utc_datetime as now, utc_dtdate
 from docs.config import *
@@ -81,6 +82,14 @@ def _unfinished():
     # siglog("Holdings: {} Open, {:+.2f}% Mean Value".format(len(active), pct_change_hold))
     # siglog('-'*80)
     # ********************************************************************
+    pass
+
+#-----------------------------------------------------------------------------
+def print_tickers():
+    # *********************************************************************
+    # TODO: Create another trading log for detailed ticker tarding signals.
+    # Primary siglog will be mostly for active trading/holdings.
+    # *********************************************************************
     pass
 
 #------------------------------------------------------------------------------
