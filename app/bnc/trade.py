@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
+from pymongo import ReturnDocument
 from binance.client import Client
 from datetime import timedelta as delta
 from app import get_db, strtofreq
@@ -100,13 +101,12 @@ def eval_buy(candle):
         })
 
     # B) Positive market & candle EMA (within Z-Score threshold)
-    # 2/5 agg.mkt values > 0 == .4 confidence
-    # 3/5 agg.mkt values > 0 == .6 confidence
-    # 5/5 agg.mkt values > 0 == .95 confidence
-    agg_slope = markets.agg_pct_change(freq_str, span=60, label='agg.slope')
+    # 2/5 agg.mkt values > 0 (IN SEQUENCE) == .4 confidence
+    # 3/5 agg.mkt values > 0 (IN SEQUENCE) == .6 confidence
+    # 5/5 agg.mkt values > 0 (IN SEQUENCE) == .95 confidence
+    agg_span = 120
+    agg_slope = markets.agg_pct_change(freq_str, span=agg_span, label='agg.slope')
     agg_slope = agg_slope.iloc[0][0]
-
-    log.debug("agg_slope: {:.8g}%".format(agg_slope))
 
     if (sig['ema_slope'].tail(5) > 0).all():
         if agg_slope > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
@@ -116,7 +116,7 @@ def eval_buy(candle):
                 'details': {
                     'ema:slope:tail(5):min > thresh': '{:+.2f}% > 0'.format(
                         sig['ema_slope'].tail(5).min()),
-                    'agg:ema:slope > thresh': '{:+.4g}% > 0'.format(agg_slope),
+                    'agg:ema:slope > thresh': '{:+.4g}% (span={}) > 0'.format(agg_slope, agg_span),
                     'volume:z-score > thresh': '{:+.2f} > 0.5'.format(z.volume),
                     'buy-ratio:z-score > thresh': '{:+.2f} > 0.5'.format(z.buy_ratio)
                 }
@@ -133,6 +133,11 @@ def eval_sell(doc, candle):
     """
     global client
     sig = signals.generate(candle)
+    doc = app.get_db().trades.find_one_and_update(
+        {"_id":doc["_id"]},
+        {"$push":{"monitor.ema_slope":sig['ema_slope'].iloc[-1]}},
+        return_document = ReturnDocument.AFTER
+    )
     reason = doc['buy']['decision']['category']
 
     # A. Predict price peak as we approach mean value.
@@ -147,13 +152,12 @@ def eval_sell(doc, candle):
                         'ema:slope < thresh': '{:+.2f}% <= 0.10'.format(sig['ema_slope'].iloc[-1])
                     }
                 })
-
-    # B. Sell when price slope < 0
+    # B. Sell at peak price slope
     elif reason == 'slope':
         ob = client.get_orderbook_ticker(symbol=candle['pair'])
         bid = float(ob['bidPrice'])
 
-        if sig['ema_slope'].iloc[-1] <= 0: # and bid < doc['buy']['order']['price']:
+        if sig['ema_slope'].iloc[-1] < max(doc['monitor']['ema_slope']):
             return sell(doc, candle, orderbook=ob, decision={
                 'category': 'slope',
                 'signals': sig,
