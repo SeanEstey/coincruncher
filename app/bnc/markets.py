@@ -12,6 +12,7 @@ def agg_pct_change(freq_str, span=None, label=None):
     """
     dfc = app.bnc.dfc
     freq = strtofreq[freq_str]
+    label = label if label else ''
 
     span = span if span else 2
     group = dfc.xs(freq, level=1).groupby('pair')

@@ -1,32 +1,38 @@
 import logging
 import numpy as np
 import pandas as pd
+from binance.client import Client
 from datetime import timedelta as delta
 from app import get_db, strtofreq
 from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bnc
-from app.bnc import z_thresh, pairs, candles, markets, signals, printer
+from docs.data import BINANCE
+from app.bnc import pct_diff, z_thresh, pairs, candles, markets, signals, printer
 
 def siglog(msg): log.log(100, msg)
-log = logging.getLogger('bnc.trade')
+log = logging.getLogger('trade')
 
 # GLOBALS
 n_cycles = 0
 start = now()
 freq = None
 freq_str = None
+client = None
 
 #------------------------------------------------------------------------------
 def init():
     """Preload candles records from mongoDB to global dataframe.
     Performance: ~3,000ms/100k records
     """
+    global client
     t1 = Timer()
     log.info('Preloading historic data...')
 
     # Does this modify the dfc var in bnc.__init__ for other modules too??
     dfc = app.bnc.dfc = candles.merge(pd.DataFrame(), pairs, time_span=delta(days=7))
+
+    client = Client("","")
 
     log.info('{:,} records loaded in {:,.1f}s.'.format(
         len(dfc), t1.elapsed(unit='s')))
@@ -60,17 +66,17 @@ def update(frequency):
     holdings = list(get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
     for hold in holdings:
         candle = candles.newest(hold['pair'], freq_str, df=dfc)
-        trade_ids += eval_sell(hold, candle)
+        trade_ids += [eval_sell(hold, candle)]
 
     # Evaluate Buys
     inactive = sorted(list(set(pairs) - set([n['pair'] for n in holdings])))
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=dfc)
-        trade_ids += eval_buy(candle)
+        trade_ids += [eval_buy(candle)]
 
     printer.trades([n for n in trade_ids if n])
     siglog('-'*80)
-    printer.positions('closed')
+    printer.positions('closed', start=start)
 
     n_cycles +=1
 
@@ -94,8 +100,13 @@ def eval_buy(candle):
         })
 
     # B) Positive market & candle EMA (within Z-Score threshold)
-    agg_slope = markets.agg_pct_change(dfc, freq_str)
-    #agg_slope = mkt_move.iloc[0][0]
+    # 2/5 agg.mkt values > 0 == .4 confidence
+    # 3/5 agg.mkt values > 0 == .6 confidence
+    # 5/5 agg.mkt values > 0 == .95 confidence
+    agg_slope = markets.agg_pct_change(freq_str, span=60, label='agg.slope')
+    agg_slope = agg_slope.iloc[0][0]
+
+    log.debug("agg_slope: {:.8g}%".format(agg_slope))
 
     if (sig['ema_slope'].tail(5) > 0).all():
         if agg_slope > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
@@ -105,9 +116,9 @@ def eval_buy(candle):
                 'details': {
                     'ema:slope:tail(5):min > thresh': '{:+.2f}% > 0'.format(
                         sig['ema_slope'].tail(5).min()),
-                    'agg:ema:slope > thresh': '{:+.2f}% > 0'.format(agg_slope),
-                    'volume:z-score > thresh': '{+.2f} > 0.5'.format(z.volume),
-                    'buy-ratio:z-score > thresh': '{+.2f} > 0.5'.format(z.buy_ratio)
+                    'agg:ema:slope > thresh': '{:+.4g}% > 0'.format(agg_slope),
+                    'volume:z-score > thresh': '{:+.2f} > 0.5'.format(z.volume),
+                    'buy-ratio:z-score > thresh': '{:+.2f} > 0.5'.format(z.buy_ratio)
                 }
             })
 
@@ -120,7 +131,7 @@ def eval_buy(candle):
 def eval_sell(doc, candle):
     """Avoid losses, maximize profits.
     """
-    client = app.bnc.client
+    global client
     sig = signals.generate(candle)
     reason = doc['buy']['decision']['category']
 
@@ -142,13 +153,13 @@ def eval_sell(doc, candle):
         ob = client.get_orderbook_ticker(symbol=candle['pair'])
         bid = float(ob['bidPrice'])
 
-        if sig['ema_slope'].iloc[-1] <= 0 or bid < doc['buy']['order']['price']:
+        if sig['ema_slope'].iloc[-1] <= 0: # and bid < doc['buy']['order']['price']:
             return sell(doc, candle, orderbook=ob, decision={
                 'category': 'slope',
                 'signals': sig,
                 'details': {
                     'ema:slope <= thresh': '{:+.2f}% <= 0'.format(sig['ema_slope'].iloc[-1]),
-                    'OR bid < buy': '{:.8f} < {:.8f}'.format(bid, doc['buy']['order']['price'])
+                    'AND bid < buy': '{:.8f} < {:.8f}'.format(bid, doc['buy']['order']['price'])
                 }
             })
     return None
@@ -157,13 +168,13 @@ def eval_sell(doc, candle):
 def buy(candle, decision=None):
     """Create or update existing position for zscore above threshold value.
     """
-    client = app.bnc.client
+    global client
     decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
     decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     order = {
         'exchange': 'Binance',
-        'price': float(orderbook['askPrice']),
+        'price': np.float64(orderbook['askPrice']),
         'volume': 1.0,  # FIXME
         'quote': BINANCE['TRADE_AMT'],
         'pct_fee': BINANCE['PCT_FEE'],
@@ -187,7 +198,7 @@ def buy(candle, decision=None):
 def sell(doc, candle, orderbook=None, decision=None):
     """Close off existing position and calculate earnings.
     """
-    client = app.bnc.client
+    global client
     ob = orderbook if orderbook else client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(ob['bidPrice'])
 
@@ -200,8 +211,9 @@ def sell(doc, candle, orderbook=None, decision=None):
     quote = (bid * buy_vol) * (1 - pct_fee/100)
     fee = (bid * buy_vol) * (pct_fee/100)
 
-    net_earn = quote - buy_quote
-    pct_net = pct_diff(buy_quote, quote)
+    #net_earn = quote - buy_quote
+    pct_net = net_earn = pct_pdiff - (pct_fee*2) #quote - buy_quote
+    #pct_net = pct_diff(buy_quote, quote)
 
     duration = now() - doc['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)

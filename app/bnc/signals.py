@@ -5,7 +5,7 @@ import numpy as np
 import app, app.bnc
 from app.bnc import ema_span
 from app import strtofreq
-log = logging.getLogger('bnc.signals')
+log = logging.getLogger('signals')
 
 #------------------------------------------------------------------------------
 def generate(candle):
@@ -22,7 +22,7 @@ def generate(candle):
     ema_slope = ema_slope.round(3)
 
     return {
-        'z-score': z_score(df, candle),
+        'z-score': z_score(candle),
         'ema_slope': ema_slope
     }
 
@@ -34,6 +34,8 @@ def z_score(candle):
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
     dfc = app.bnc.dfc
+    df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+
     period = 1.0
     co,cf = candle['open_time'], candle['freq']
 
@@ -47,7 +49,7 @@ def z_score(candle):
         end = co - delta(hours=1)
         start = end - delta(hours = 72 * period)
 
-    history = dfc.loc[slice(start, end)]
+    history = df.loc[slice(start, end)]
 
     # Smooth signal/noise ratio with EMA.
     ema = history.ewm(span=5).mean()

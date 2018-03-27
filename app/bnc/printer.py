@@ -7,7 +7,7 @@ import app.bnc
 from app.bnc import *
 from .markets import agg_pct_change
 def siglog(msg): log.log(100, msg)
-log = logging.getLogger('bnc.printer')
+log = logging.getLogger('print')
 
 #-----------------------------------------------------------------------------
 def agg_mkts():
@@ -31,6 +31,7 @@ def agg_mkts():
     # Print values to % str
     for n in range(0,len(labels)):
         value = df[df.columns[n]][0]
+        # FIXME. Deprecated set_value()
         df.set_value(row_label, df.columns[n], "{:+,.2f}%".format(value))
     return df
 
@@ -42,7 +43,8 @@ def trades(trade_ids):
     data, indexes = [], []
 
     for _id in trade_ids:
-        doc = db.positions.find_one({"_id":_id})
+        doc = db.trades.find_one({"_id":_id})
+        freq_str = doc['buy']['candle']['freq']
         indexes.append(doc['pair'])
         candle = candles.newest(doc['pair'], freq_str, df=dfc)
         sig = signals.generate(candle)
@@ -86,18 +88,18 @@ def trades(trade_ids):
     [siglog(line) for line in lines]
 
 #------------------------------------------------------------------------------
-def positions(_type):
+def positions(_type, start=None):
     db = app.get_db()
     dfc = app.bnc.dfc
 
     if _type == 'open':
         cols = ["ΔPrice", "Slope", " Z-Score", " ΔZ-Score", "Time"]
         data, indexes = [], []
-        trades = list(db.positions.find({'status':'open', 'pair':{"$in":pairs}}))
+        trades = list(db.trades.find({'status':'open', 'pair':{"$in":pairs}}))
 
         for doc in trades:
             c1 = doc['buy']['candle']
-            c2 = candles.newest(doc['pair'], freq_str, df=dfc)
+            c2 = candles.newest(doc['pair'], c1['freq'], df=dfc)
             sig = signals.generate(c2)
 
             data.append([
@@ -126,7 +128,7 @@ def positions(_type):
             return df
     elif _type == 'closed':
         n_win, pct_earn = 0, 0
-        closed = list(db.positions.find({"status":"closed"}))
+        closed = list(db.trades.find({"status":"closed"}))
 
         for n in closed:
             if n['pct_pdiff'] > 0:
