@@ -1,6 +1,6 @@
 import logging, os, pymongo
 from docs.mongo_key import *
-from app.timer import Timer
+from .timer import Timer
 log = logging.getLogger('mongodb')
 
 #-------------------------------------------------------------------------------

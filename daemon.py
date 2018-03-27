@@ -1,11 +1,11 @@
 # daemon
 import logging, time, signal
 from datetime import datetime, timedelta
-from app.timer import Timer
-from app.utils import utc_dtdate
-from app.bnc import candles, trades
-from app.cmc import coinmktcap, markets
-from app import forex
+from app.common.timer import Timer
+from app.common.utils import utc_dtdate
+from app.bnc import candles, trade
+from app.cmc import tickers
+from app.common import forex
 from docs.config import TICKER_LIMIT
 from docs.data import BINANCE
 log = logging.getLogger('daemon')
@@ -31,24 +31,22 @@ def main(force_tick=False, force_candle=False):
     timer_1h = Timer(name='1H_Timer', expire='next hour change')
     timer_1d = Timer(name='1D_Timer', expire=utc_dtdate()+timedelta(days=1))
 
-    markets.db_audit()
-    trades.init()
+    trade.init()
 
     if force_tick == True:
-        coinmktcap.tickers(limit=1500)
-        coinmktcap.global_markets()
+        tickers.update(limit=500)
 
     if force_candle == True:
         candles.update(pairs, '1m', start='4 hours ago utc', force=True)
         candles.update(pairs, '5m', start='4 hours ago utc', force=True)
         candles.update(pairs, '1h', start='36 hours ago utc', force=True)
-        trades.update('1m')
+        trade.update('1m')
 
     # Main loop
     while True:
         if timer_1d.remain() == 0:
             candles.update(pairs, '1d')
-            trades.update('1h')
+            trade.update('1h')
             eod_tasks()
             timer_1d.set_expiry(utc_dtdate() + timedelta(days=1))
 
@@ -58,13 +56,12 @@ def main(force_tick=False, force_candle=False):
 
         if timer_5m.remain() == 0:
             candles.update(pairs, '5m')
-            coinmktcap.global_markets()
-            coinmktcap.tickers(limit=500)
+            tickers.update(limit=500)
             timer_5m.reset()
 
         if timer_1m.remain() == 0:
             candles.update(pairs, '1m')
-            trades.update('1m')
+            trade.update('1m')
             timer_1m.reset()
 
         time.sleep(5)

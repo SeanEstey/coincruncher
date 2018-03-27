@@ -3,7 +3,7 @@ import logging
 import textwrap
 from logging import DEBUG, ERROR, INFO, WARNING, CRITICAL
 from docs.config import *
-from app.utils import colors
+from app.common.utils import colors
 logging.addLevelName(SIGNAL, "Signal")
 log = logging.getLogger('app')
 
@@ -87,7 +87,7 @@ def file_handler(level, path, filters=None):
 
 #---------------------------------------------------------------------------
 def set_db(host):
-    from .mongo import create_client
+    from app.common.mongo import create_client
     global db, client
     client = create_client(
         host=host,

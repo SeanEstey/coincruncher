@@ -2,7 +2,7 @@
 import json, logging, pytz, requests, time
 from datetime import datetime, date, timedelta
 from app import get_db
-from app.utils import duration, utc_datetime, utc_dtdate, utc_date
+from .utils import duration, utc_datetime, utc_dtdate, utc_date
 log = logging.getLogger('forex')
 
 #-------------------------------------------------------------------------------

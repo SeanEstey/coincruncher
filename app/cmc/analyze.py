@@ -50,10 +50,10 @@ def price_df(coins, date_rng):
     dt0 = date_rng[0].to_datetime()
     dt1 = date_rng[-1].to_datetime()
     if freq.freqstr[-1] in ['D','M','Y']:
-        collname = "tickers_1d"
+        collname = "cmc_tick"
         field = "$close"
     elif freq.freqstr[-1] in ['T','H']:
-        collname = "tickers_5t"
+        collname = "cmc_tick"
         field = "$price_usd"
 
     cursor = db[collname].aggregate([
@@ -123,7 +123,7 @@ def topcoins(rank):
     """Get list of ticker symbols within given rank.
     """
     db = get_db()
-    _date = list(db.tickers_5t.find().sort("date",-1).limit(1))[0]["date"]
-    cursor = db.tickers_5t.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
+    _date = list(db.cmc_tick.find().sort("date",-1).limit(1))[0]["date"]
+    cursor = db.cmc_tick.find({"date":_date, "rank":{"$lte":rank}}).sort("rank",1)
     return [n["symbol"] for n in list(cursor)]
 

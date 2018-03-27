@@ -2,15 +2,17 @@ import logging
 from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
-import app
+import app, app.bnc
+from app.bnc import ema_span
 from app import strtofreq
-log = logging.getLogger('signals')
+log = logging.getLogger('bnc.signals')
 
 #------------------------------------------------------------------------------
 def generate(candle):
     """Generate Z-Scores and EMA slope.
     """
-    df = dfc.loc[candle['pair'],freq]
+    dfc = app.bnc.dfc
+    df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     rng = df.loc[slice(
         candle['open_time'] - delta(hours=2),
         candle['open_time']
@@ -20,17 +22,18 @@ def generate(candle):
     ema_slope = ema_slope.round(3)
 
     return {
-        'z-score': signals.z_score(df, candle),
+        'z-score': z_score(df, candle),
         'ema_slope': ema_slope
     }
 
 #-----------------------------------------------------------------------------
-def z_score(dfc, candle):
+def z_score(candle):
     """Generate Mean/STD/Z-Score for given candle properties.
     Attempts to correct distorted Mean values in bearish/bullish markets by
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
+    dfc = app.bnc.dfc
     period = 1.0
     co,cf = candle['open_time'], candle['freq']
 

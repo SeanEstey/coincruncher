@@ -1,13 +1,84 @@
+import logging
+import numpy as np
+import pandas as pd
+from datetime import timedelta as delta
+from app import get_db, strtofreq
+from app.common.utils import utc_datetime as now, to_relative_str
+from app.common.timer import Timer
+import app.bnc
+from app.bnc import z_thresh, pairs, candles, markets, signals, printer
 
-# *********************************************************************
-# TODO: Place cap on number of trades to open per cycle and open at
-# any given time.
-# *********************************************************************
+def siglog(msg): log.log(100, msg)
+log = logging.getLogger('bnc.trade')
+
+# GLOBALS
+n_cycles = 0
+start = now()
+freq = None
+freq_str = None
+
+#------------------------------------------------------------------------------
+def init():
+    """Preload candles records from mongoDB to global dataframe.
+    Performance: ~3,000ms/100k records
+    """
+    t1 = Timer()
+    log.info('Preloading historic data...')
+
+    # Does this modify the dfc var in bnc.__init__ for other modules too??
+    dfc = app.bnc.dfc = candles.merge(pd.DataFrame(), pairs, time_span=delta(days=7))
+
+    log.info('{:,} records loaded in {:,.1f}s.'.format(
+        len(dfc), t1.elapsed(unit='s')))
+
+#------------------------------------------------------------------------------
+def update(frequency):
+    """Evaluate Binance market data and execute buy/sell trades.
+    """
+    global n_cycles, freq_str, freq
+    freq_str = frequency
+    freq = strtofreq[freq_str]
+    t1 = Timer()
+
+    # Update candle data
+    dfc = app.bnc.dfc = candles.merge(app.bnc.dfc, pairs, time_span=delta(minutes=10))
+
+    siglog('*'*80)
+    duration = to_relative_str(now() - start)
+    hdr = "Cycle #{} {:>%s}" % (80 - 7 - 1 - len(str(n_cycles)))
+    siglog(hdr.format(n_cycles, duration))
+    siglog('*'*80)
+    siglog("{} trading pair(s):".format(len(pairs)))
+    [siglog(x) for x in printer.agg_mkts().to_string().split('\n')]
+    siglog('-'*80)
+    printer.positions('open')
+    siglog('-'*80)
+
+    trade_ids=[]
+
+    # Evaluate Sells
+    holdings = list(get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
+    for hold in holdings:
+        candle = candles.newest(hold['pair'], freq_str, df=dfc)
+        trade_ids += eval_sell(hold, candle)
+
+    # Evaluate Buys
+    inactive = sorted(list(set(pairs) - set([n['pair'] for n in holdings])))
+    for pair in inactive:
+        candle = candles.newest(pair, freq_str, df=dfc)
+        trade_ids += eval_buy(candle)
+
+    printer.trades([n for n in trade_ids if n])
+    siglog('-'*80)
+    printer.positions('closed')
+
+    n_cycles +=1
 
 #-------------------------------------------------------------------------------
-def eval_open(candle):
+def eval_buy(candle):
     """New trade criteria.
     """
+    dfc = app.bnc.dfc
     sig = signals.generate(candle)
     z = sig['z-score']
 
@@ -23,7 +94,7 @@ def eval_open(candle):
         })
 
     # B) Positive market & candle EMA (within Z-Score threshold)
-    agg_slope = market.agg_pct_change(dfc, freq_str)
+    agg_slope = markets.agg_pct_change(dfc, freq_str)
     #agg_slope = mkt_move.iloc[0][0]
 
     if (sig['ema_slope'].tail(5) > 0).all():
@@ -46,9 +117,10 @@ def eval_open(candle):
     return None
 
 #------------------------------------------------------------------------------
-def eval_close(doc, candle):
+def eval_sell(doc, candle):
     """Avoid losses, maximize profits.
     """
+    client = app.bnc.client
     sig = signals.generate(candle)
     reason = doc['buy']['decision']['category']
 
@@ -82,9 +154,10 @@ def eval_close(doc, candle):
     return None
 
 #------------------------------------------------------------------------------
-def open_new(candle, decision=None):
+def buy(candle, decision=None):
     """Create or update existing position for zscore above threshold value.
     """
+    client = app.bnc.client
     decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
     decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
@@ -97,7 +170,7 @@ def open_new(candle, decision=None):
         'fee': BINANCE['TRADE_AMT'] * (BINANCE['PCT_FEE']/100),
     }
 
-    return app.get_db().positions.insert_one({
+    return get_db().trades.insert_one({
         'pair': candle['pair'],
         'status': 'open',
         'start_time': now(),
@@ -111,9 +184,10 @@ def open_new(candle, decision=None):
     }).inserted_id
 
 #------------------------------------------------------------------------------
-def close_out(doc, candle, orderbook=None, decision=None):
+def sell(doc, candle, orderbook=None, decision=None):
     """Close off existing position and calculate earnings.
     """
+    client = app.bnc.client
     ob = orderbook if orderbook else client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(ob['bidPrice'])
 
@@ -135,7 +209,7 @@ def close_out(doc, candle, orderbook=None, decision=None):
     decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
     decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
 
-    app.get_db().positions.update_one(
+    get_db().trades.update_one(
         {'_id': doc['_id']},
         {'$set': {
             'status': 'closed',
@@ -161,59 +235,3 @@ def close_out(doc, candle, orderbook=None, decision=None):
         }}
     )
     return doc['_id']
-
-#------------------------------------------------------------------------------
-def open_summary():
-    cols = ["ΔPrice", "Slope", " Z-Score", " ΔZ-Score", "Time"]
-    data, indexes = [], []
-    holdings = list(app.get_db().positions.find({'status':'open', 'pair':{"$in":pairs}}))
-
-    for doc in holdings:
-        c1 = doc['buy']['candle']
-        c2 = candles.newest(doc['pair'], freq_str, df=dfc)
-        sig = signals.generate(c2)
-
-        data.append([
-            pct_diff(c1['close'], c2['close']),
-            sig['ema_slope'].iloc[-1],
-            sig['z-score'].close,
-            sig['z-score'].close - doc['buy']['decision']['signals']['z-score']['close'],
-            to_relative_str(now() - doc['start_time'])
-        ])
-        indexes.append(doc['pair'])
-
-    if len(holdings) == 0:
-        siglog(" 0 holdings")
-    else:
-        df = pd.DataFrame(data, index=pd.Index(indexes), columns=cols)
-        df = df[cols]
-        lines = df.to_string(formatters={
-            cols[0]: ' {:+.2f}%'.format,
-            cols[1]: ' {:+.2f}%'.format,
-            cols[2]: '  {:.2f}'.format,
-            cols[3]: '  {:+.2f}'.format,
-            cols[4]: '{}'.format
-        }).split("\n")
-        siglog("{} holding(s):".format(len(df)))
-        [siglog(line) for line in lines]
-        return df
-
-#------------------------------------------------------------------------------
-def closed_summary(t1):
-    """
-    """
-    db = app.get_db()
-    n_win, pct_earn = 0, 0
-    closed = list(db.positions.find({"status":"closed"}))
-
-    for n in closed:
-        if n['pct_pdiff'] > 0:
-            n_win += 1
-        pct_earn += n['pct_earn']
-
-    ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
-
-    #siglog("Cycle time: {:,.0f} ms".format(t1.elapsed()))
-    siglog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))
-    duration = to_relative_str(now() - start)
-    siglog("{:+.2f}% net profit today.".format(pct_earn))

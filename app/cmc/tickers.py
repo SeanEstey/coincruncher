@@ -1,58 +1,266 @@
-# app.tickers
+# app.coinmktcap.tickers
 import logging, pytz, json
-from pprint import pformat, pprint
+import argparse, logging, requests, json, re
 from datetime import datetime, timedelta as delta, date
-from dateutil import tz
 from dateutil.parser import parse
-from pymongo import ReplaceOne, UpdateOne
+from pymongo import ReplaceOne
 from app import get_db
-from app.timer import Timer
-from app.utils import utc_datetime, utc_dtdate, utc_date, to_float, to_int, parse_period
-from app.coinmktcap import download_data, extract_data
-logging.getLogger("requests").setLevel(logging.ERROR)
-logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
-log = logging.getLogger('tickers')
+from app.common.timer import Timer
+from app.common.utils import utc_dtdate, to_int, parse_period, to_dt
+from docs.data import COINMARKETCAP
+
+log = logging.getLogger('cmc.tickers')
+#logging.getLogger("requests").setLevel(logging.ERROR)
+#logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+parser = argparse.ArgumentParser()
+parser.add_argument("currency", help="", type=str)
+parser.add_argument("start_date",  help="", type=str)
+parser.add_argument("end_date", help="", type=str)
+parser.add_argument("--dataframe", help="", action='store_true')
+
 
 #------------------------------------------------------------------------------
-def db_audit():
-    # Verify tickers_1d completeness
+def update(start=0, limit=None):
+    query_api_tick(start=start, limit=limit)
+    query_api_mkt()
+
+#------------------------------------------------------------------------------
+def query_api_tick(start=0, limit=None):
+    """Update 5T ticker data from coinmarketcap.com REST API.
+    """
+    idx = start
+    t1 = Timer()
     db = get_db()
 
-    _tickers = db.tickers_1d.aggregate([
-        {"$group":{
-            "_id":"$id",
-            "date":{"$max":"$date"},
-            "name":{"$last":"$name"},
-            "symbol":{"$last":"$symbol"},
-            "rank":{"$last":"$rank_now"},
-            "count":{"$sum":1}
-        }},
-        {"$sort":{"rank":1}}
-    ])
-    _tickers = list(_tickers)
+    try:
+        r = requests.get("https://api.coinmarketcap.com/v1/ticker/?start={}&limit={}"\
+            .format(idx, limit or 0))
+        data = json.loads(r.text)
+    except Exception as e:
+        return log.error("API error %s", r.status_code)
 
-    log.debug("%s aggregated ticker_1d assets", len(_tickers))
+    if r.status_code != 200:
+        return log.error("API error %s", r.status_code)
 
-    for tckr in _tickers:
-        last_update = utc_dtdate() - delta(days=1) - tckr["date"]
-        if last_update.total_seconds() < 1:
-            log.debug("%s up-to-date.", tckr["symbol"])
-            continue
+    # Sort by timestamp in descending order
+    data = sorted(data, key=lambda x: int(x["last_updated"] or 1))[::-1]
 
-        log.debug("updating %s (%s out-of-date)", tckr["symbol"], last_update)
+    # Prune outdated tickers
+    ts_range = range(
+        int(data[0]["last_updated"]) - 180,
+        int(data[0]["last_updated"]) + 1)
+    tickerdata = [ n for n in data if n["last_updated"] and int(n["last_updated"]) in ts_range ]
+    _dt = to_dt(int(data[0]["last_updated"]))
+    updated = _dt - delta(seconds=_dt.second, microseconds=_dt.microsecond)
+    ops = []
 
-        get_history(
-            tckr["_id"],
-            tckr["name"],
-            tckr["symbol"],
-            tckr["rank"],
-            tckr["date"],
-            utc_dtdate())
+    for ticker in tickerdata:
+        store={"date":updated}
 
-    log.debug("DB: verified")
+        for f in COINMARKETCAP['API']['TICKERS']:
+            try:
+                val = ticker[f["from"]]
+                store[f["to"]] = f["type"](val) if val else None
+            except Exception as e:
+                log.exception("%s ticker error", ticker["symbol"])
+                continue
+
+        ops.append(ReplaceOne(
+            {'date':updated, 'symbol':store['symbol']}, store, upsert=True))
+
+    if save_capped_db(ops, db.cmc_tick):
+        log.info("%s Coinmktcap tickers updated. [%sms]", len(tickerdata), t1)
+
+#---------------------------------------------------------------------------
+def query_api_mkt():
+    """Update 5T market index data from coinmarketcap.com REST API.
+    """
+    t1 = Timer()
+
+    try:
+        r = requests.get("https://api.coinmarketcap.com/v1/global")
+        data = json.loads(r.text)
+    except Exception as e:
+        return log.error("API error %s", r.status_code)
+
+    if r.status_code != 200:
+        return log.error("API error %s", r.status_code)
+
+    print(r.status_code)
+
+    store = {}
+    for m in COINMARKETCAP['API']['MARKETS']:
+        store[m["to"]] = m["type"]( data[m["from"]] )
+
+    get_db().market_idx_5t.replace_one(
+        {'date':store['date']}, store,
+        upsert=True)
+
+    log.info("Coinmktcap markets updated. [{}ms]".format(t1))
+
+#---------------------------------------------------------------------------
+def parse_options(currency, start_date, end_date):
+    """Extract parameters from command line.
+    @currency: full name of asset ("ethereum")
+    @start_date, @end_date: date strings
+    """
+    currency   = currency.lower()
+    start_date_split = start_date.split('-')
+    end_date_split   = end_date.split('-')
+    start_year = int(start_date_split[0])
+    end_year   = int(end_date_split[0])
+    # String validation
+    pattern    = re.compile('[2][0][1][0-9]-[0-1][0-9]-[0-3][0-9]')
+
+    if not re.match(pattern, start_date):
+        raise ValueError('Invalid format for the start_date: ' +\
+            start_date + ". Should be of the form: yyyy-mm-dd.")
+    if not re.match(pattern, end_date):
+        raise ValueError('Invalid format for the end_date: '   + end_date  +\
+            ". Should be of the form: yyyy-mm-dd.")
+
+    # Datetime validation for the correctness of the date.
+    # Will throw a ValueError if not valid
+    datetime(start_year,int(start_date_split[1]),int(start_date_split[2]))
+    datetime(end_year,  int(end_date_split[1]),  int(end_date_split[2]))
+
+    # CoinMarketCap's price data (at least for Bitcoin, presuambly for all others)
+    # only goes back to 2013
+    invalid_args =                 start_year < 2013
+    invalid_args = invalid_args or end_year   < 2013
+    invalid_args = invalid_args or end_year   < start_year
+
+    if invalid_args:
+        return print('Usage: ' + __file__ + ' <currency> <start_date> <end_date> --dataframe')
+
+    start_date = start_date_split[0]+ start_date_split[1] + start_date_split[2]
+    end_date   = end_date_split[0]  + end_date_split[1]   + end_date_split[2]
+
+    return currency, start_date, end_date
+
+#---------------------------------------------------------------------------
+def download_data(currency, start_date, end_date):
+    """Download HTML price history for the specified cryptocurrency and time
+    range from CoinMarketCap.
+    """
+    url = 'https://coinmarketcap.com/currencies/' + currency + '/historical-data/' + '?start=' \
+        + start_date + '&end=' + end_date
+    try:
+        page = requests.get(url)
+        if page.status_code != 200:
+            print(page.status_code)
+            print(page.text)
+            raise Exception('Failed to load page')
+        html = page.text
+    except Exception as e:
+        print('Error fetching price data from ' + url)
+        print(str(e))
+
+    if hasattr(e, 'message'):
+        print("Error message: " + e.message)
+    else:
+        print(e)
+
+    raise Exception("Error scraping data for %s" % currency)
+    return html
+
+#---------------------------------------------------------------------------
+def extract_data(html):
+    """Extract the price history from the HTML.
+    The CoinMarketCap historical data page has just one HTML table. This table
+    contains the data we want. It's got one header row with the column names.
+    We need to derive the "average" price for the provided data.
+    """
+    head = re.search(r'<thead>(.*)</thead>', html, re.DOTALL).group(1)
+    header = re.findall(r'<th .*>([\w ]+)</th>', head)
+    header.append('Average (High + Low / 2)')
+
+    body = re.search(r'<tbody>(.*)</tbody>', html, re.DOTALL).group(1)
+    raw_rows = re.findall(r'<tr[^>]*>' + r'\s*<td[^>]*>([^<]+)</td>'*7 + r'\s*</tr>', body)
+
+    # strip commas
+    rows = []
+    for row in raw_rows:
+        row = [ field.replace(",","") for field in row ]
+        rows.append(row)
+
+    # calculate averages
+    def append_average(row):
+        high = float(row[header.index('High')])
+        low = float(row[header.index('Low')])
+        average = (high + low) / 2
+        row.append( '{:.2f}'.format(average) )
+        return row
+
+    rows = [ append_average(row) for row in rows ]
+    return header, rows
+
+#---------------------------------------------------------------------------
+def render_csv_data(header, rows):
+    """Render the data in CSV format.
+    """
+    print(','.join(header))
+    for row in rows:
+        print(','.join(row))
+
+#---------------------------------------------------------------------------
+def processDataFrame(df):
+    import pandas as pd
+    assert isinstance(df, pd.DataFrame), "df is not a pandas DataFrame."
+
+    cols = list(df.columns.values)
+    cols.remove('Date')
+    df.loc[:,'Date'] = pd.to_datetime(df.Date)
+    for col in cols: df.loc[:,col] = df[col].apply(lambda x: float(x))
+    return df.sort_values(by='Date').reset_index(drop=True)
+
+#---------------------------------------------------------------------------
+def rowsFromFile(filename):
+    import csv
+    with open(filename, 'rb') as infile:
+        rows = csv.reader(infile, delimiter=',')
+        for row in rows:
+            print(row)
+
+#---------------------------------------------------------------------------
+def save_capped_db(ops, coll):
+    try:
+        result = coll.bulk_write(ops)
+    except Exception as e:
+        log.exception("Error saving CMC tickers. %s", str(e))
+        db = get_db()
+        stats = db.command("collstats",coll.name)
+
+        if stats['capped'] == False:
+            return False
+
+        max_size = stats['maxSize']
+
+        # Capped collection full. Drop and re-create w/ indexes.
+        if stats['size'] / max_size > 0.9:
+            from pymongo import IndexModel, ASCENDING, DESCENDING
+
+            log.info("Capped collection > 90% full. Dropping and recreating.")
+            name = coll.name
+            coll.drop()
+
+            db.create_collection(name, capped=True, size=max_size)
+            idx1 = IndexModel( [("symbol", ASCENDING)], name="symbol")
+            idx2 = IndexModel( [("date", DESCENDING)], name="date_-1")
+            db[name].create_indexes([idx1, idx2])
+
+            log.info("Retrying bulk_write")
+            try:
+                result = db[name].bulk_write(ops)
+            except Exception as e:
+                log.exception("Error saving CMC tickers. %s", str(e))
+                return False
+        else:
+            log.error("Size is <90% max. Unknown error.")
+    return True
 
 #------------------------------------------------------------------------------
-def get_history(_id, name, symbol, rank, start, end):
+def scrape_history(_id, name, symbol, rank, start, end):
     """Scrape coinmarketcap for historical ticker data in given date range.
     """
     db = get_db()
@@ -99,60 +307,7 @@ def get_history(_id, name, symbol, rank, start, end):
         symbol, len(rows), result.modified_count, result.upserted_count, t1)
 
 #------------------------------------------------------------------------------
-def generate_1d(_date):
-    """Generate '1d' ticker data from stored '5m' datapoints. Alternative to
-    scraping data off coinmarketcap.
-    """
-    db = get_db()
-
-    # Already generated?
-    if db.tickers_1d.find_one({"date":_date}):
-        log.debug("tickers_1d already exists for '%s'", _date.date())
-        return 75000
-
-    # Gather source data
-    cursor = db.tickers_5t.find({"date":{"$gte":_date, "$lt":_date+delta(days=1)}})
-
-    if cursor.count() < 1:
-        log.error("no '5m' source data found on '%s'", _date.date())
-        return 75000
-
-    operations = []
-
-    for ticker in cursor:
-        operations.append(UpdateOne(
-            {"symbol":ticker["symbol"], "date":_date},
-            {
-                "$set": {
-                    "symbol":ticker["symbol"],
-                    "id":ticker["id"],
-                    "name":ticker["name"],
-                    "date":_date,
-                    "close":ticker["price_usd"],
-                    "mktcap_usd":ticker["mktcap_usd"],
-                    "vol_24h_usd":ticker["vol_24h_usd"],
-                    "rank_now":ticker["rank"]
-                },
-                "$setOnInsert":{"open":ticker["price_usd"]},
-                "$max":{"high":ticker["price_usd"]},
-                "$min":{"low":ticker["price_usd"]},
-            },
-            upsert=True))
-
-    log.debug("tickers_1d writing %s updates...", len(operations))
-
-    try:
-        result = db.tickers_1d.bulk_write(operations)
-    except Exception as e:
-        log.exception("update_1d bulk_write error")
-        return 300
-
-    log.info("tickers_1d updated. %s modified, %s upserted.",
-        result.modified_count, result.upserted_count)
-    return 300
-
-#------------------------------------------------------------------------------
-def diff(symbol, price, period, to_format):
+def tkr_diff(symbol, price, period, to_format):
     """Compare current ticker price to historical.
     @price: float in USD
     @offset: str time period to compare. i.e. '1H', '1D', '7D'
@@ -172,16 +327,41 @@ def diff(symbol, price, period, to_format):
     return pct if to_format == 'percentage' else diff
 
 #------------------------------------------------------------------------------
+def mkt_diff(period, to_format):
+    """Compare market cap to given date.
+    @period: str time period to compare. i.e. '1H', '1D', '7D'
+    @to_format: 'currency' or 'percentage'
+    """
+    db = get_db()
+    qty, unit, tdelta = parse_period(period)
+    dt = datetime.now(tz=pytz.UTC) - tdelta
+
+    mkts = [
+        list(db.market_idx_5t.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
+        list(db.market_idx_5t.find({}).sort("date", -1).limit(1))
+    ]
+
+    for m in  mkts:
+        if len(m) < 1 or m[0].get('mktcap_usd') is None:
+            return 0.0
+
+    mkts[0] = mkts[0][0]
+    mkts[1] = mkts[1][0]
+
+    dt_diff = round((mkts[0]['date'] - dt).total_seconds() / 3600, 2)
+    if dt_diff > 1:
+        log.debug("mktcap lookup fail. period='%s', closest='%s', tdelta='%s hrs'",
+        period, mkts[0]['date'].strftime("%m-%d-%Y %H:%M"), dt_diff)
+        return "--"
+
+    diff = mkts[1]['mktcap_usd'] - mkts[0]['mktcap_usd']
+    pct = round((diff / mkts[0]['mktcap_usd']) * 100, 2)
+
+    return pct if to_format == 'percentage' else diff
+
+#------------------------------------------------------------------------------
 def volatile_24h():
-    cursor = get_db().tickers_5t.find({"rank":{"$lte":500}}).sort("date",-1).limit(500)
+    cursor = get_db().cmc_tick.find({"rank":{"$lte":500}}).sort("date",-1).limit(500)
     tckrs = list(cursor)
     descend = sorted(tckrs, key=lambda x: float(x["pct_24h"] or 0.0), reverse=True)
     return descend[0:5] + descend[::-1][0:5]
-
-#------------------------------------------------------------------------------
-def ath(symbol):
-    cursor = get_db().tickers_1d.find({"symbol":symbol}).sort("high",-1).limit(1)
-    if cursor.count() < 1:
-        return None
-    return list(cursor)[0]
-

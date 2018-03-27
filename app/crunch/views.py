@@ -18,8 +18,8 @@ log = logging.getLogger('views')
 #-----------------------------------------------------------------------------
 def show_home(stdscr):
     db = get_db()
-    n_indexed = db.tickers_1d.count() + db.tickers_5t.count() +\
-        db.market_idx_1d.count() + db.market_idx_5t.count()
+    n_indexed = db.cmc_tick.count() + db.cmc_tick.count() +\
+        db.cmc_mkt.count() + db.cmc_mkt.count()
     stdscr.clear()
     stdscr.addstr(0, 2, "%s datapoints indexed" % pretty(n_indexed, abbr=True))
 
@@ -155,7 +155,7 @@ def show_patterns(stdscr):
 def show_markets(stdscr):
     """Global market data.
     """
-    _diff = markets.diff
+    _diff = tickers.mkt_diff
     _to = pretty
     db = get_db()
     stdscr.clear()
@@ -164,9 +164,9 @@ def show_markets(stdscr):
     ex = forex.getrate('CAD',utc_dtdate())
     hdr = ['Market Cap', '24h Volume', 'BTC Dominance', 'Markets', 'Currencies',
            '1 Hour', '24 Hour', '7 Day', '30 Day']
-    mktdata = list(db.market_idx_5t.find().limit(1).sort('date',-1))
+    mktdata = list(db.cmc_mkt.find().limit(1).sort('date',-1))
     if len(mktdata) == 0:
-        return log.error("db.market_idx_5t empty")
+        return log.error("db.cmc_mkt empty")
     rows, colors = [], []
     for mkt in mktdata:
         rows.append([
@@ -196,7 +196,7 @@ def show_markets(stdscr):
 
     # Weekly market (table)
     start = utc_dtdate() + timedelta(days=-14)
-    cursor = db.market_idx_1d.find(
+    cursor = db.cmc_mkt.find(
         {"date":{"$gte":start, "$lt":utc_dtdate()}}).sort('date',-1)
     if cursor.count() < 1:
         return log.error("no data for weekly markets")
@@ -241,7 +241,7 @@ def show_history(stdscr, symbol):
     indent=2
     hdr = ['Date', 'Open', 'High', 'Low', 'Close', 'Market Cap', 'Vol 24h']
 
-    tickerdata = db.tickers_1d.find({"symbol":symbol}
+    tickerdata = db.cmc_tick.find({"symbol":symbol}
         ).sort('date',-1).limit(n_display)
     n_datarows = tickerdata.count()
     log.debug("%s tickers queried in %sms", tickerdata.count(), t1)
@@ -288,7 +288,7 @@ def show_watchlist(stdscr):
     updated = []
 
     for watch in db.watchlist.find():
-        cursor = db.tickers_5t.find({"symbol":watch["symbol"]}).sort("date",-1).limit(1)
+        cursor = db.cmc_tick.find({"symbol":watch["symbol"]}).sort("date",-1).limit(1)
         if cursor.count() < 1:
             continue
         tckr = cursor.next()
@@ -345,7 +345,7 @@ def show_portfolio(stdscr):
 
     # Build datarows
     for hold in db.portfolio.find():
-        cursor = db.tickers_5t.find({"symbol":hold["symbol"]}
+        cursor = db.cmc_tick.find({"symbol":hold["symbol"]}
             ).sort("date",-1).limit(1)
 
         if cursor.count() < 1: continue

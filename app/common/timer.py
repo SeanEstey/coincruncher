@@ -2,7 +2,7 @@
 import time, pytz
 import dateparser
 from datetime import datetime, date, time, timedelta
-from app.utils import utc_datetime as now, utc_dtdate as today, to_relative_str
+from .utils import utc_datetime as now, utc_dtdate as today, to_relative_str
 
 #------------------------------------------------------------------------------
 class Timer():

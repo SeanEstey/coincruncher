@@ -5,10 +5,11 @@ from binance.client import Client
 import app
 from app import strtofreq
 from docs.data import BINANCE
-from app.timer import Timer
-from app.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
-from app.mongo import locked
-log = logging.getLogger('candles')
+from app.common.timer import Timer
+from app.common.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
+from app.common.mongo import locked
+import app.bnc
+log = logging.getLogger('bnc.candles')
 
 #------------------------------------------------------------------------------
 def update(pairs, freq, start=None, force=False):
