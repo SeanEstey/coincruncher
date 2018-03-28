@@ -18,7 +18,7 @@ def seed():
 #-------------------------------------------------------------------------------
 def getrate(currency, _date):
     db = get_db()
-    result = db.forex_1d.find_one({"date":_date})
+    result = db.forex.find_one({"date":_date})
     if result:
         return result[currency]
     else:
@@ -41,7 +41,7 @@ def queryrate(currency, _date):
         if response.status_code != 200:
             return log.error("forex status=%s, text=%s", response.status_code, response.text)
 
-        get_db().forex_1d.insert_one({
+        get_db().forex.insert_one({
             "date":_date,
             "USD":1,
             "CAD":data["rates"][currency]
@@ -60,8 +60,8 @@ def update_1d():
     _next = tomorrow - utc_datetime()
 
     # Have we saved today's rates?
-    if db.forex_1d.find({"date":utc_dtdate()}).count() > 0:
-        log.debug("forex_1d update in %s hrs.", duration(_next, "hours"))
+    if db.forex.find({"date":utc_dtdate()}).count() > 0:
+        log.debug("forex update in %s hrs.", duration(_next, "hours"))
         return duration(_next)
 
     try:
@@ -77,7 +77,7 @@ def update_1d():
 
     # Update
     data = json.loads(response.text)
-    db.forex_1d.insert_one({
+    db.forex.insert_one({
         "date":utc_dtdate(),
         "USD":1,
         "CAD":data["rates"][to]
@@ -97,7 +97,7 @@ def update_hist_forex(symbol, start, end):
     diff = end - start
 
     for n in range(0,diff.days):
-        # TODO: store 'date' and 'CAD' fields in db.forex_1d collection
+        # TODO: store 'date' and 'CAD' fields in db.forex collection
         dt = start + timedelta(days=1*n)
         print(dt.isoformat())
         uri = "https://api.fixer.io/%s?base=USD&symbols=%s" %(dt.date(),symbol)

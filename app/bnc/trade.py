@@ -26,29 +26,29 @@ def init():
     """Preload candles records from mongoDB to global dataframe.
     Performance: ~3,000ms/100k records
     """
-    global client
     t1 = Timer()
     log.info('Preloading historic data...')
 
-    # Does this modify the dfc var in bnc.__init__ for other modules too??
-    dfc = app.bnc.dfc = candles.merge(pd.DataFrame(), pairs, time_span=delta(days=7))
+    span = delta(days=7)
+    app.bnc.dfc = candles.merge_new(pd.DataFrame(), pairs, span=span)
 
+    global client
     client = Client("","")
 
     log.info('{:,} records loaded in {:,.1f}s.'.format(
-        len(dfc), t1.elapsed(unit='s')))
+        len(app.bnc.dfc), t1.elapsed(unit='s')))
 
 #------------------------------------------------------------------------------
-def update(frequency):
+def update(_freq_str):
     """Evaluate Binance market data and execute buy/sell trades.
     """
     global n_cycles, freq_str, freq
-    freq_str = frequency
+    trade_ids=[]
+    freq_str = _freq_str
     freq = strtofreq[freq_str]
     t1 = Timer()
-
-    # Update candle data
-    dfc = app.bnc.dfc = candles.merge(app.bnc.dfc, pairs, time_span=delta(minutes=10))
+    # Update candles updated by websocket
+    app.bnc.dfc = candles.merge_new(app.bnc.dfc, pairs, span=None)
 
     siglog('*'*80)
     duration = to_relative_str(now() - start)
@@ -61,18 +61,16 @@ def update(frequency):
     printer.positions('open')
     siglog('-'*80)
 
-    trade_ids=[]
-
     # Evaluate Sells
-    holdings = list(get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
-    for hold in holdings:
-        candle = candles.newest(hold['pair'], freq_str, df=dfc)
-        trade_ids += [eval_sell(hold, candle)]
+    active = list(get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
+    for trade in active:
+        candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
+        trade_ids += [eval_sell(trade, candle)]
 
     # Evaluate Buys
-    inactive = sorted(list(set(pairs) - set([n['pair'] for n in holdings])))
+    inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
     for pair in inactive:
-        candle = candles.newest(pair, freq_str, df=dfc)
+        candle = candles.newest(pair, freq_str, df=app.bnc.dfc)
         trade_ids += [eval_buy(candle)]
 
     printer.trades([n for n in trade_ids if n])
@@ -104,19 +102,22 @@ def eval_buy(candle):
     # 2/5 agg.mkt values > 0 (IN SEQUENCE) == .4 confidence
     # 3/5 agg.mkt values > 0 (IN SEQUENCE) == .6 confidence
     # 5/5 agg.mkt values > 0 (IN SEQUENCE) == .95 confidence
-    agg_span = 120
-    agg_slope = markets.agg_pct_change(freq_str, span=agg_span, label='agg.slope')
-    agg_slope = agg_slope.iloc[0][0]
+    # Positive aggregate trading pair price slope for 5 min and 60 min periods.
+    span1 = 5
+    span2 = 60
+    agg_slope1 = markets.agg_pct_change(freq_str, span=span1, label='agg.slope').iloc[0][0]
+    agg_slope2 = markets.agg_pct_change(freq_str, span=span2, label='agg.slope').iloc[0][0]
 
     if (sig['ema_slope'].tail(5) > 0).all():
-        if agg_slope > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
+        if agg_slope1 > 0 and agg_slope2 > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
             return buy(candle, decision={
                 'category': 'slope',
                 'signals': sig,
                 'details': {
                     'ema:slope:tail(5):min > thresh': '{:+.2f}% > 0'.format(
                         sig['ema_slope'].tail(5).min()),
-                    'agg:ema:slope > thresh': '{:+.4g}% (span={}) > 0'.format(agg_slope, agg_span),
+                    'agg:ema:slope > thresh': '{:+.4g}% (span={}) > 0'.format(agg_slope1, span1),
+                    'agg:ema:slope > thresh': '{:+.4g}% (span={}) > 0'.format(agg_slope2, span2),
                     'volume:z-score > thresh': '{:+.2f} > 0.5'.format(z.volume),
                     'buy-ratio:z-score > thresh': '{:+.2f} > 0.5'.format(z.buy_ratio)
                 }

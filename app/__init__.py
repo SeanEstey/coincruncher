@@ -29,31 +29,65 @@ pertostr = {
 strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
 strtoper = dict(zip(list(pertostr.values()), list(pertostr.keys())))
 
-class DebugFilter(logging.Filter):
-    def filter(self, record): return record.levelno == DEBUG
-class InfoFilter(logging.Filter):
-    def filter(self, record): return record.levelno == INFO
-class ErrorFilter(logging.Filter):
-    def filter(self, record): return record.levelno == ERROR
-class CriticalFilter(logging.Filter):
-    def filter(self, record): return record.levelno <= CRITICAL
-class SignalFilter(logging.Filter):
-    def filter(self, record): return record.levelno == SIGNAL
-class WarningFilter(logging.Filter):
-    def filter(self, record): return record.levelno == WARNING
+#---------------------------------------------------------------------------
+class GracefulKiller:
+    kill_now = False
+    def __init__(self):
+        """
+        """
+        signal.signal(signal.SIGINT, self.exit_gracefully)
+        signal.signal(signal.SIGTERM, self.exit_gracefully)
+    def exit_gracefully(self,signum, frame):
+        """
+        """
+        self.kill_now = True
+
+#---------------------------------------------------------------------------
 class WrappedFixedIndentingLog(logging.Formatter):
-    def __init__(self,
-                 fmt=None,
-                 datefmt=None,
-                 style='%',
-                 width=MAX_LOG_LINE_WIDTH,
-                 indent=LOG_NEWL_INDENT):
+    def __init__(self, fmt=None, datefmt=None, style='%',
+        width=MAX_LOG_LINE_WIDTH, indent=LOG_NEWL_INDENT):
+        """
+        """
         super().__init__(fmt=fmt, datefmt=datefmt, style=style)
         self.wrapper = textwrap.TextWrapper(
             width=width,
             subsequent_indent=' '*indent)
     def format(self, record):
+        """
+        """
         return self.wrapper.fill(super().format(record))
+
+class DebugFilter(logging.Filter):
+    def filter(self, record): return record.levelno == DEBUG
+
+class InfoFilter(logging.Filter):
+    def filter(self, record): return record.levelno == INFO
+
+class ErrorFilter(logging.Filter):
+    def filter(self, record): return record.levelno == ERROR
+
+class CriticalFilter(logging.Filter):
+    def filter(self, record): return record.levelno <= CRITICAL
+
+class SignalFilter(logging.Filter):
+    def filter(self, record): return record.levelno == SIGNAL
+
+class WarningFilter(logging.Filter):
+    def filter(self, record): return record.levelno == WARNING
+
+#---------------------------------------------------------------------------
+def eod_tasks():
+    import os
+    from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
+    from app.common import forex
+
+    forex.update_1d()
+
+    log.debug('running mongodump...')
+
+    os.system('mongodump -u %s -p %s -d coincruncher -o ~/Dropbox/mongodumps \
+        --authenticationDatabase %s' %(DBUSER, DBPASSWORD, AUTHDB))
+    log.info('eod tasks completed')
 
 #---------------------------------------------------------------------------
 def file_handler(level, path, filters=None):

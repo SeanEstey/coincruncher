@@ -1,15 +1,95 @@
 import logging
 import pandas as pd
+import numpy as np
 from pymongo import UpdateOne
+from bson import ObjectId
+import bsonnumpy
 from binance.client import Client
 import app
 from app import strtofreq
 from docs.data import BINANCE
 from app.common.timer import Timer
-from app.common.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
+from app.common.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms,\
+dt_to_ms, utc_datetime as now
 from app.common.mongo import locked
 import app.bnc
 log = logging.getLogger('candles')
+
+last_update = None
+dtype = np.dtype([
+    ('pair', 'S12'),
+    ('freq', 'S2'),
+    ('open_time', np.int64),
+    ('open', np.float64),
+    ('close', np.float64),
+    ('buy_vol', np.float64),
+    ('volume', np.float64),
+    ('buy_ratio', np.float64),
+    ('trades', np.int32)
+])
+
+#------------------------------------------------------------------------------
+def merge_new(dfc, pairs, span=None):
+    """Merge only newly updated DB records into dataframe to avoid ~150k
+    DB reads every main loop.
+    """
+    global last_update
+    t1 = Timer()
+    pairs = BINANCE['PAIRS']
+    columns = ['close', 'open', 'trades', 'volume', 'buy_ratio']
+    exclude = ['_id','high','low','quote_vol','sell_vol', 'close_time']
+    projection = dict(zip(exclude, [False]*len(exclude)))
+    idx, data = [], []
+    db = app.get_db()
+
+    if span is None and last_update:
+        # If no span, query/merge db records inserted since last update.
+        oid = ObjectId.from_datetime(last_update)
+        last_update = now()
+        _filter = {'_id':{'$gte':oid}}
+    else:
+        # Else query/merge all since timespan.
+        span = span if span else timedelta(days=7)
+        last_update = now()
+        _filter = {'pair':{'$in':pairs}, 'close_time':{'$gte':now()-span}}
+
+    batches = db.candles.find_raw_batches(_filter, projection)
+
+    if batches.count() < 1:
+        return dfc
+
+    try:
+        ndarray = bsonnumpy.sequence_to_ndarray(
+            batches,
+            dtype,
+            db.candles.count()
+        )
+    except Exception as e:
+        log.error(str(e))
+        raise
+
+    df = pd.DataFrame(ndarray)
+    df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
+    df['freq'] = df['freq'].str.decode('utf-8')
+    df['pair'] = df['pair'].str.decode('utf-8')
+
+    df['freq'] = df['freq'].replace('1m',60)
+    df['freq'] = df['freq'].replace('5m',300)
+    df['freq'] = df['freq'].replace('1h',3600)
+    df['freq'] = df['freq'].replace('1d',86400)
+    df = df.sort_index()
+
+    idx = list(df.groupby(['pair','freq','open_time']).indices.keys())
+    df2 = pd.DataFrame(df[columns].values,
+        index=pd.MultiIndex.from_tuples(idx, names=['pair','freq','open_time']),
+        columns=columns
+    ).sort_index()
+
+    df3 = pd.concat([dfc, df2]).drop_duplicates().sort_index()
+
+    log.debug("{:,} records loaded into numpy. [{:,.1f} ms]".format(len(df3), t1))
+    print("Done in %s ms" % t1)
+    return df3
 
 #------------------------------------------------------------------------------
 def update(pairs, freq, start=None, force=False):
@@ -38,13 +118,13 @@ def update(pairs, freq, start=None, force=False):
                 float(x[10]),
                 None
             ]
-            _dict = dict(zip(BINANCE['KLINE_FIELDS'], x))
-            _dict.update({'pair': pair, 'freq': freq})
-            if _dict['volume'] > 0:
-                _dict['buy_ratio'] = round(_dict['buy_vol'] / _dict['volume'], 4)
+            d = dict(zip(BINANCE['KLINE_FIELDS'], x))
+            d.update({'pair': pair, 'freq': freq})
+            if d['volume'] > 0:
+                d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
             else:
-                _dict['buy_ratio'] = 0.0
-            data[i] = _dict
+                d['buy_ratio'] = 0.0
+            data[i] = d
         candles += data
 
     if len(candles) > 0:
@@ -53,8 +133,8 @@ def update(pairs, freq, start=None, force=False):
         if force == True:
             ops = []
             for candle in candles:
-                ops.append(UpdateOne(
-                    {"open_time":candle["open_time"], "pair":candle["pair"], "freq":candle["freq"]},
+                ops.append(UpdateOne({"open_time":candle["open_time"],
+                    "pair":candle["pair"], "freq":candle["freq"]},
                     {'$set':candle},
                     upsert=True
                 ))
@@ -90,36 +170,8 @@ def newest(pair, freq_str, df=None):
         )[0]
 
 #------------------------------------------------------------------------------
-def merge(df, pairs, time_span=None):
-    """Merge only newly updated DB records into dataframe to avoid ~150k DB reads
-    every main loop.
-    """
-    columns = ['close', 'open', 'trades', 'volume', 'buy_ratio']
-    t1 = Timer()
-    idx, data = [], []
-    time_span = time_span if time_span else timedelta(days=21)
-
-    curs = app.get_db().candles.find(
-        {"pair":{"$in":pairs}, "close_time":{"$gte":now() - time_span}})
-
-    for candle in curs:
-        idx.append((candle['pair'], strtofreq[candle['freq']], candle['open_time']))
-        data.append( [candle.get(x, None) for x in columns] )
-
-    df_new = pd.DataFrame(data,
-        index = pd.Index(idx, names=['pair', 'freq', 'open_time']),
-        columns = columns)
-
-    df = pd.concat([df, df_new]).drop_duplicates().sort_index()
-
-    log.debug("{:,} candle records merged. [{:,.1f} ms]".format(len(df), t1))
-
-    return df
-
-#------------------------------------------------------------------------------
 def query_api(pair, freq, start=None, end=None, force=False):
     """Get Historical Klines (candles) from Binance.
-    https://github.com/binance-exchange/binance-official-api-docs/blob/master/rest-api.md
     @freq: Binance kline frequency:
         1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M]
         m -> minutes; h -> hours; d -> days; w -> weeks; M -> months
@@ -163,8 +215,6 @@ def query_api(pair, freq, start=None, end=None, force=False):
             else:
                 # Don't want candles that aren't closed yet
                 if data[-1][6] >= dt_to_ms(now()):
-                    #print("discarding unclosed candle w/ close_time %s" %(
-                    #    pd.to_datetime(int(data[-1][6]), unit='ms', utc=True)))
                     results += data[:-1]
                     break
                 results += data
@@ -172,5 +222,6 @@ def query_api(pair, freq, start=None, end=None, force=False):
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 
-    log.debug('%s %s %s queried [%ss].', len(results), freq, pair, t1.elapsed(unit='s'))
+    log.debug('%s %s %s queried [%ss].', len(results), freq, pair,
+        t1.elapsed(unit='s'))
     return results

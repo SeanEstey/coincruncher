@@ -92,7 +92,7 @@ def query_api_mkt():
     for m in COINMARKETCAP['API']['MARKETS']:
         store[m["to"]] = m["type"]( data[m["from"]] )
 
-    get_db().market_idx_5t.replace_one(
+    get_db().cmc_mkt.replace_one(
         {'date':store['date']}, store,
         upsert=True)
 
@@ -337,8 +337,8 @@ def mkt_diff(period, to_format):
     dt = datetime.now(tz=pytz.UTC) - tdelta
 
     mkts = [
-        list(db.market_idx_5t.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
-        list(db.market_idx_5t.find({}).sort("date", -1).limit(1))
+        list(db.cmc_mkt.find({"date":{"$gte":dt}}).sort("date",1).limit(1)),
+        list(db.cmc_mkt.find({}).sort("date", -1).limit(1))
     ]
 
     for m in  mkts:

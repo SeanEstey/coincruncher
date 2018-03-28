@@ -8,7 +8,7 @@ DFC_COLUMNS = ['close', 'open', 'trades', 'volume', 'buy_volume']
 # App
 HOST="45.79.176.125"
 MONGO_PORT = 27017
-DB_NAME="crypto"
+DB_NAME="coincruncher"
 DB_DUMP_PATH="~/Dropbox/mongodumps"
 DROPBOXD_PATH="/opt/dropbox/dropboxd"
 

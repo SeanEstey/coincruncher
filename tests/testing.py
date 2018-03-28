@@ -33,19 +33,14 @@ scores=None
 #tickers=None
 
 
-
 #------------------------------------------------------------------------------
 def init():
     global dfc, candle, scores
     trade.init()
     dfc = app.bnc.dfc
-    pair = 'BTCUSDT'
-    candle = candles.newest(pair,'1m', df=dfc)
-    pprint(candle)
-    scores = signals.z_score(dfc.loc[pair,strtofreq['1m']], candle)
     trade.freq = 60
     trade.freq_str = '1m'
-    trade.update('1m')
+    #trade.update('1m')
 
 def binance_tickers():
     #global client
