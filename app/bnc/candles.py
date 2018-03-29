@@ -77,12 +77,13 @@ def merge_new(dfc, pairs, span=None):
     df['freq'] = df['freq'].replace('5m',300)
     df['freq'] = df['freq'].replace('1h',3600)
     df['freq'] = df['freq'].replace('1d',86400)
-    df = df.sort_index()
+    df = df.sort_values(by=['pair','freq','open_time'])
 
-    idx = list(df.groupby(['pair','freq','open_time']).indices.keys())
     df2 = pd.DataFrame(df[columns].values,
-        index=pd.MultiIndex.from_tuples(idx, names=['pair','freq','open_time']),
-        columns=columns
+        index = pd.MultiIndex.from_arrays(
+            [df['pair'], df['freq'], df['open_time']],
+            names = ['pair','freq','open_time']),
+        columns = columns
     ).sort_index()
 
     df3 = pd.concat([dfc, df2]).drop_duplicates().sort_index()

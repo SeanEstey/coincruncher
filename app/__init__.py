@@ -1,5 +1,6 @@
 # app
 import logging
+import signal
 import textwrap
 from logging import DEBUG, ERROR, INFO, WARNING, CRITICAL
 from docs.config import *

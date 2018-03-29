@@ -18,7 +18,6 @@ def data(now=False):
     """
     """
     cmc = Timer(name='cmc', expire='every 5 clock min utc')
-
     if now == True:
         tickers.update(limit=500)
 
@@ -46,7 +45,7 @@ def daily():
         time.sleep(timer_1d.remain()/1000)
 
 #---------------------------------------------------------------------------
-def trade():
+def trading():
     """Main trade cycle loop.
     """
     pairs = BINANCE['PAIRS']
@@ -101,13 +100,14 @@ if __name__ == '__main__':
     # Create threads
     try:
         th1 = threading.Thread(
-            name='data', target=data, kwargs=kwargs)
+            name='data', target=data, kwargs=th1_kwargs)
         th2 = threading.Thread(
-            name='daily', target=daily, kwargs=kwargs)
+            name='daily', target=daily) #kwargs=kwargs)
         th3 = threading.Thread(
-            name='trade', target=trade, kwargs=kwargs)
+            name='trade', target=trading) #, kwargs=kwargs)
     except Exception as e:
         log.exception("datathread main()")
+        print(str(e))
         sys.exit()
 
     th1.setDaemon(True)
@@ -119,10 +119,14 @@ if __name__ == '__main__':
     th3.setDaemon(True)
     th3.start()
 
+    print("starting loop")
+
     while True:
         if killer.kill_now:
             break
         time.sleep(0.1)
+
+    print("quitting")
 
     log.debug(divstr % "sys.exit()")
     log.info(divstr % "Terminating")
