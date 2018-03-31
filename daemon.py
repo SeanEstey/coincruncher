@@ -49,13 +49,20 @@ def trading():
     """Main trade cycle loop.
     """
     pairs = BINANCE['PAIRS']
-    timer_1m = Timer(name='trade', expire='every 1 clock min utc')
+
     print('Preloading historic data....')
     trade.init()
 
+    timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
+    timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')
+
     while True:
+        if timer_5m.remain() == 0:
+            trade.update('5m')
+            timer_5m.reset()
+
         if timer_1m.remain() == 0:
-            time.sleep(7)
+            time.sleep(5)
             trade.update('1m')
             timer_1m.reset()
 

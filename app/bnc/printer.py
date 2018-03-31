@@ -10,6 +10,7 @@ import app.bnc
 from app.bnc import *
 from app.bnc import trade
 from .markets import agg_pct_change
+def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('print')
 
@@ -76,7 +77,7 @@ def new_trades(trade_ids):
             ])
 
     if len(data) == 0:
-        return siglog("0 trades executed")
+        return tradelog("0 trades executed")
 
     df = pd.DataFrame(data, index=pd.Index(indexes), columns=cols)
     df = df[cols]
@@ -88,8 +89,8 @@ def new_trades(trade_ids):
         cols[4]: ' {:+.2f}'.format,
         cols[5]: '{}'.format
     }).split("\n")
-    siglog("{} trade(s) executed:".format(len(df)))
-    [siglog(line) for line in lines]
+    tradelog("{} trade(s) executed:".format(len(df)))
+    [tradelog(line) for line in lines]
 
 #------------------------------------------------------------------------------
 def positions(_type):
@@ -123,7 +124,7 @@ def positions(_type):
             indexes.append(record['pair'])
 
         if len(_trades) == 0:
-            siglog(" 0 open positions")
+            tradelog("0 open positions")
         else:
             df = pd.DataFrame(data, index=pd.Index(indexes), columns=cols)
             df = df[cols]
@@ -134,22 +135,24 @@ def positions(_type):
                 cols[3]: '  {:+.2f}'.format,
                 cols[4]: '{}'.format
             }).split("\n")
-            siglog("{} position(s):".format(len(df)))
-            [siglog(line) for line in lines]
+            tradelog("{} position(s):".format(len(df)))
+            [tradelog(line) for line in lines]
             return df
     elif _type == 'closed':
         _now = datetime.now()
         if _now.time().hour >= 8:
-            start = datetime(_now.year, _now.month, _now.day, 8, 0, 0, 0,
+            start = datetime(_now.year, _now.month, _now.day, 6, 0, 0, 0,
                 tzlocal.get_localzone()
             ).astimezone(pytz.utc)
         else:
-            start = datetime(_now.year, _now.month, _now.day-1, 8, 0, 0, 0,
+            start = datetime(_now.year, _now.month, _now.day-1, 6, 0, 0, 0,
                 tzlocal.get_localzone()
             ).astimezone(pytz.utc)
 
         closed = list(db.trades.find(
             {'status':'closed', 'end_time':{'$gte':start}}))
+
+        #print("%s trades today ending after %s" % (len(closed), start))
 
         n_win, pct_earn = 0, 0
         for n in closed:
@@ -159,6 +162,6 @@ def positions(_type):
 
         ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
 
-        siglog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))
+        tradelog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))
         duration = to_relative_str(now() - start)
-        siglog("{:+.2f}% net profit today.".format(pct_earn))
+        tradelog("{:+.2f}% net profit today.".format(pct_earn))

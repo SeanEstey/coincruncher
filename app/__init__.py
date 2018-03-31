@@ -6,6 +6,7 @@ from logging import DEBUG, ERROR, INFO, WARNING, CRITICAL
 from docs.config import *
 from app.common.utils import colors
 logging.addLevelName(SIGNAL, "Signal")
+logging.addLevelName(TRADE, "Trade")
 log = logging.getLogger('app')
 
 # Frequency in seconds to str
@@ -73,6 +74,9 @@ class CriticalFilter(logging.Filter):
 class SignalFilter(logging.Filter):
     def filter(self, record): return record.levelno == SIGNAL
 
+class TradeFilter(logging.Filter):
+    def filter(self, record): return record.levelno == TRADE
+
 class WarningFilter(logging.Filter):
     def filter(self, record): return record.levelno == WARNING
 
@@ -117,6 +121,8 @@ def file_handler(level, path, filters=None):
             handler.addFilter(CriticalFilter())
         elif _filter==SIGNAL:
             handler.addFilter(SignalFilter())
+        elif _filter==TRADE:
+            handler.addFilter(TradeFilter())
     return handler
 
 
@@ -145,7 +151,8 @@ logging.basicConfig(
     handlers=[
         file_handler(DEBUG, DEBUGFILE, filters=[DEBUG]),
         file_handler(INFO, LOGFILE, filters=[CRITICAL]),
-        file_handler(SIGNAL, SIGNALFILE, filters=[SIGNAL])
+        file_handler(SIGNAL, SIGNALFILE, filters=[SIGNAL]),
+        file_handler(TRADE, TRADEFILE, filters=[TRADE])
     ]
 )
 

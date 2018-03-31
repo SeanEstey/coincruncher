@@ -25,12 +25,12 @@ class Timer():
         return "{:,}".format(self.elapsed())
 
     #--------------------------------------------------------------------------
-    def reset(self):
+    def reset(self, quiet=False):
         """Restart stopwatch or countdown timer.
         """
         self.start = now()
         if self.expire_str:
-            self.set_expiry(self.expire_str)
+            self.set_expiry(self.expire_str, quiet=quiet)
 
     #--------------------------------------------------------------------------
     def elapsed(self, unit='ms'):
@@ -43,7 +43,7 @@ class Timer():
             return round(sec, 1)
 
     #--------------------------------------------------------------------------
-    def remain(self, unit='ms'):
+    def remain(self, unit='ms', quiet=False):
         """If in timer mode, return time remaining as milliseconds
         integer (unit='ms') or minutes string (unit='str')
         """
@@ -51,9 +51,11 @@ class Timer():
             return None
 
         if self.expire > now():
-            print("{}: {}".format(self.name, to_relative_str(self.expire - now())))
+            if quiet != True:
+                print("{}: {}".format(self.name, to_relative_str(self.expire - now())))
         else:
-            print("{} expired!".format(self.name))
+            if quiet != True:
+                print("{} expired!".format(self.name))
 
         rem_ms = int((self.expire - now()).total_seconds()*1000)
 
@@ -66,7 +68,7 @@ class Timer():
                 return "%s min" % round((rem_ms/1000/3600)*60,1)
 
     #--------------------------------------------------------------------------
-    def set_expiry(self, target):
+    def set_expiry(self, target, quiet=False):
         """target can be datetime.datetime obj or recognizable
         string.
         """
@@ -77,7 +79,8 @@ class Timer():
             self.start = now()
             self.parse(target)
 
-        print("{} expires in {}".format(self.name, to_relative_str(self.expire - now())))
+        if quiet != True:
+            print("{} expires in {}".format(self.name, to_relative_str(self.expire - now())))
 
     #--------------------------------------------------------------------------
     def parse(self, target_str):

@@ -23,7 +23,7 @@ RULES = {
         "Z-SCORE": {
             "SMOOTH_SPAN": 5,       # Periods to use to smoothen signal
             "BUY_THRESH": -3.0,     # Buy threshold (deviations from μ)
-            "SELL_THRESH": -0.75
+            "SELL_THRESH": 0.0
         }
     }
 }

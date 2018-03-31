@@ -11,7 +11,9 @@ import app.bnc
 from docs.data import BINANCE
 from app.bnc import pct_diff, pairs, candles, printer, strategy
 
+def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
+
 log = logging.getLogger('trade')
 
 # GLOBALS
@@ -53,16 +55,14 @@ def update(_freq_str):
     # Update candles updated by websocket
     app.bnc.dfc = candles.merge_new(app.bnc.dfc, pairs, span=None)
 
-    siglog('*'*80)
+    tradelog('*'*80)
     duration = to_relative_str(now() - start)
     hdr = "Cycle #{} {:>%s}" % (80 - 7 - 1 - len(str(n_cycles)))
-    siglog(hdr.format(n_cycles, duration))
-    siglog('*'*80)
-    siglog("{} trading pair(s):".format(len(pairs)))
-    [siglog(x) for x in printer.agg_mkts().to_string().split('\n')]
-    siglog('-'*80)
-    printer.positions('open')
-    siglog('-'*80)
+    tradelog(hdr.format(n_cycles, duration))
+    tradelog('*'*80)
+    #tradelog("{} trading pair(s):".format(len(pairs)))
+    #[tradelog(x) for x in printer.agg_mkts().to_string().split('\n')]
+
 
     # Evaluate Sells
     active = list(db.trades.find({'status':'open'})) #, 'pair':{"$in":pairs}}))
@@ -88,8 +88,11 @@ def update(_freq_str):
         if result:
             trade_ids += [buy(candle, criteria=result)]
 
+    tradelog('-'*80)
     printer.new_trades([n for n in trade_ids if n])
-    siglog('-'*80)
+    tradelog('-'*80)
+    printer.positions('open')
+    tradelog('-'*80)
     printer.positions('closed')
 
     n_cycles +=1

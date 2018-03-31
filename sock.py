@@ -7,6 +7,7 @@ https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-so
 """
 import logging
 import itertools
+import importlib
 import signal
 import time
 import sys
@@ -18,9 +19,11 @@ from pprint import pprint
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from binance.enums import *
+import docs.data
 from docs.data import BINANCE
 from app import set_db, get_db
 from app.common.utils import colors, to_local, utc_datetime as now
+from app.common.timer import Timer
 import app.bnc
 
 pairs = BINANCE['PAIRS']
@@ -85,18 +88,72 @@ def receive_kline(msg):
     db.candles.insert_one(doc)
 
 #---------------------------------------------------------------------------
-def connect_klines(bnc_wss):
+def detect_pair_change():
+    """Detect changes in pairs tracking conf
+    """
+    importlib.reload(docs.data)
+    from docs.data import BINANCE
+    global pairs, conn_keys
+
+    if pairs == BINANCE['PAIRS']:
+        return pairs
+    else:
+        print("Detected change in trading pair(s).")
+        rmvd = set(pairs) - set(BINANCE['PAIRS'])
+        added = set(BINANCE['PAIRS']) - set(pairs)
+
+        if len(rmvd) > 0:
+            print("Removing {}...".format(rmvd))
+            n_rmv = 0
+
+            for pair in rmvd:
+                name = str(pair).lower()
+
+                for key in conn_keys:
+                    if name in key:
+                        # remove it
+                        bnc_wss.stop_socket(key)
+                        idx = conn_keys.index(key)
+                        conn_keys = conn_keys[0:idx] + conn_keys[idx+1:]
+                        n_rmv += 1
+
+            print("Removed {} websocket(s)".format(n_rmv))
+
+        if len(added) > 0:
+            print("Adding {}...".format(added))
+            n_added = 0
+
+            for pair in added:
+                n_added += connect_klines(bnc_wss, [str(pair)])
+            print("Added {} websocket(s)".format(n_added))
+
+        #print("Done. {} connections.".format(len(conn_keys)))
+
+        pairs = BINANCE['PAIRS']
+        return pairs
+
+#---------------------------------------------------------------------------
+def connect_klines(bnc_wss, _pairs):
     global conn_keys
 
-    print("Creating kline connections...")
+    print("Creating kline connections for: {}...".format(_pairs))
 
-    for pair in pairs:
+    n_connected = 0
+
+    for pair in _pairs:
         conn_keys += [
-            bnc_wss.start_kline_socket(pair, receive_kline, interval=KLINE_INTERVAL_1MINUTE),
-            bnc_wss.start_kline_socket(pair, receive_kline, interval=KLINE_INTERVAL_5MINUTE),
-            bnc_wss.start_kline_socket(pair, receive_kline, interval=KLINE_INTERVAL_1HOUR),
-            bnc_wss.start_kline_socket(pair, receive_kline, interval=KLINE_INTERVAL_1DAY)
+            bnc_wss.start_kline_socket(pair, receive_kline,
+                interval=KLINE_INTERVAL_1MINUTE),
+            bnc_wss.start_kline_socket(pair, receive_kline,
+                interval=KLINE_INTERVAL_5MINUTE),
+            bnc_wss.start_kline_socket(pair, receive_kline,
+                interval=KLINE_INTERVAL_1HOUR),
+            bnc_wss.start_kline_socket(pair, receive_kline,
+                interval=KLINE_INTERVAL_1DAY)
         ]
+        n_connected += 4
+
+    return n_connected
 
 #---------------------------------------------------------------------------
 def close_all():
@@ -119,22 +176,27 @@ def update_spinner():
 if __name__ == '__main__':
     db = set_db('localhost')
     cred = list(db.api_keys.find())[0]
-
     killer = GracefulKiller()
 
     print("Connecting to Binance websocket client...")
     client = Client(cred['key'], cred['secret'])
     bnc_wss = BinanceSocketManager(client)
-    connect_klines(bnc_wss)
+    connect_klines(bnc_wss, pairs)
+    print("{} connections created.".format(len(conn_keys)))
     bnc_wss.start()
 
     print('Connected.')
     print('Press Ctrl+C to quit')
 
+    timer_1m = Timer(name='pairs', expire='every 1 clock min utc')
+
     while True:
+        if timer_1m.remain(quiet=True) == 0:
+            pairs = detect_pair_change()
+            timer_1m.reset(quiet=True)
+
         if killer.kill_now:
             print('Caught SIGINT command. Shutting down...')
-
             break
         update_spinner()
         time.sleep(0.1)

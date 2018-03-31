@@ -1,15 +1,17 @@
 # strategy.py
 import logging
 from binance.client import Client
-from app.common.utils import utc_datetime as now
+from app.common.utils import colors, utc_datetime as now
 import app.bnc
 from app.bnc import signals
+def tradelog(msg): log.log(99, msg)
+def siglog(msg): log.log(100, msg)
 
 log = logging.getLogger('strategy')
 
 zscore_periods = {
     '1m': 60,
-    '5m': 21,
+    '5m': 60,
     '1h': 21,
     '1d': 21
 }
@@ -21,9 +23,23 @@ def evaluate(side, candle, record=None):
     dfc = app.bnc.dfc
     z = signals.z_score(candle, zscore_periods[candle['freq']])
     ema = signals.ema_pct_change(candle)
+    threshold = app.bnc.rules['Z-SCORE']['BUY_THRESH']
 
-    log.debug("{:<7} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m".format(
-        candle['pair'], z.close, z.volume, candle['buy_ratio'], ema.iloc[-1]))
+    color, weight = None, None
+
+    if candle['freq'] == '5m':
+        color = colors.GRN
+    elif candle['freq'] == '1h' or candle['freq'] == '1d':
+        color = colors.BLUE
+    else:
+        color = colors.WHITE
+
+    if z.close < threshold or z.volume > threshold*-1:
+        color += colors.UNDERLINE
+
+    siglog("{}{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m{}{}"\
+        .format(color, candle['pair'], candle['freq'], z.close, z.volume,
+            candle['buy_ratio'], ema.iloc[-1], colors.ENDC, colors.ENDC))
 
     if side == 'BUY':
         # A. Z-Score strat
@@ -43,8 +59,6 @@ def evaluate(side, candle, record=None):
         elif reason == 'zthreshold':
             return zthreshold(side, candle)
 
-
-
     # No trade executed.
     return None
 
@@ -54,6 +68,9 @@ def zthreshold(side, candle):
     Buy: Z-Score below threshold
     Sell: Z-Score returning to mean
     """
+    if candle['freq'] != '1m':
+        return None
+
     z = signals.z_score(candle, zscore_periods[candle['freq']])
     ema = signals.ema_pct_change(candle)
 
@@ -110,6 +127,9 @@ def momentum(side, candle, record=None):
     Sell: at peak price slope.
     FIXME: confirm high volume across multiple 1m candles, not just 1.
     """
+    if candle['freq'] != '5m':
+        return None
+
     z = signals.z_score(candle, zscore_periods[candle['freq']])
     ema = signals.ema_pct_change(candle)
 
