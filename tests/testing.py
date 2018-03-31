@@ -40,6 +40,7 @@ def init():
     dfc = app.bnc.dfc
     trade.freq = 60
     trade.freq_str = '1m'
+    
     #trade.update('1m')
 
 def binance_tickers():

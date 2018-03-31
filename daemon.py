@@ -56,7 +56,7 @@ def trading():
     while True:
         if timer_1m.remain() == 0:
             # Wait ~7s until websocket data has streamed in
-            time.sleep(7)
+            time.sleep(3)
             trade.update('1m')
             timer_1m.reset()
 

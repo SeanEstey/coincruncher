@@ -20,7 +20,7 @@ from binance.websockets import BinanceSocketManager
 from binance.enums import *
 from docs.data import BINANCE
 from app import set_db, get_db
-from app.common.utils import to_local, utc_datetime as now
+from app.common.utils import colors, to_local, utc_datetime as now
 import app.bnc
 
 pairs = BINANCE['PAIRS']
@@ -70,8 +70,17 @@ def receive_kline(msg):
     else:
         doc['buy_ratio'] = np.float64(0.0)
 
-    print("{:%H:%M:%S:} {} {}: {:.8f}".format(
-        to_local(doc['close_time']), doc['freq'], doc['pair'], doc['close']))
+    color = None
+    if doc['freq'] == '5m':
+        color = colors.GRN
+    elif doc['freq'] == '1h' or doc['freq'] == '1d':
+        color = colors.BLUE
+    else:
+        color = colors.WHITE
+
+    print("{}{:%H:%M:%S:} {} {} p:{:.8f}, v:{:.8f}{}".format(
+        color, to_local(doc['close_time']), doc['freq'], doc['pair'],
+            doc['close'], doc['volume'], colors.ENDC))
 
     db.candles.insert_one(doc)
 

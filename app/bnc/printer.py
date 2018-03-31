@@ -1,10 +1,14 @@
 # app.bnc.printer
 import logging
+import tzlocal
+from datetime import datetime
+import pytz
 import pandas as pd
 import app
 from app.common.utils import to_relative_str, utc_datetime as now
 import app.bnc
 from app.bnc import *
+from app.bnc import trade
 from .markets import agg_pct_change
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('print')
@@ -36,7 +40,7 @@ def agg_mkts():
     return df
 
 #------------------------------------------------------------------------------
-def trades(trade_ids):
+def new_trades(trade_ids):
     db = app.get_db()
     dfc = app.bnc.dfc
     cols = ["Type", "ΔPrice", "Slope", "Z-Score", "ΔZ-Score", "Time"]
@@ -47,7 +51,7 @@ def trades(trade_ids):
         freq_str = doc['buy']['candle']['freq']
         indexes.append(doc['pair'])
         candle = candles.newest(doc['pair'], freq_str, df=dfc)
-        sig = signals.generate(candle)
+        sig = trade.gen_sig(candle)
 
         if doc.get('sell'):
             c1 = doc['buy']['candle']
@@ -89,18 +93,24 @@ def trades(trade_ids):
 
 #------------------------------------------------------------------------------
 def positions(_type, start=None):
+    """Position summary.
+    @_type: 'open', 'closed'
+    @start: datetime.datetime for closed trades
+    """
     db = app.get_db()
     dfc = app.bnc.dfc
 
     if _type == 'open':
         cols = ["ΔPrice", "Slope", " Z-Score", " ΔZ-Score", "Time"]
         data, indexes = [], []
-        trades = list(db.trades.find({'status':'open', 'pair':{"$in":pairs}}))
 
-        for doc in trades:
+        _trades = list(db.trades.find(
+            {'status':'open', 'pair':{"$in":pairs}}))
+
+        for doc in _trades:
             c1 = doc['buy']['candle']
             c2 = candles.newest(doc['pair'], c1['freq'], df=dfc)
-            sig = signals.generate(c2)
+            sig = trade.gen_sig(c2)
 
             data.append([
                 pct_diff(c1['close'], c2['close']),
@@ -111,7 +121,7 @@ def positions(_type, start=None):
             ])
             indexes.append(doc['pair'])
 
-        if len(trades) == 0:
+        if len(_trades) == 0:
             siglog(" 0 open positions")
         else:
             df = pd.DataFrame(data, index=pd.Index(indexes), columns=cols)
@@ -127,9 +137,18 @@ def positions(_type, start=None):
             [siglog(line) for line in lines]
             return df
     elif _type == 'closed':
-        n_win, pct_earn = 0, 0
-        closed = list(db.trades.find({"status":"closed"}))
+        if start is None:
+            _now = datetime.now()
+            start = datetime(_now.year, _now.month, _now.day, 8, 0, 0, 0,
+                tzlocal.get_localzone()
+            ).astimezone(pytz.utc)
 
+            closed = list(db.trades.find(
+                {'status':'closed', 'end_time':{'$gte':start}}))
+        else:
+            closed = list(db.trades.find({'status':'closed'}))
+
+        n_win, pct_earn = 0, 0
         for n in closed:
             if n['pct_pdiff'] > 0:
                 n_win += 1

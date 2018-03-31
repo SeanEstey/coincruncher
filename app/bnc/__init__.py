@@ -9,8 +9,6 @@ def pct_diff(a,b): return ((b-a)/a)*100
 pairs = BINANCE['PAIRS']
 # FIXME
 rules = RULES['1m']
-ema_span = rules['EMA']['SPAN']
-z_thresh = rules['Z-SCORE']['THRESH']
 dfc = pd.DataFrame()
 client = Client("", "")
 

@@ -9,7 +9,7 @@ from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bnc
 from docs.data import BINANCE
-from app.bnc import pct_diff, z_thresh, pairs, candles, markets, signals, printer
+from app.bnc import pct_diff, pairs, candles, printer, strategy
 
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('trade')
@@ -43,10 +43,13 @@ def update(_freq_str):
     """Evaluate Binance market data and execute buy/sell trades.
     """
     global n_cycles, freq_str, freq
+
     trade_ids=[]
     freq_str = _freq_str
     freq = strtofreq[freq_str]
     t1 = Timer()
+    db = get_db()
+
     # Update candles updated by websocket
     app.bnc.dfc = candles.merge_new(app.bnc.dfc, pairs, span=None)
 
@@ -62,120 +65,39 @@ def update(_freq_str):
     siglog('-'*80)
 
     # Evaluate Sells
-    active = list(get_db().trades.find({'status':'open', 'pair':{"$in":pairs}}))
+    active = list(db.trades.find({'status':'open'})) #, 'pair':{"$in":pairs}}))
+
     for trade in active:
         candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
-        trade_ids += [eval_sell(trade, candle)]
+        result = strategy.evaluate('SELL', candle)
+        if result['action'] == 'sell':
+            trade_ids += [sell(trade, candle, criteria=result)]
+        else:
+            db.trades.update_one(
+                {"_id": trade["_id"]},
+                {"$push": {"snapshots": result['snapshot']}},
+            )
 
     # Evaluate Buys
     inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
+
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bnc.dfc)
-        trade_ids += [eval_buy(candle)]
+        result = strategy.evaluate('BUY', candle)
+        if result:
+            trade_ids += [buy(candle, criteria=result)]
 
-    printer.trades([n for n in trade_ids if n])
+    printer.new_trades([n for n in trade_ids if n])
     siglog('-'*80)
-    printer.positions('closed', start=start)
+    printer.positions('closed')
 
     n_cycles +=1
 
-#-------------------------------------------------------------------------------
-def eval_buy(candle):
-    """New trade criteria.
-    """
-    dfc = app.bnc.dfc
-    sig = signals.generate(candle)
-    z = sig['z-score']
-
-    # A. Z-Score below threshold
-    if z.close < z_thresh:
-        return buy(candle, decision={
-            'category': 'z-score',
-            'signals': sig,
-            'details': {
-                'close:z-score < thresh': '{:+.2f} < {:+.2f}'.format(
-                    z.close, z_thresh)
-            }
-        })
-
-    # B) Positive market & candle EMA (within Z-Score threshold)
-    # 2/5 agg.mkt values > 0 (IN SEQUENCE) == .4 confidence
-    # 3/5 agg.mkt values > 0 (IN SEQUENCE) == .6 confidence
-    # 5/5 agg.mkt values > 0 (IN SEQUENCE) == .95 confidence
-    # Positive aggregate trading pair price slope for 5 min and 60 min periods.
-    span1 = 5
-    span2 = 60
-    agg_slope1 = markets.agg_pct_change(freq_str, span=span1, label='agg.slope').iloc[0][0]
-    agg_slope2 = markets.agg_pct_change(freq_str, span=span2, label='agg.slope').iloc[0][0]
-
-    if (sig['ema_slope'].tail(5) > 0).all():
-        if agg_slope1 > 0 and agg_slope2 > 0 and z.volume > 0.5 and z.buy_ratio > 0.5:
-            return buy(candle, decision={
-                'category': 'slope',
-                'signals': sig,
-                'details': {
-                    'ema:slope:tail(5):min > thresh': '{:+.2f}% > 0'.format(
-                        sig['ema_slope'].tail(5).min()),
-                    'agg:ema:slope > thresh': '{:+.4g}% (span={}) > 0'.format(agg_slope1, span1),
-                    'agg:ema:slope > thresh': '{:+.4g}% (span={}) > 0'.format(agg_slope2, span2),
-                    'volume:z-score > thresh': '{:+.2f} > 0.5'.format(z.volume),
-                    'buy-ratio:z-score > thresh': '{:+.2f} > 0.5'.format(z.buy_ratio)
-                }
-            })
-
-    # No buy executed.
-    log.debug("{}{:<5}{:+.2f} Z-Score{:<5}{:+.2f} Slope".format(
-        candle['pair'], '', z.close, '', sig['ema_slope'].iloc[-1]))
-    return None
-
 #------------------------------------------------------------------------------
-def eval_sell(doc, candle):
-    """Avoid losses, maximize profits.
-    """
-    global client
-    sig = signals.generate(candle)
-    doc = app.get_db().trades.find_one_and_update(
-        {"_id":doc["_id"]},
-        {"$push":{"monitor.ema_slope":sig['ema_slope'].iloc[-1]}},
-        return_document = ReturnDocument.AFTER
-    )
-    reason = doc['buy']['decision']['category']
-
-    # A. Predict price peak as we approach mean value.
-    if reason == 'z-score':
-        if sig['z-score'].close > -0.75:
-            if sig['ema_slope'].iloc[-1] <= 0.10:
-                return sell(doc, candle, decision={
-                    'category': 'z-score',
-                    'signals': sig,
-                    'details': {
-                        'close:z-score > thresh': '{:+.2f} > -0.75'.format(sig['z-score'].close),
-                        'ema:slope < thresh': '{:+.2f}% <= 0.10'.format(sig['ema_slope'].iloc[-1])
-                    }
-                })
-    # B. Sell at peak price slope
-    elif reason == 'slope':
-        ob = client.get_orderbook_ticker(symbol=candle['pair'])
-        bid = float(ob['bidPrice'])
-
-        if sig['ema_slope'].iloc[-1] < max(doc['monitor']['ema_slope']):
-            return sell(doc, candle, orderbook=ob, decision={
-                'category': 'slope',
-                'signals': sig,
-                'details': {
-                    'ema:slope <= thresh': '{:+.2f}% <= 0'.format(sig['ema_slope'].iloc[-1]),
-                    'AND bid < buy': '{:.8f} < {:.8f}'.format(bid, doc['buy']['order']['price'])
-                }
-            })
-    return None
-
-#------------------------------------------------------------------------------
-def buy(candle, decision=None):
+def buy(candle, criteria):
     """Create or update existing position for zscore above threshold value.
     """
     global client
-    decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
-    decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     order = {
         'exchange': 'Binance',
@@ -190,17 +112,17 @@ def buy(candle, decision=None):
         'pair': candle['pair'],
         'status': 'open',
         'start_time': now(),
+        'snapshots': [criteria['snapshot']],
         'buy': {
             'time': now(),
             'candle': candle,
-            'decision': decision,
             'orderbook': orderbook,
             'order': order
         }
     }).inserted_id
 
 #------------------------------------------------------------------------------
-def sell(doc, candle, orderbook=None, decision=None):
+def sell(doc, candle, orderbook=None, criteria=None):
     """Close off existing position and calculate earnings.
     """
     global client
@@ -223,11 +145,9 @@ def sell(doc, candle, orderbook=None, decision=None):
     duration = now() - doc['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
 
-    decision['signals']['z-score'] = decision['signals']['z-score'].to_dict()
-    decision['signals']['ema_slope'] = sorted(decision['signals']['ema_slope'].to_dict().items())
-
     get_db().trades.update_one(
         {'_id': doc['_id']},
+        {'$push': {'snapshots':criteria['snapshot']}},
         {'$set': {
             'status': 'closed',
             'end_time': now(),
@@ -238,7 +158,6 @@ def sell(doc, candle, orderbook=None, decision=None):
             'sell': {
                 'time': now(),
                 'candle': candle,
-                'decision': decision,
                 'orderbook': ob,
                 'order': {
                     'exchange':'Binance',

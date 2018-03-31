@@ -36,7 +36,7 @@ def merge_new(dfc, pairs, span=None):
     global last_update
     t1 = Timer()
     pairs = BINANCE['PAIRS']
-    columns = ['close', 'open', 'trades', 'volume', 'buy_ratio']
+    columns = ['open', 'close', 'trades', 'volume', 'buy_ratio']
     exclude = ['_id','high','low','quote_vol','sell_vol', 'close_time']
     projection = dict(zip(exclude, [False]*len(exclude)))
     idx, data = [], []
@@ -88,7 +88,8 @@ def merge_new(dfc, pairs, span=None):
 
     df3 = pd.concat([dfc, df2]).drop_duplicates().sort_index()
 
-    log.debug("{:,} records loaded into numpy. [{:,.1f} ms]".format(len(df3), t1))
+    #log.debug("{:,} records loaded into numpy. [{:,.1f} ms]".format(
+    #    len(df3), t1))
     print("Done in %s ms" % t1)
     return df3
 

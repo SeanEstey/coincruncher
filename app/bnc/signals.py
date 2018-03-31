@@ -3,56 +3,60 @@ from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
 import app, app.bnc
-from app.bnc import ema_span
 from app import strtofreq
 log = logging.getLogger('signals')
 
-#------------------------------------------------------------------------------
-def generate(candle):
-    """Generate Z-Scores and EMA slope.
+#-----------------------------------------------------------------------------
+def ema_pct_change(candle):
+    """Calculate percent change of candle 'close' price exponential moving
+    average for preset time span.
     """
-    dfc = app.bnc.dfc
-    df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
-    rng = df.loc[slice(
-        candle['open_time'] - delta(hours=2),
-        candle['open_time']
-    )]['close'].copy()
-    ema_slope = rng.ewm(span=ema_span).mean().pct_change().tail(10) * 100
-    ema_slope.index = [ str(n)[:-10] for n in ema_slope.index.values ]
-    ema_slope = ema_slope.round(3)
+    span = app.bnc.rules['EMA']['SPAN']
 
-    return {
-        'z-score': z_score(candle),
-        'ema_slope': ema_slope
+    # Convert span to time range
+    _range = {
+        '1m': delta(minutes = span * 2),
+        '5m': delta(minutes = 5 * span * 2),
+        '1h': delta(hours = span * 2),
+        '1d': delta(days = span * 2)
     }
 
+    df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    sliced = df.loc[slice(
+        candle['open_time'] - _range[candle['freq']],
+        candle['open_time']
+    )]['close'].copy()
+
+    df_ema = sliced.ewm(span=span).mean().pct_change() * 100
+    df_ema.index = [ str(x)[: span * -1] for x in df_ema.index.values ]
+    return df_ema.round(3)
+
 #-----------------------------------------------------------------------------
-def z_score(candle):
+def z_score(candle, periods):
     """Generate Mean/STD/Z-Score for given candle properties.
     Attempts to correct distorted Mean values in bearish/bullish markets by
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
-    dfc = app.bnc.dfc
-    df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    smoothen = app.bnc.rules['Z-SCORE']['SMOOTH_SPAN']
+    df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
 
-    period = 1.0
     co,cf = candle['open_time'], candle['freq']
 
     if cf == '1m':
         end = co - delta(minutes=1)
-        start = end - delta(hours = 2 * period)
+        start = end - delta(minutes = periods)
     elif cf == '5m':
         end = co - delta(minutes=5)
-        start = end - delta(hours = 2 * period)
+        start = end - delta(minutes = 5 * periods)
     elif cf == '1h':
         end = co - delta(hours=1)
-        start = end - delta(hours = 72 * period)
+        start = end - delta(hours = periods)
 
     history = df.loc[slice(start, end)]
 
     # Smooth signal/noise ratio with EMA.
-    ema = history.ewm(span=5).mean()
+    ema = history.ewm(span=smoothen).mean()
 
     # Mean and SD
     stats = ema.describe()
