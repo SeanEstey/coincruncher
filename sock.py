@@ -78,9 +78,9 @@ def receive_kline(msg):
     else:
         color = colors.WHITE
 
-    print("{}{:%H:%M:%S:} {} {} p:{:.8f}, v:{:.8f}{}".format(
-        color, to_local(doc['close_time']), doc['freq'], doc['pair'],
-            doc['close'], doc['volume'], colors.ENDC))
+    print("{}{:%H:%M:%S:} {:<7} {:>5} {:>18.8f} {:>18.8f}{}".format(
+        color, to_local(doc['close_time']),
+        doc['pair'], doc['freq'], doc['close'], doc['volume'], colors.ENDC))
 
     db.candles.insert_one(doc)
 

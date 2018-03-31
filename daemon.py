@@ -55,8 +55,7 @@ def trading():
 
     while True:
         if timer_1m.remain() == 0:
-            # Wait ~7s until websocket data has streamed in
-            time.sleep(3)
+            time.sleep(7)
             trade.update('1m')
             timer_1m.reset()
 
@@ -68,6 +67,7 @@ if __name__ == '__main__':
     import threading
     import sys
     from app import set_db
+    pairs = BINANCE['PAIRS']
 
     divstr = "***** %s *****"
     log.info('Initializing daemon.')
@@ -88,11 +88,13 @@ if __name__ == '__main__':
         elif opt in('-c', '--candles'):
             # Preload binance candles w/o waiting on timer
             candles.update(pairs, '1m',
-                start='4 hours ago utc', force=True)
+                start='24 hours ago utc', force=True)
             candles.update(pairs, '5m',
-                start='4 hours ago utc', force=True)
+                start='24 hours ago utc', force=True)
             candles.update(pairs, '1h',
-                start='36 hours ago utc', force=True)
+                start='72 hours ago utc', force=True)
+            candles.update(pairs, '1d',
+                start='7 days ago utc', force=True)
         elif opt in('-t', '--tickers'):
             # Preload cmc tickers w/o waiting on timer
             kwargs["force_tick"] = True

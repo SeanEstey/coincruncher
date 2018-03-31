@@ -18,7 +18,7 @@ from app import freqtostr, strtofreq, pertostr
 from app.common.timer import Timer
 from app.common.utils import utc_datetime as now, utc_dtdate
 from app.bnc import *
-from app.bnc import candles, signals, trade
+from app.bnc import candles, signals, trade, strategy
 #from binance.client import Client
 
 log = logging.getLogger("testing")
@@ -40,8 +40,9 @@ def init():
     dfc = app.bnc.dfc
     trade.freq = 60
     trade.freq_str = '1m'
-    
-    #trade.update('1m')
+
+    candle = candles.newest('BTCUSDT', '1m', df=app.bnc.dfc)
+    trade.update('1m')
 
 def binance_tickers():
     #global client

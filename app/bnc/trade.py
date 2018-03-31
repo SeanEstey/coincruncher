@@ -69,14 +69,15 @@ def update(_freq_str):
 
     for trade in active:
         candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
-        result = strategy.evaluate('SELL', candle)
-        if result['action'] == 'sell':
-            trade_ids += [sell(trade, candle, criteria=result)]
-        else:
-            db.trades.update_one(
-                {"_id": trade["_id"]},
-                {"$push": {"snapshots": result['snapshot']}},
-            )
+        result = strategy.evaluate('SELL', candle, record=trade)
+        if result:
+            if result.get('action') == 'sell':
+                trade_ids += [sell(trade, candle, criteria=result)]
+            else:
+                db.trades.update_one(
+                    {"_id": trade["_id"]},
+                    {"$push": {"snapshots": result['snapshot']}},
+                )
 
     # Evaluate Buys
     inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
@@ -108,12 +109,17 @@ def buy(candle, criteria):
         'fee': BINANCE['TRADE_AMT'] * (BINANCE['PCT_FEE']/100),
     }
 
+    criteria['snapshot']['strategy'] = criteria['strategy']
+    criteria['details'] = criteria['details']
+
     return get_db().trades.insert_one({
         'pair': candle['pair'],
         'status': 'open',
         'start_time': now(),
         'snapshots': [criteria['snapshot']],
         'buy': {
+            'strategy': criteria['strategy'],
+            'details': criteria['details'],
             'time': now(),
             'candle': candle,
             'orderbook': orderbook,
@@ -147,27 +153,29 @@ def sell(doc, candle, orderbook=None, criteria=None):
 
     get_db().trades.update_one(
         {'_id': doc['_id']},
-        {'$push': {'snapshots':criteria['snapshot']}},
-        {'$set': {
-            'status': 'closed',
-            'end_time': now(),
-            'duration': int(duration.total_seconds()),
-            'pct_pdiff': pct_pdiff.round(4),
-            'pct_earn': pct_net.round(4),
-            'net_earn': net_earn.round(4),
-            'sell': {
-                'time': now(),
-                'candle': candle,
-                'orderbook': ob,
-                'order': {
-                    'exchange':'Binance',
-                    'price': bid,
-                    'volume': 1.0,
-                    'quote': quote,
-                    'pct_fee': pct_fee,
-                    'fee': fee
+        {
+            '$push': {'snapshots':criteria['snapshot']},
+            '$set': {
+                'status': 'closed',
+                'end_time': now(),
+                'duration': int(duration.total_seconds()),
+                'pct_pdiff': pct_pdiff.round(4),
+                'pct_earn': pct_net.round(4),
+                'net_earn': net_earn.round(4),
+                'sell': {
+                    'time': now(),
+                    'candle': candle,
+                    'orderbook': ob,
+                    'order': {
+                        'exchange':'Binance',
+                        'price': bid,
+                        'volume': 1.0,
+                        'quote': quote,
+                        'pct_fee': pct_fee,
+                        'fee': fee
+                    }
                 }
             }
-        }}
+        }
     )
     return doc['_id']

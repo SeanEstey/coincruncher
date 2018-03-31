@@ -28,7 +28,7 @@ def ema_pct_change(candle):
     )]['close'].copy()
 
     df_ema = sliced.ewm(span=span).mean().pct_change() * 100
-    df_ema.index = [ str(x)[: span * -1] for x in df_ema.index.values ]
+    df_ema.index = [ str(x)[:-10] for x in df_ema.index.values ]
     return df_ema.round(3)
 
 #-----------------------------------------------------------------------------

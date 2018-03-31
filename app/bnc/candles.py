@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 import numpy as np
-from pymongo import UpdateOne
+from pymongo import UpdateOne, ReplaceOne
 from bson import ObjectId
 import bsonnumpy
 from binance.client import Client
@@ -135,9 +135,10 @@ def update(pairs, freq, start=None, force=False):
         if force == True:
             ops = []
             for candle in candles:
-                ops.append(UpdateOne({"open_time":candle["open_time"],
-                    "pair":candle["pair"], "freq":candle["freq"]},
-                    {'$set':candle},
+                ops.append(ReplaceOne(
+                    {"close_time":candle["close_time"],
+                        "pair":candle["pair"], "freq":candle["freq"]},
+                    candle,
                     upsert=True
                 ))
             result = db.candles.bulk_write(ops)

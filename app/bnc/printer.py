@@ -47,30 +47,30 @@ def new_trades(trade_ids):
     data, indexes = [], []
 
     for _id in trade_ids:
-        doc = db.trades.find_one({"_id":_id})
-        freq_str = doc['buy']['candle']['freq']
-        indexes.append(doc['pair'])
-        candle = candles.newest(doc['pair'], freq_str, df=dfc)
-        sig = trade.gen_sig(candle)
+        record = db.trades.find_one({"_id":_id})
+        freq_str = record['buy']['candle']['freq']
+        indexes.append(record['pair'])
+        candle = candles.newest(record['pair'], freq_str, df=dfc)
+        ss1 = record['snapshots'][0]
+        ss2 = record['snapshots'][-1]
 
-        if doc.get('sell'):
-            c1 = doc['buy']['candle']
-            z1 = doc['buy']['decision']['signals']['z-score']
+        if record.get('sell'):
+            c1 = record['buy']['candle']
             data.append([
                 'SELL',
                 pct_diff(c1['close'], candle['close']),
-                sig['ema_slope'].iloc[-1],
-                sig['z-score'].close,
-                sig['z-score'].close - z1['close'],
-                to_relative_str(now() - doc['start_time'])
+                ss2['ema_pct_change'],
+                ss2['z-score']['close'],
+                ss2['z-score']['close'] - ss1['z-score']['close'],
+                to_relative_str(now() - record['start_time'])
             ])
         # Buy trade
         else:
             data.append([
                 'BUY',
                 0.0,
-                sig['ema_slope'].iloc[-1],
-                doc['buy']['decision']['signals']['z-score']['close'],
+                ss2['ema_pct_change'],
+                ss1['z-score']['close'],
                 0.0,
                 "-"
             ])
@@ -92,7 +92,7 @@ def new_trades(trade_ids):
     [siglog(line) for line in lines]
 
 #------------------------------------------------------------------------------
-def positions(_type, start=None):
+def positions(_type):
     """Position summary.
     @_type: 'open', 'closed'
     @start: datetime.datetime for closed trades
@@ -107,19 +107,20 @@ def positions(_type, start=None):
         _trades = list(db.trades.find(
             {'status':'open', 'pair':{"$in":pairs}}))
 
-        for doc in _trades:
-            c1 = doc['buy']['candle']
-            c2 = candles.newest(doc['pair'], c1['freq'], df=dfc)
-            sig = trade.gen_sig(c2)
+        for record in _trades:
+            c1 = record['buy']['candle']
+            c2 = candles.newest(record['pair'], c1['freq'], df=dfc)
+            ss1 = record['snapshots'][0]
+            ss2 = record['snapshots'][-1]
 
             data.append([
                 pct_diff(c1['close'], c2['close']),
-                sig['ema_slope'].iloc[-1],
-                sig['z-score'].close,
-                sig['z-score'].close - doc['buy']['decision']['signals']['z-score']['close'],
-                to_relative_str(now() - doc['start_time'])
+                ss2['ema_pct_change'],
+                ss2['z-score']['close'],
+                ss2['z-score']['close'] - ss1['z-score']['close'],
+                to_relative_str(now() - record['start_time'])
             ])
-            indexes.append(doc['pair'])
+            indexes.append(record['pair'])
 
         if len(_trades) == 0:
             siglog(" 0 open positions")
@@ -137,16 +138,18 @@ def positions(_type, start=None):
             [siglog(line) for line in lines]
             return df
     elif _type == 'closed':
-        if start is None:
-            _now = datetime.now()
+        _now = datetime.now()
+        if _now.time().hour >= 8:
             start = datetime(_now.year, _now.month, _now.day, 8, 0, 0, 0,
                 tzlocal.get_localzone()
             ).astimezone(pytz.utc)
-
-            closed = list(db.trades.find(
-                {'status':'closed', 'end_time':{'$gte':start}}))
         else:
-            closed = list(db.trades.find({'status':'closed'}))
+            start = datetime(_now.year, _now.month, _now.day-1, 8, 0, 0, 0,
+                tzlocal.get_localzone()
+            ).astimezone(pytz.utc)
+
+        closed = list(db.trades.find(
+            {'status':'closed', 'end_time':{'$gte':start}}))
 
         n_win, pct_earn = 0, 0
         for n in closed:
