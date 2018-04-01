@@ -62,7 +62,7 @@ def trading():
             timer_5m.reset()
 
         if timer_1m.remain() == 0:
-            time.sleep(5)
+            time.sleep(8)
             trade.update('1m')
             timer_1m.reset()
 

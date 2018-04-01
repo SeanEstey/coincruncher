@@ -57,8 +57,8 @@ def update(_freq_str):
 
     tradelog('*'*80)
     duration = to_relative_str(now() - start)
-    hdr = "Cycle #{} {:>%s}" % (80 - 7 - 1 - len(str(n_cycles)))
-    tradelog(hdr.format(n_cycles, duration))
+    hdr = "Cycle #{}, Period {} {:>%s}" % (61 - len(str(n_cycles)))
+    tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*80)
     #tradelog("{} trading pair(s):".format(len(pairs)))
     #[tradelog(x) for x in printer.agg_mkts().to_string().split('\n')]

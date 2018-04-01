@@ -120,7 +120,11 @@ class Timer():
                 if len(gt_min) == 0:
                     if t_now.hour == 23:
                         _time = time(0, solutions[0])
-                        _date = date(_date.year, _date.month, _date.day+1)
+                        # Catch last day of month error
+                        try:
+                            _date = date(_date.year, _date.month, _date.day+1)
+                        except ValueError as e:
+                            _date = date(_date.year, _date.month+1, _date.day+1)
                     else:
                         _time = time(t_now.hour+1, solutions[0])
                 else:

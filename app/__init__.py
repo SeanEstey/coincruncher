@@ -101,27 +101,43 @@ def file_handler(level, path, filters=None):
     """
     handler = logging.FileHandler(path)
     handler.setLevel(level)
-    handler.setFormatter(WrappedFixedIndentingLog(
+
+    std = WrappedFixedIndentingLog(
         colors.BLUE+'[%(asctime)-3s,%(name)8s]: '+colors.ENDC+'%(message)s',
         '%m-%d %H:%M'
-    ))
+    )
+
     if filters is None:
         return handler
 
     for _filter in filters:
         if _filter==DEBUG:
+            handler.setFormatter(std)
             handler.addFilter(DebugFilter())
         elif _filter==INFO:
+            handler.setFormatter(std)
             handler.addFilter(InfoFilter())
         elif _filter==WARNING:
+            handler.setFormatter(std)
             handler.addFilter(WarningFilter())
         elif _filter==ERROR:
+            handler.setFormatter(std)
             handler.addFilter(ErrorFilter())
         elif _filter==CRITICAL:
+            handler.setFormatter(std)
             handler.addFilter(CriticalFilter())
         elif _filter==SIGNAL:
+            short = WrappedFixedIndentingLog(
+                colors.BLUE+'[%(asctime)-3s, signal]: '+colors.ENDC+'%(message)s',
+                '%H:%M:%S')
+            handler.setFormatter(short)
             handler.addFilter(SignalFilter())
         elif _filter==TRADE:
+            short = WrappedFixedIndentingLog(
+                colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
+                '%H:%M:%S')
+            handler.setFormatter(short)
+            handler.setFormatter(short)
             handler.addFilter(TradeFilter())
     return handler
 
