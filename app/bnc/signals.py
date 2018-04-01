@@ -3,8 +3,20 @@ from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
 import app, app.bnc
-from app import strtofreq
+from . import candles
+from app import strtofreq, freqtostr
 log = logging.getLogger('signals')
+
+#-----------------------------------------------------------------------------
+def vwap():
+    # buy volume * price / total volume
+    pass
+
+#-----------------------------------------------------------------------------
+def rsi(candle):
+    #https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI
+    #RSI = 100 – [100 / ( 1 + (Average of Upward Price Change / Average of Downward Price Change ) ) ]
+    pass
 
 #-----------------------------------------------------------------------------
 def ema_pct_change(candle):

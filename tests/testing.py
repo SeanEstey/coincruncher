@@ -18,7 +18,7 @@ from app import freqtostr, strtofreq, pertostr
 from app.common.timer import Timer
 from app.common.utils import utc_datetime as now, utc_dtdate
 from app.bnc import *
-from app.bnc import candles, signals, trade, strategy
+from app.bnc import analyze, candles, signals, trade, strategy
 #from binance.client import Client
 
 log = logging.getLogger("testing")
@@ -34,24 +34,9 @@ scores=None
 
 
 #------------------------------------------------------------------------------
-def init():
-    global dfc, candle, scores
-    trade.init()
-    dfc = app.bnc.dfc
-    trade.freq = 60
-    trade.freq_str = '1m'
-
-    candle = candles.newest('BTCUSDT', '1m', df=app.bnc.dfc)
-    trade.update('1m')
-
-def binance_tickers():
-    #global client
-    #client = Client("", "")
-    t1 = Timer()
-    tickers = client.get_all_tickers()
-    print("tickers received in {}ms".format(t1))
-    return tickers
-
-##### MAIN #####
-#init()
-#binance_tickers()
+trade.init()
+dfc = app.bnc.dfc
+trade.freq = 60
+trade.freq_str = '1m'
+candle = candles.newest('BTCUSDT', '1m', df=app.bnc.dfc)
+analyze.top_performers()

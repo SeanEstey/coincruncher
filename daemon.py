@@ -5,7 +5,7 @@ import app
 from app import GracefulKiller
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate
-from app.bnc import candles, trade
+from app.bnc import analyze, candles, trade
 from app.cmc import tickers
 from app.common import forex
 from docs.config import TICKER_LIMIT
@@ -29,6 +29,20 @@ def data(now=False):
 
         print("cmc: {:} sec remain".format(cmc.remain(unit='s')))
         time.sleep(cmc.remain()/1000)
+
+#---------------------------------------------------------------------------
+def analysis():
+    analyze.top_performers(10, idx_filter='BTC')
+
+    anal = Timer(name='analysis', expire='every 60 clock min utc')
+
+    while True:
+        if anal.remain() == 0:
+            analyze.top_performers(10, idx_filter='BTC')
+            anal.reset()
+            time.sleep(3500)
+
+        time.sleep(5)
 
 #---------------------------------------------------------------------------
 def daily():
@@ -111,9 +125,11 @@ if __name__ == '__main__':
         th1 = threading.Thread(
             name='data', target=data, kwargs=th1_kwargs)
         th2 = threading.Thread(
-            name='daily', target=daily) #kwargs=kwargs)
+            name='daily', target=daily)
         th3 = threading.Thread(
-            name='trade', target=trading) #, kwargs=kwargs)
+            name='trade', target=trading)
+        th4 = threading.Thread(
+            name='analyze', target=analysis)
     except Exception as e:
         log.exception("datathread main()")
         print(str(e))
@@ -127,6 +143,9 @@ if __name__ == '__main__':
 
     th3.setDaemon(True)
     th3.start()
+
+    th4.setDaemon(True)
+    th4.start()
 
     print("starting loop")
 

@@ -29,13 +29,32 @@ dtype = np.dtype([
 ])
 
 #------------------------------------------------------------------------------
+def newest(pair, freq_str, df=None):
+    """Get most recently added candle to either dataframe or mongoDB.
+    """
+    freq = strtofreq[freq_str]
+
+    if df is not None:
+        series = df.loc[pair, freq].iloc[-1]
+        open_time = df.loc[(pair,freq)].index[-1]
+        idx = dict(zip(df.index.names, [pair, freq_str, open_time]))
+        return {**idx, **series}
+    else:
+        log.debug("Doing DB read for candle.newest!")
+
+        db = app.get_db()
+        return list(db.candles.find({"pair":pair,"freq":freq})\
+            .sort("close_time",-1)\
+            .limit(1)
+        )[0]
+
+#------------------------------------------------------------------------------
 def merge_new(dfc, pairs, span=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
     global last_update
     t1 = Timer()
-    pairs = BINANCE['PAIRS']
     columns = ['open', 'close', 'trades', 'volume', 'buy_ratio']
     exclude = ['_id','high','low','quote_vol','sell_vol', 'close_time']
     projection = dict(zip(exclude, [False]*len(exclude)))
@@ -88,9 +107,9 @@ def merge_new(dfc, pairs, span=None):
 
     df3 = pd.concat([dfc, df2]).drop_duplicates().sort_index()
 
-    #log.debug("{:,} records loaded into numpy. [{:,.1f} ms]".format(
-    #    len(df3), t1))
-    print("Done in %s ms" % t1)
+    log.debug("{:,} records loaded into numpy. [{:,.1f} ms]".format(
+        len(df3), t1))
+    #print("Done in %s ms" % t1)
     return df3
 
 #------------------------------------------------------------------------------
@@ -151,26 +170,6 @@ def update(pairs, freq, start=None, force=False):
         len(candles), freq, t1.elapsed(unit='s'))
 
     return candles
-
-#------------------------------------------------------------------------------
-def newest(pair, freq_str, df=None):
-    """Get most recently added candle to either dataframe or mongoDB.
-    """
-    freq = strtofreq[freq_str]
-
-    if df is not None:
-        series = df.loc[pair, freq].iloc[-1]
-        open_time = df.loc[(pair,freq)].index[-1]
-        idx = dict(zip(df.index.names, [pair, freq_str, open_time]))
-        return {**idx, **series}
-    else:
-        log.debug("Doing DB read for candle.newest!")
-
-        db = app.get_db()
-        return list(db.candles.find({"pair":pair,"freq":freq})\
-            .sort("close_time",-1)\
-            .limit(1)
-        )[0]
 
 #------------------------------------------------------------------------------
 def query_api(pair, freq, start=None, end=None, force=False):

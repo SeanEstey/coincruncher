@@ -1,6 +1,7 @@
 # app.bnc.printer
 import logging
 import tzlocal
+import dateparser
 from datetime import datetime
 import pytz
 import pandas as pd
@@ -139,15 +140,12 @@ def positions(_type):
             [tradelog(line) for line in lines]
             return df
     elif _type == 'closed':
-        _now = datetime.now()
-        if _now.time().hour >= 8:
-            start = datetime(_now.year, _now.month, _now.day, 6, 0, 0, 0,
-                tzlocal.get_localzone()
-            ).astimezone(pytz.utc)
+        if datetime.now().time().hour >= 8:
+            start = dateparser.parse("8 am today").replace(
+                tzinfo=tzlocal.get_localzone()).astimezone(pytz.utc)
         else:
-            start = datetime(_now.year, _now.month, _now.day-1, 6, 0, 0, 0,
-                tzlocal.get_localzone()
-            ).astimezone(pytz.utc)
+            start = dateparser.parse("8 am yesterday").replace(
+                tzinfo=tzlocal.get_localzone()).astimezone(pytz.utc)
 
         closed = list(db.trades.find(
             {'status':'closed', 'end_time':{'$gte':start}}))

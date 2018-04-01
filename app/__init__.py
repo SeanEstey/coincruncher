@@ -7,6 +7,7 @@ from docs.config import *
 from app.common.utils import colors
 logging.addLevelName(SIGNAL, "Signal")
 logging.addLevelName(TRADE, "Trade")
+logging.addLevelName(ANALYZE, "Analyze")
 log = logging.getLogger('app')
 
 # Frequency in seconds to str
@@ -77,6 +78,9 @@ class SignalFilter(logging.Filter):
 class TradeFilter(logging.Filter):
     def filter(self, record): return record.levelno == TRADE
 
+class AnalyzeFilter(logging.Filter):
+    def filter(self, record): return record.levelno == ANALYZE
+
 class WarningFilter(logging.Filter):
     def filter(self, record): return record.levelno == WARNING
 
@@ -137,8 +141,13 @@ def file_handler(level, path, filters=None):
                 colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
                 '%H:%M:%S')
             handler.setFormatter(short)
-            handler.setFormatter(short)
             handler.addFilter(TradeFilter())
+        elif _filter==ANALYZE:
+            short = WrappedFixedIndentingLog(
+                colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
+                '%H:%M:%S')
+            handler.setFormatter(short)
+            handler.addFilter(AnalyzeFilter())
     return handler
 
 
@@ -168,7 +177,8 @@ logging.basicConfig(
         file_handler(DEBUG, DEBUGFILE, filters=[DEBUG]),
         file_handler(INFO, LOGFILE, filters=[CRITICAL]),
         file_handler(SIGNAL, SIGNALFILE, filters=[SIGNAL]),
-        file_handler(TRADE, TRADEFILE, filters=[TRADE])
+        file_handler(TRADE, TRADEFILE, filters=[TRADE]),
+        file_handler(ANALYZE, ANALYZEFILE, filters=[ANALYZE])
     ]
 )
 
