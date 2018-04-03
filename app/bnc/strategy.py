@@ -5,6 +5,7 @@ from app.common.utils import colors, utc_datetime as now
 import app.bnc
 from app.bnc import signals
 from docs.rules import RULES as rules
+from app import strtofreq, freqtostr
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 
@@ -20,6 +21,11 @@ def evaluate(side, candle, record=None):
     ema = signals.ema_pct_change(candle)
     threshold = app.bnc.rules['Z-SCORE']['BUY_THRESH']
 
+    _rules = rules[candle['freq']]['MACD']
+    df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df_macd = signals.MACD(df, _rules['SHORT_PERIODS'], _rules['LONG_PERIODS'])
+    value = df_macd['MACDdiff'].iloc[-1]
+
     color, weight = None, None
 
     if candle['freq'] == '5m':
@@ -32,9 +38,9 @@ def evaluate(side, candle, record=None):
     if z.close < threshold or z.volume > threshold*-1:
         color += colors.UNDERLINE
 
-    siglog("{}{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m{}{}"\
+    siglog("{}{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m {:>+10.2f} macd{}{}"\
         .format(color, candle['pair'], candle['freq'], z.close, z.volume,
-            candle['buy_ratio'], ema.iloc[-1], colors.ENDC, colors.ENDC))
+            candle['buy_ratio'], ema.iloc[-1], value, colors.ENDC, colors.ENDC))
 
     if side == 'BUY':
         # A. MACD strat
@@ -43,23 +49,23 @@ def evaluate(side, candle, record=None):
             return result
 
         # B. Z-Score strat
-        result = zthreshold(side, candle)
-        if result:
-            return result
+        #result = zthreshold(side, candle)
+        #if result:
+        #    return result
 
         # C. Momentum strat
-        result = momentum(side, candle)
-        if result:
-            return result
+        #result = momentum(side, candle)
+        #if result:
+        #    return result
     elif side == 'SELL':
         reason = record['buy']['strategy']
 
         if reason == 'macd':
             return macd(side, candle)
-        if reason == 'momentum':
-            return momentum(side, candle, record=record)
-        elif reason == 'zthreshold':
-            return zthreshold(side, candle)
+        #if reason == 'momentum':
+        #    return momentum(side, candle, record=record)
+        #elif reason == 'zthreshold':
+        #    return zthreshold(side, candle)
 
     # No trade executed.
     return None
@@ -77,19 +83,26 @@ def macd(side, candle):
     df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     df_macd = signals.MACD(df, _rules['SHORT_PERIODS'], _rules['LONG_PERIODS'])
     value = df_macd['MACDdiff'].iloc[-1]
+    periods = rules[candle['freq']]['Z-SCORE']['PERIODS']
+    z = signals.z_score(candle, periods)
+    ema = signals.ema_pct_change(candle)
 
     snapshot = {
         'time': now(),
         'price': candle['close'],
         'volume': candle['volume'],
         'buy_ratio': candle['buy_ratio'],
-        'macd_diff': value
+        'macd_diff': value,
+        'z-score': z.to_dict(),
+        'ema_pct_change': ema.iloc[-1]
     }
 
     if side == 'BUY':
         if value < 0:
-            print('macd < 0. no buy')
+            print('macd is {:+.2f}. no buy'.format(value))
             return None
+
+        print('macd is {:+.2f}. buy'.format(value))
 
         client = Client("","")
         ob = client.get_orderbook_ticker(symbol=candle['pair'])

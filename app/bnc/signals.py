@@ -73,7 +73,7 @@ def z_score(candle, periods):
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
-    smoothen = app.bnc.rules['Z-SCORE']['SMOOTH_SPAN']
+    smoothen = app.bnc.rules['Z-SCORE']['PERIODS']
     df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
 
     co,cf = candle['open_time'], candle['freq']

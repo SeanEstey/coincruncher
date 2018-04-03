@@ -39,22 +39,5 @@ dfc = app.bnc.dfc
 trade.freq = 60
 trade.freq_str = '1m'
 candle = candles.newest('BTCUSDT', '1m', df=app.bnc.dfc)
+trade.update('5m')
 
-
-btc = dfc.loc['BTCUSDT',300]
-n_fast=12
-n_slow=26
-
-EMAfast = btc['close'].ewm(span=n_fast, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
-EMAslow = btc['close'].ewm(span=n_slow, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
-
-MACD = pd.Series(EMAfast - EMAslow, name='MACD_{}_{}'.format(n_fast, n_slow))
-
-MACDsign = MACD.ewm(span=9, min_periods=8, adjust=True, ignore_na=False).mean()
-MACDsign.name = 'MACDsign_{}_{}'.format(n_fast, n_slow)
-
-MACDdiff = pd.Series(MACD - MACDsign, name = 'MACDdiff_' + str(n_fast) + '_' + str(n_slow))
-
-btc = btc.join(MACD)
-btc = btc.join(MACDsign)
-btc = btc.join(MACDdiff)

@@ -103,7 +103,7 @@ def positions(_type):
     dfc = app.bnc.dfc
 
     if _type == 'open':
-        cols = ["ΔPrice", "Slope", " Z-Score", " ΔZ-Score", "Time"]
+        cols = ["ΔPrice", "Slope", " Z-Score", " ΔZ-Score", "Macd", "Time"]
         data, indexes = [], []
 
         _trades = list(db.trades.find(
@@ -120,6 +120,7 @@ def positions(_type):
                 ss2['ema_pct_change'],
                 ss2['z-score']['close'],
                 ss2['z-score']['close'] - ss1['z-score']['close'],
+                ss2['macd_diff'],
                 to_relative_str(now() - record['start_time'])
             ])
             indexes.append(record['pair'])
@@ -134,7 +135,8 @@ def positions(_type):
                 cols[1]: ' {:+.2f}%'.format,
                 cols[2]: '  {:.2f}'.format,
                 cols[3]: '  {:+.2f}'.format,
-                cols[4]: '{}'.format
+                cols[4]: '  {:+.2f}'.format,
+                cols[5]: '{}'.format
             }).split("\n")
             tradelog("{} position(s):".format(len(df)))
             [tradelog(line) for line in lines]
