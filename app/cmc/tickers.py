@@ -2,7 +2,7 @@
 import logging, pytz, json
 import argparse, logging, requests, json, re
 from datetime import datetime, timedelta as delta, date
-from dateutil.parser import parse
+import dateparser
 from pymongo import ReplaceOne
 from app import get_db
 from app.common.timer import Timer
@@ -281,7 +281,7 @@ def scrape_history(_id, name, symbol, rank, start, end):
             "symbol":symbol,
             "id":_id,
             "name":name,
-            "date":parse(row[0]).replace(tzinfo=pytz.utc),
+            "date":dateparser.parse(row[0]).replace(tzinfo=pytz.utc),
             "open":float(row[1]),
             "high":float(row[2]),
             "low":float(row[3]),
@@ -315,7 +315,7 @@ def tkr_diff(symbol, price, period, to_format):
     """
     db = get_db()
     qty, unit, tdelta = parse_period(period)
-    compare_dt = parse(str(date.today())) - tdelta
+    compare_dt = dateparser.parse(str(date.today())) - tdelta
     ticker = db.tickers_1d.find({"symbol":symbol, "date":compare_dt})
 
     if ticker.count() < 1:

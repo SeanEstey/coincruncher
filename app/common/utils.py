@@ -1,4 +1,8 @@
 import inspect, logging, re, unicodedata
+import pytz
+import tzlocal
+import dateparser
+from datetime import datetime, timedelta, time, date
 from pprint import pformat
 log = logging.getLogger(__name__)
 
@@ -17,12 +21,7 @@ class colors:
 # Dataframes
 def df_to_list(df): return df.to_string().title().split("\n")
 
-# Datetime methods
-import pytz
-import dateparser
-from datetime import datetime, timedelta, time, date
-from dateutil import tz
-from dateutil.parser import parse
+
 
 #------------------------------------------------------------------------------
 def to_ts(dt):
@@ -50,7 +49,8 @@ def duration(_timedelta, units='total_seconds'):
         return round(_timedelta.total_seconds()/3600,1)
 #------------------------------------------------------------------------------
 def to_local(dt):
-    return dt.astimezone(tz.tzlocal())
+    zone = tzinfo=tzlocal.get_localzone()
+    return dt.astimezone(zone)
 #------------------------------------------------------------------------------
 def to_dt(val):
     """Convert timestamp or ISOstring to datetime obj
@@ -70,7 +70,7 @@ def to_dt(val):
         # ISO formatted datetime str?
         else:
             try:
-                return parse(val).replace(tzinfo=pytz.utc)
+                return dateparser.parse(val).replace(tzinfo=pytz.utc)
             except Exception as e:
                 raise
     raise Exception("to_dt(): invalid type '%s'" % type(val))

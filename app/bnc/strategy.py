@@ -4,24 +4,19 @@ from binance.client import Client
 from app.common.utils import colors, utc_datetime as now
 import app.bnc
 from app.bnc import signals
+from docs.rules import RULES as rules
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 
 log = logging.getLogger('strategy')
-
-zscore_periods = {
-    '1m': 60,
-    '5m': 60,
-    '1h': 21,
-    '1d': 21
-}
 
 #-------------------------------------------------------------------------------
 def evaluate(side, candle, record=None):
     """Evaluate buy/sell decision based on available strategies.
     """
     dfc = app.bnc.dfc
-    z = signals.z_score(candle, zscore_periods[candle['freq']])
+    periods = rules[candle['freq']]['Z-SCORE']['PERIODS']
+    z = signals.z_score(candle, periods)
     ema = signals.ema_pct_change(candle)
     threshold = app.bnc.rules['Z-SCORE']['BUY_THRESH']
 
@@ -42,18 +37,25 @@ def evaluate(side, candle, record=None):
             candle['buy_ratio'], ema.iloc[-1], colors.ENDC, colors.ENDC))
 
     if side == 'BUY':
-        # A. Z-Score strat
+        # A. MACD strat
+        result =macd(side, candle)
+        if result:
+            return result
+
+        # B. Z-Score strat
         result = zthreshold(side, candle)
         if result:
             return result
 
-        # B. Momentum strat
+        # C. Momentum strat
         result = momentum(side, candle)
         if result:
             return result
     elif side == 'SELL':
         reason = record['buy']['strategy']
 
+        if reason == 'macd':
+            return macd(side, candle)
         if reason == 'momentum':
             return momentum(side, candle, record=record)
         elif reason == 'zthreshold':
@@ -61,6 +63,58 @@ def evaluate(side, candle, record=None):
 
     # No trade executed.
     return None
+
+#------------------------------------------------------------------------------
+def macd(side, candle):
+    """
+    """
+    dfc = app.bnc.dfc
+
+    if candle['freq'] != '5m':
+        return None
+
+    _rules = rules[candle['freq']]['MACD']
+    df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df_macd = signals.MACD(df, _rules['SHORT_PERIODS'], _rules['LONG_PERIODS'])
+    value = df_macd['MACDdiff'].iloc[-1]
+
+    snapshot = {
+        'time': now(),
+        'price': candle['close'],
+        'volume': candle['volume'],
+        'buy_ratio': candle['buy_ratio'],
+        'macd_diff': value
+    }
+
+    if side == 'BUY':
+        if value < 0:
+            print('macd < 0. no buy')
+            return None
+
+        client = Client("","")
+        ob = client.get_orderbook_ticker(symbol=candle['pair'])
+
+        return {
+            'strategy': 'macd',
+            'snapshot': {**snapshot, **{'ask_price':float(ob['askPrice'])}},
+            'details': {
+                'macd_diff > 0': '{:+.2f} > 0'.format(value)
+            }
+        }
+    elif side == 'SELL':
+        if value > 0:
+            return {'action':None, 'snapshot':snapshot}
+
+        client = Client("","")
+        ob = client.get_orderbook_ticker(symbol=candle['pair'])
+
+        return {
+            'action': 'sell',
+            'snapshot': {**snapshot, **{'bid_price':float(ob['bidPrice'])}},
+            'details': {
+                'macd_diff < 0': '{:+.2f} < 0'.format(value)
+            }
+        }
 
 #------------------------------------------------------------------------------
 def zthreshold(side, candle):
@@ -71,7 +125,8 @@ def zthreshold(side, candle):
     if candle['freq'] != '1m':
         return None
 
-    z = signals.z_score(candle, zscore_periods[candle['freq']])
+    periods = rules[candle['freq']]['Z-SCORE']['PERIODS']
+    z = signals.z_score(candle, periods)
     ema = signals.ema_pct_change(candle)
 
     snapshot = {
@@ -130,7 +185,8 @@ def momentum(side, candle, record=None):
     if candle['freq'] != '5m':
         return None
 
-    z = signals.z_score(candle, zscore_periods[candle['freq']])
+    periods = rules[candle['freq']]['Z-SCORE']['PERIODS']
+    z = signals.z_score(candle, periods)
     ema = signals.ema_pct_change(candle)
 
     client = Client("","")

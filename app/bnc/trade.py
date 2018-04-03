@@ -60,9 +60,6 @@ def update(_freq_str):
     hdr = "Cycle #{}, Period {} {:>%s}" % (61 - len(str(n_cycles)))
     tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*80)
-    #tradelog("{} trading pair(s):".format(len(pairs)))
-    #[tradelog(x) for x in printer.agg_mkts().to_string().split('\n')]
-
 
     # Evaluate Sells
     active = list(db.trades.find({'status':'open'})) #, 'pair':{"$in":pairs}}))

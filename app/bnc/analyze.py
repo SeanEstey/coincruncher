@@ -18,8 +18,6 @@ def analyze_log(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
 def top_performers(n, idx_filter=None):
-    dfc = app.bnc.dfc
-
     columns = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney', 'volume']
 
     client = Client("","")
@@ -29,7 +27,6 @@ def top_performers(n, idx_filter=None):
         columns=columns,
         index = pd.Index([x['symbol'] for x in products['data']], name='pair')
     )
-    df = df.rename(columns={'close':'c', 'tradedMoney':'usd_vol', 'volume':'vol'})
 
     # Filter out inactive pairs
     df = df[df['active'] == True]
@@ -42,11 +39,9 @@ def top_performers(n, idx_filter=None):
         df = df[df.index.str.contains(idx_filter)]
 
     # Compute metrics
-    df['% c-o'] = (((df['c'] - df['open']) / df['open']) * 100).round(2)
+    df['% c-o'] = (((df['close'] - df['open']) / df['open']) * 100).round(2)
     df['% h-l'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
-
     df = df.sort_values('% c-o')
-
 
     # Filter top performers
     top = df.tail(n)
@@ -58,8 +53,9 @@ def top_performers(n, idx_filter=None):
         periods = 24
         freq_str = '1h'
 
+        print('idx: %s' % idx)
         candles.update([idx], freq_str, start="24 hours ago utc")
-        app.bnc.dfc = candles.merge_new(dfc, [idx], span=delta(hours=periods))
+        app.bnc.dfc = candles.merge_new(app.bnc.dfc, [idx], span=delta(hours=periods))
         hist = app.bnc.dfc.loc[idx].xs(strtofreq[freq_str], level=0).tail(periods)
         desc = hist.describe()
         pct_desc = hist.pct_change().describe()
@@ -71,6 +67,7 @@ def top_performers(n, idx_filter=None):
             signals.ema_pct_change(candle).iloc[-1]
         ]
 
+    top = top.rename(columns={'close':'c', 'tradedMoney':'usd_vol', 'volume':'vol'})
     top = top.join(_df)
     top = top[['c', '% c.std', '% c-o', '% h-l', 'ema.slope', 'vol', 'bv.mean', 'usd_vol']]
 
@@ -87,22 +84,3 @@ def top_performers(n, idx_filter=None):
     [ analyze_log(line) for line in lines]
 
     return top
-
-#-----------------------------------------------------------------------------
-def describe(pairs, freq, periods):
-    dfc = app.bnc.dfc
-    df = dfc.loc[pairs].xs(freq, level=1).groupby('pair').tail(periods)
-    pct_stats = (df.groupby('pair').pct_change() * 100).groupby('pair').describe().round(2)
-    pair = pct_stats['close']['std'].idxmax()
-    df_pct_pair = pct_stats.loc[pair]
-    df_pair = df.loc[pair].describe()
-    candle = candles.newest(pair, freqtostr[freq], df=app.bnc.dfc)
-
-    print("\n{} {} ({} periods)".format(pair, freqtostr[freq], periods))
-    print("Price: {:.2f}% std, {:+.2f}% min, {:+.2f}% max".format(
-        pct_stats['close']['std'].max(), df_pct_pair['close']['min'],
-        df_pct_pair['close']['max']))
-    print("BuyVol: {:.1f}% mean".format(
-        (df_pair['buy_ratio']['mean']*100).round(1)))
-    print('EMA: {:+.2f}%'.format(signals.ema_pct_change(candle).iloc[-1]))
-

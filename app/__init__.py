@@ -144,8 +144,10 @@ def file_handler(level, path, filters=None):
             handler.addFilter(TradeFilter())
         elif _filter==ANALYZE:
             short = WrappedFixedIndentingLog(
-                colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
-                '%H:%M:%S')
+                fmt = colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
+                datefmt = '%H:%M:%S',
+                width = 300
+            )
             handler.setFormatter(short)
             handler.addFilter(AnalyzeFilter())
     return handler

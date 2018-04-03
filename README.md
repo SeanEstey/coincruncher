@@ -1,13 +1,9 @@
-### Install BitEx dev branch > 2.0.0 (Binance support)
+### Installing bson-numpy
 
 ```
-git clone https://github.com/Crypto-toolbox/bitex.git
-cd bitex
-git checkout dev
-python3 setup.py install
+python3.6 -m pip install -U git+https://github.com/mongodb/mongo-python-driver.git
+python3.6 -m pip install git+https://github.com/mongodb/bson-numpy.git
 ```
-
-Dev 2.0 documentation: https://github.com/Crypto-toolbox/bitex/tree/dev
 
 ### Run MongoDB Daemon
 

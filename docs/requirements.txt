@@ -1,10 +1,12 @@
-BitEx==2.0.0
 python-binance
-bs4
-babel
 dateparser
 getch
-money
+numpy
+tzlocal
 pymongo
 pandas
+pytz
 scipy
+plotly
+qgrid
+cufflinks
