@@ -75,10 +75,6 @@ def macd(side, candle):
     """
     """
     dfc = app.bnc.dfc
-
-    if candle['freq'] != '5m':
-        return None
-
     _rules = rules[candle['freq']]['MACD']
     df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     df_macd = signals.MACD(df, _rules['SHORT_PERIODS'], _rules['LONG_PERIODS'])
@@ -101,6 +97,8 @@ def macd(side, candle):
         if value < 0:
             print('macd is {:+.2f}. no buy'.format(value))
             return None
+        if candle['freq'] != '5m':
+            return None
 
         print('macd is {:+.2f}. buy'.format(value))
 
@@ -116,6 +114,9 @@ def macd(side, candle):
         }
     elif side == 'SELL':
         if value > 0:
+            return {'action':None, 'snapshot':snapshot}
+
+        if candle['freq'] != '5m':
             return {'action':None, 'snapshot':snapshot}
 
         client = Client("","")
