@@ -5,6 +5,14 @@ python3.6 -m pip install -U git+https://github.com/mongodb/mongo-python-driver.g
 python3.6 -m pip install git+https://github.com/mongodb/bson-numpy.git
 ```
 
+### Jupyterlab config
+
+```
+anaconda3/bin/pip install cufflinks, qgrid
+jupyter labextension install @jupyter-widgets/jupyterlab-manager
+jupyter labextension install qgrid
+```
+
 ### Run MongoDB Daemon
 
 ```

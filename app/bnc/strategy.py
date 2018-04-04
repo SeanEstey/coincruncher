@@ -24,7 +24,7 @@ def evaluate(side, candle, record=None):
     _rules = rules[candle['freq']]['MACD']
     df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     df_macd = signals.MACD(df, _rules['SHORT_PERIODS'], _rules['LONG_PERIODS'])
-    value = df_macd['MACDdiff'].iloc[-1]
+    value = df_macd['macd_diff'].iloc[-1]
 
     color, weight = None, None
 
@@ -73,12 +73,14 @@ def evaluate(side, candle, record=None):
 #------------------------------------------------------------------------------
 def macd(side, candle):
     """
+    TODO: implement dollar cost averaging into position as MACD decreases.
+    dollar cost average out as MACd increases.
     """
     dfc = app.bnc.dfc
     _rules = rules[candle['freq']]['MACD']
     df = dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     df_macd = signals.MACD(df, _rules['SHORT_PERIODS'], _rules['LONG_PERIODS'])
-    value = df_macd['MACDdiff'].iloc[-1]
+    value = df_macd['macd_diff'].iloc[-1]
     periods = rules[candle['freq']]['Z-SCORE']['PERIODS']
     z = signals.z_score(candle, periods)
     ema = signals.ema_pct_change(candle)
@@ -94,13 +96,13 @@ def macd(side, candle):
     }
 
     if side == 'BUY':
-        if value < 0:
-            print('macd is {:+.2f}. no buy'.format(value))
-            return None
+        # Rule: 5m candle only
         if candle['freq'] != '5m':
             return None
-
-        print('macd is {:+.2f}. buy'.format(value))
+        # Rule: Buy when Macd < 0
+        if value > 0:
+            print('macd is {:+.2f}. no buy'.format(value))
+            return None
 
         client = Client("","")
         ob = client.get_orderbook_ticker(symbol=candle['pair'])
@@ -113,10 +115,11 @@ def macd(side, candle):
             }
         }
     elif side == 'SELL':
-        if value > 0:
-            return {'action':None, 'snapshot':snapshot}
-
+        # Rule: 5m candle only
         if candle['freq'] != '5m':
+            return {'action':None, 'snapshot':snapshot}
+        # Rule: Sell when Macd > 0
+        if value < 0:
             return {'action':None, 'snapshot':snapshot}
 
         client = Client("","")

@@ -18,12 +18,12 @@ def MACD(df, n_fast, n_slow):
     EMAfast = df['close'].ewm(span=n_fast, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
     EMAslow = df['close'].ewm(span=n_slow, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
 
-    MACD = pd.Series(EMAfast - EMAslow, name='MACD_{}_{}'.format(n_fast, n_slow))
+    MACD = pd.Series(EMAfast - EMAslow, name='macd') #_{}_{}'.format(n_fast, n_slow))
 
     MACDsign = MACD.ewm(span=9, min_periods=8, adjust=True, ignore_na=False).mean()
-    MACDsign.name='MACDsign_{}_{}'.format(n_fast, n_slow)
+    MACDsign.name='macd_sign' #sign_{}_{}'.format(n_fast, n_slow)
 
-    MACDdiff = pd.Series(MACD - MACDsign, name = 'MACDdiff') #_' + str(n_fast) + '_' + str(n_slow))
+    MACDdiff = pd.Series(MACD - MACDsign, name = 'macd_diff') #MACDdiff') #_' + str(n_fast) + '_' + str(n_slow))
 
     df = df.join(MACD)
     df = df.join(MACDsign)
