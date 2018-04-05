@@ -85,7 +85,8 @@ def merge_new(dfc, pairs, span=None):
         )
     except Exception as e:
         log.error(str(e))
-        raise
+        return dfc
+        #raise
 
     df = pd.DataFrame(ndarray)
     df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')

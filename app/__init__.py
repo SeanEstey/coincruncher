@@ -7,7 +7,7 @@ from docs.config import *
 from app.common.utils import colors
 logging.addLevelName(SIGNAL, "Signal")
 logging.addLevelName(TRADE, "Trade")
-logging.addLevelName(ANALYZE, "Analyze")
+logging.addLevelName(SCAN, "Scan")
 log = logging.getLogger('app')
 
 # Frequency in seconds to str
@@ -78,8 +78,8 @@ class SignalFilter(logging.Filter):
 class TradeFilter(logging.Filter):
     def filter(self, record): return record.levelno == TRADE
 
-class AnalyzeFilter(logging.Filter):
-    def filter(self, record): return record.levelno == ANALYZE
+class ScanFilter(logging.Filter):
+    def filter(self, record): return record.levelno == SCAN
 
 class WarningFilter(logging.Filter):
     def filter(self, record): return record.levelno == WARNING
@@ -144,14 +144,14 @@ def file_handler(level, path, filters=None):
                 '%H:%M:%S')
             handler.setFormatter(short)
             handler.addFilter(TradeFilter())
-        elif _filter==ANALYZE:
+        elif _filter==SCAN:
             short = WrappedFixedIndentingLog(
                 fmt = colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
                 datefmt = '%H:%M:%S',
                 width = 300
             )
             handler.setFormatter(short)
-            handler.addFilter(AnalyzeFilter())
+            handler.addFilter(ScanFilter())
     return handler
 
 
@@ -182,7 +182,7 @@ logging.basicConfig(
         file_handler(INFO, LOGFILE, filters=[CRITICAL]),
         file_handler(SIGNAL, SIGNALFILE, filters=[SIGNAL]),
         file_handler(TRADE, TRADEFILE, filters=[TRADE]),
-        file_handler(ANALYZE, ANALYZEFILE, filters=[ANALYZE])
+        file_handler(SCAN, SCANNERFILE, filters=[SCAN])
     ]
 )
 

@@ -3,3 +3,4 @@ mongo_key.py
 *.pyc
 *.swp
 *logs/
+*.ipynb_checkpoints/

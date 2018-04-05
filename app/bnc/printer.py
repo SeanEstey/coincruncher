@@ -9,7 +9,7 @@ import app
 from app.common.utils import colors, to_relative_str, utc_datetime as now
 import app.bnc
 from app.bnc import *
-from app.bnc import trade
+from app.bnc import trade, strategy
 from .markets import agg_pct_change
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -61,9 +61,9 @@ def new_trades(trade_ids):
             data.append([
                 'SELL',
                 pct_diff(c1['close'], candle['close']),
-                ss2['ema_pct_change'],
-                ss2['z_close'],
-                ss2['z_close'] - ss1['z_close'],
+                ss2['price']['emaDiff'],
+                ss2['price']['z-score'],
+                ss2['price']['z-score'] - ss1['price']['z-score'],
                 to_relative_str(now() - record['start_time'])
             ])
         # Buy trade
@@ -71,8 +71,8 @@ def new_trades(trade_ids):
             data.append([
                 'BUY',
                 0.0,
-                ss2['ema_pct_change'],
-                ss1['z_close'],
+                ss2['price']['emaDiff'],
+                ss1['price']['z-score'],
                 0.0,
                 "-"
             ])
@@ -99,20 +99,23 @@ def candle_sig(candle):
     ss = strategy.snapshot(candle)
     color, weight = None, None
 
-    if candle['freq'] == '5m':
-        color = colors.GRN
-    elif candle['freq'] == '1h' or candle['freq'] == '1d':
-        color = colors.BLUE
-    else:
-        color = colors.WHITE
+    #if candle['freq'] == '5m':
+    #    color = colors.GRN
+    #elif candle['freq'] == '1h' or candle['freq'] == '1d':
+    #    color = colors.BLUE
+    #else:
+    #    color = colors.WHITE
+    #threshold = rules['z-score']['buy_thresh']
+    #if ss['z_close'] < threshold or ss['z_volume'] > threshold*-1:
+    #    color += colors.UNDERLINE
 
-    threshold = rules['z-score']['buy_thresh']
-    if ss['z_close'] < threshold or ss['z_volume'] > threshold*-1:
-        color += colors.UNDERLINE
+    line = "{}{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m"+\
+        "{:>+10.2f} macd{}{}"
 
-    siglog("{}{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m {:>+10.2f} macd{}{}"\
-        .format(color, candle['pair'], candle['freq'], ss['z_close'], ss['z_volume'],
-            candle['buy_ratio'], ss['ema_pct_change'], ss['macd_diff'], colors.ENDC, colors.ENDC))
+    siglog(line.format(colors.GRN, candle['pair'], candle['freq'], ss['price']['z-score'],
+        ss['volume']['z-score'], candle['buy_ratio'], ss['price']['emaDiff'], ss['macd']['value'],
+        colors.ENDC, colors.ENDC)
+    )
 
 #------------------------------------------------------------------------------
 def positions(_type):
@@ -120,6 +123,7 @@ def positions(_type):
     @_type: 'open', 'closed'
     @start: datetime.datetime for closed trades
     """
+    from docs.rules import TRADING_PAIRS as pairs
     db = app.get_db()
     dfc = app.bnc.dfc
 
@@ -138,10 +142,10 @@ def positions(_type):
 
             data.append([
                 pct_diff(c1['close'], c2['close']),
-                ss2['ema_pct_change'],
-                ss2['z_close'],
-                ss2['z_close'] - ss1['z_close'],
-                ss2['macd_diff'],
+                ss2['price']['emaDiff'],
+                ss2['price']['z-score'],
+                ss2['price']['z-score'] - ss1['price']['z-score'],
+                ss2['macd']['value'],
                 to_relative_str(now() - record['start_time'])
             ])
             indexes.append(record['pair'])

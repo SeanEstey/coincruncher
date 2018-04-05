@@ -5,16 +5,16 @@ import app
 from app import GracefulKiller
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate
-from app.bnc import analyze, candles, trade
+from app.bnc import scanner, candles, trade
 from app.cmc import tickers
 from app.common import forex
 from docs.config import TICKER_LIMIT
-from docs.data import BINANCE
+from docs.rules import TRADING_PAIRS as trade_pairs
 
 log = logging.getLogger('daemon')
 
 #---------------------------------------------------------------------------
-def data(now=False):
+def _data(now=False):
     """
     """
     cmc = Timer(name='cmc', expire='every 5 clock min utc')
@@ -31,21 +31,20 @@ def data(now=False):
         time.sleep(cmc.remain()/1000)
 
 #---------------------------------------------------------------------------
-def analysis():
-    analyze.top_performers(10, idx_filter='BTC')
-
-    anal = Timer(name='analysis', expire='every 60 clock min utc')
+def _scanner():
+    scanner.update(25, idx_filter='BTC')
+    scan = Timer(name='scanner', expire='every 30 clock min utc')
 
     while True:
-        if anal.remain() == 0:
-            analyze.top_performers(10, idx_filter='BTC')
-            anal.reset()
-            time.sleep(3500)
+        if scan.remain() == 0:
+            scanner.update(25, idx_filter='BTC')
+            scan.reset()
+            #time.sleep(3500)
 
         time.sleep(5)
 
 #---------------------------------------------------------------------------
-def daily():
+def _daily():
     """
     """
     timer_1d = Timer(name='daily', expire=utc_dtdate()+timedelta(days=1))
@@ -59,26 +58,25 @@ def daily():
         time.sleep(timer_1d.remain()/1000)
 
 #---------------------------------------------------------------------------
-def trading():
+def _trading():
     """Main trade cycle loop.
     """
-    pairs = BINANCE['PAIRS']
-
     print('Preloading historic data....')
     trade.init()
 
-    timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
+    #timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
     timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')
 
     while True:
         if timer_5m.remain() == 0:
+            time.sleep(15)
             trade.update('5m')
             timer_5m.reset()
 
-        if timer_1m.remain() == 0:
-            time.sleep(8)
-            trade.update('1m')
-            timer_1m.reset()
+        #if timer_1m.remain() == 0:
+        #    #time.sleep(8)
+        #    #trade.update('1m')
+        #    timer_1m.reset()
 
         time.sleep(5)
 
@@ -88,7 +86,6 @@ if __name__ == '__main__':
     import threading
     import sys
     from app import set_db
-    pairs = BINANCE['PAIRS']
 
     divstr = "***** %s *****"
     log.info('Initializing daemon.')
@@ -108,13 +105,13 @@ if __name__ == '__main__':
             set_db(arg)
         elif opt in('-c', '--candles'):
             # Preload binance candles w/o waiting on timer
-            candles.update(pairs, '1m',
+            candles.update(trade_pairs, '1m',
                 start='24 hours ago utc', force=True)
-            candles.update(pairs, '5m',
-                start='100 hours ago utc', force=True)
-            candles.update(pairs, '1h',
+            candles.update(trade_pairs, '5m',
                 start='72 hours ago utc', force=True)
-            candles.update(pairs, '1d',
+            candles.update(trade_pairs, '1h',
+                start='72 hours ago utc', force=True)
+            candles.update(trade_pairs, '1d',
                 start='7 days ago utc', force=True)
         elif opt in('-t', '--tickers'):
             # Preload cmc tickers w/o waiting on timer
@@ -123,13 +120,13 @@ if __name__ == '__main__':
     # Create threads
     try:
         th1 = threading.Thread(
-            name='data', target=data, kwargs=th1_kwargs)
+            name='data', target=_data, kwargs=th1_kwargs)
         th2 = threading.Thread(
-            name='daily', target=daily)
+            name='daily', target=_daily)
         th3 = threading.Thread(
-            name='trade', target=trading)
+            name='trade', target=_trading)
         th4 = threading.Thread(
-            name='analyze', target=analysis)
+            name='scanner', target=_scanner)
     except Exception as e:
         log.exception("datathread main()")
         print(str(e))

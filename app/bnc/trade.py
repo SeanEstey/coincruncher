@@ -9,8 +9,8 @@ from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bnc
 from docs.data import BINANCE
-from app.bnc import pct_diff, pairs, candles, printer, strategy
-from docs.rules import ACTIVE as trade_pairs
+from app.bnc import pct_diff, candles, printer, strategy
+from docs.rules import TRADING_PAIRS as pairs
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -18,6 +18,7 @@ def siglog(msg): log.log(100, msg)
 log = logging.getLogger('trade')
 
 # GLOBALS
+siglog_freq = ['5m', '1h', '1d']
 n_cycles = 0
 start = now()
 freq = None
@@ -62,6 +63,12 @@ def update(_freq_str):
     tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*80)
 
+    # Output candle signals to siglog
+    if freq_str in siglog_freq:
+        siglog('*'*80)
+        for pair in pairs:
+            printer.candle_sig(candles.newest(pair, freq_str, df=app.bnc.dfc))
+
     # Evaluate existing positions
     active = list(db.trades.find({'status':'open', 'buy.candle.freq':freq_str}))
 
@@ -75,7 +82,7 @@ def update(_freq_str):
                 {"$push": {"snapshots": result['snapshot']}})
 
     # Inverse active list and evaluate opening new positions
-    inactive = sorted(list(set(trade_pairs) - set([n['pair'] for n in active])))
+    inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bnc.dfc)
@@ -100,7 +107,8 @@ def buy(candle, criteria):
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     order = {
         'exchange': 'Binance',
-        'price': np.float64(orderbook['askPrice']),
+        'price': candle['close'],
+        #'price': np.float64(orderbook['askPrice']),
         'volume': 1.0,  # FIXME
         'quote': BINANCE['TRADE_AMT'],
         'pct_fee': BINANCE['PCT_FEE'],
@@ -166,7 +174,8 @@ def sell(doc, candle, orderbook=None, criteria=None):
                     'orderbook': ob,
                     'order': {
                         'exchange':'Binance',
-                        'price': bid,
+                        #'price': bid,
+                        'price': candle['close'],
                         'volume': 1.0,
                         'quote': quote,
                         'pct_fee': pct_fee,

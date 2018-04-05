@@ -12,20 +12,23 @@ log = logging.getLogger('signals')
 def macd(df, n_fast, n_slow):
     """MACD, MACD Signal and MACD difference
     """
-    EMAfast = df['close'].ewm(span=n_fast, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
-    EMAslow = df['close'].ewm(span=n_slow, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
-
-    MACD = pd.Series(EMAfast - EMAslow, name='macd') #_{}_{}'.format(n_fast, n_slow))
-
+    EMAfast = df['close'].ewm(span=n_fast, min_periods=n_slow - 1,
+        adjust=True, ignore_na=False).mean()
+    EMAslow = df['close'].ewm(span=n_slow, min_periods=n_slow - 1,
+        adjust=True, ignore_na=False).mean()
+    MACD = pd.Series(EMAfast - EMAslow, name='macd')
     MACDsign = MACD.ewm(span=9, min_periods=8, adjust=True, ignore_na=False).mean()
-    MACDsign.name='macd_sign' #sign_{}_{}'.format(n_fast, n_slow)
-
-    MACDdiff = pd.Series(MACD - MACDsign, name = 'macd_diff') #MACDdiff') #_' + str(n_fast) + '_' + str(n_slow))
+    MACDsign.name='macd_sign'
+    MACDdiff = pd.Series(MACD - MACDsign, name = 'macd_diff')
 
     df = df.join(MACD)
     df = df.join(MACDsign)
     df = df.join(MACDdiff)
     return df
+
+#-----------------------------------------------------------------------------
+def macd_histo():
+    pass
 
 #-----------------------------------------------------------------------------
 def vwap():

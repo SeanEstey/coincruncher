@@ -4,10 +4,6 @@ from docs.rules import RULES
 from docs.data import BINANCE
 
 def pct_diff(a,b): return ((b-a)/a)*100
-
-# VARS
-pairs = BINANCE['PAIRS']
-# FIXME
 dfc = pd.DataFrame()
 client = Client("", "")
 

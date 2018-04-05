@@ -1,4 +1,4 @@
-# analyze.py
+# app.bnc.scanner
 import logging
 import pandas as pd
 import numpy as np
@@ -6,27 +6,24 @@ from datetime import timedelta as delta
 from binance.client import Client
 import app
 from app import strtofreq
-from docs.data import BINANCE
 from app.common.timer import Timer
 from app.common.utils import utc_datetime as now
 import app.bnc
 from docs.rules import RULES as rules
 from app import freqtostr
 from . import candles, signals
-log = logging.getLogger('analyze')
+log = logging.getLogger('scanner')
 
-def analyze_log(msg): log.log(98, msg)
+def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
-def top_performers(n, idx_filter=None):
+def update(n, idx_filter=None):
     columns = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney', 'volume']
-
     client = Client("","")
     products = client.get_products()
-
     df = pd.DataFrame(products['data'],
         columns=columns,
-        index = pd.Index([x['symbol'] for x in products['data']], name='pair')
+        index = pd.Index([x['symbol'] for x in products['data']]) #, name='pair')
     )
 
     # Filter out inactive pairs
@@ -40,21 +37,19 @@ def top_performers(n, idx_filter=None):
         df = df[df.index.str.contains(idx_filter)]
 
     # Compute metrics
-    df['% c-o'] = (((df['close'] - df['open']) / df['open']) * 100).round(2)
-    df['% h-l'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
-    df = df.sort_values('% c-o')
+    df['close - open'] = (((df['close'] - df['open']) / df['open']) * 100).round(2)
+    df['high - low'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
 
     # Filter top performers
-    top = df.tail(n)
+    top = df.sort_values('close - open').tail(n)
 
     # Query 1h candles so we can calc STD, EMA, etc
-    _df = pd.DataFrame(columns=['% c.std','bv.mean','ema.slope'], index=top.index).astype('float64')
+    _df = pd.DataFrame(columns=['price.std','buyRatio','emaSlope'], index=top.index).astype('float64')
 
     for idx, row in top.iterrows():
         periods = 24
         freq_str = '1h'
 
-        print('idx: %s' % idx)
         candles.update([idx], freq_str, start="24 hours ago utc")
         app.bnc.dfc = candles.merge_new(app.bnc.dfc, [idx], span=delta(hours=periods))
         hist = app.bnc.dfc.loc[idx].xs(strtofreq[freq_str], level=0).tail(periods)
@@ -68,20 +63,23 @@ def top_performers(n, idx_filter=None):
             signals.ema_pct_change(candle, rules['ema']['span']).iloc[-1]
         ]
 
-    top = top.rename(columns={'close':'c', 'tradedMoney':'usd_vol', 'volume':'vol'})
+    top = top.rename(columns={'close':'price', 'tradedMoney':'quoteVol'})
     top = top.join(_df)
-    top = top[['c', '% c.std', '% c-o', '% h-l', 'ema.slope', 'vol', 'bv.mean', 'usd_vol']]
+    top = top[['price', 'price.std', 'close - open', 'high - low', 'emaSlope', 'quoteVol', 'buyRatio']]
+    top = top.sort_values(['close - open', 'price.std'])
 
     lines = top.to_string(formatters={
-        "c": '{:>15.8f}'.format,
-        "% c.std": '{:>10.2f}%'.format,
-        "% c-o": '{:>+10.2f}%'.format,
-        "% h-l": '{:>+10.2f}%'.format,
-        "ema.slope": '{:>+12.2f}'.format,
-        "vol": '{:>15.2f}'.format,
-        "bv.mean": '{:>10.1f}%'.format,
-        "usd_vol": '{:>14,.2f}'.format
+        "price": '{:>15.8g}'.format,
+        "price.std": '{:>10.2f}%'.format,
+        "close - open": '{:>+10.2f}%'.format,
+        "high - low": '{:>+10.2f}%'.format,
+        "emaSlope": '{:>+10.2f}'.format,
+        "quoteVol": '{:>13.5g}'.format,
+        "buyRatio": '{:>10.5g}%'.format
     }).split("\n")
-    [ analyze_log(line) for line in lines]
+
+    scanlog('-' * 80)
+    scanlog('Volatile/High Volume Trading Pairs in Past 24 Hours')
+    [ scanlog(line) for line in lines]
 
     return top

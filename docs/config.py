@@ -1,7 +1,5 @@
 # Signals
 Z_IDX_NAMES = ['PAIR', 'FREQ', 'CLOSE_TIME']
-#Z_DIMEN = ['CANDLE', 'MEAN', 'STD', 'ZSCORE']
-#Z_FACTORS = ['CLOSE', 'OPEN', 'TRADES', 'VOLUME', 'BUY_RATIO']
 Z_FACTORS = ['close', 'volume', 'buy_ratio']
 DFC_COLUMNS = ['close', 'open', 'trades', 'volume', 'buy_volume']
 
@@ -19,8 +17,8 @@ SIGNALFILE = "logs/signals.log"
 SIGNAL = 100
 TRADEFILE = "logs/trade.log"
 TRADE = 99
-ANALYZEFILE = "logs/analyze.log"
-ANALYZE = 98
+SCANNERFILE = "logs/scanner.log"
+SCAN = 98
 MAX_LOG_DATE_WIDTH=14
 MAX_LOG_NAME_WIDTH=8
 MAX_LOG_LINE_WIDTH=125

@@ -20,13 +20,12 @@ from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from binance.enums import *
 import docs.data
-from docs.data import BINANCE
+from docs.rules import TRADING_PAIRS as pairs
 from app import set_db, get_db
 from app.common.utils import colors, to_local, utc_datetime as now
 from app.common.timer import Timer
 import app.bnc
 
-pairs = BINANCE['PAIRS']
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 conn_keys = []
 bnc_wss = None
@@ -92,15 +91,15 @@ def detect_pair_change():
     """Detect changes in pairs tracking conf
     """
     importlib.reload(docs.data)
-    from docs.data import BINANCE
+    from docs.rules import TRADING_PAIRS
     global pairs, conn_keys
 
-    if pairs == BINANCE['PAIRS']:
+    if pairs == TRADING_PAIRS:
         return pairs
     else:
         print("Detected change in trading pair(s).")
-        rmvd = set(pairs) - set(BINANCE['PAIRS'])
-        added = set(BINANCE['PAIRS']) - set(pairs)
+        rmvd = set(pairs) - set(TRADING_PAIRS)
+        added = set(TRADING_PAIRS) - set(pairs)
 
         if len(rmvd) > 0:
             print("Removing {}...".format(rmvd))
@@ -129,7 +128,7 @@ def detect_pair_change():
 
         #print("Done. {} connections.".format(len(conn_keys)))
 
-        pairs = BINANCE['PAIRS']
+        pairs = TRADING_PAIRS
         return pairs
 
 #---------------------------------------------------------------------------
@@ -142,8 +141,8 @@ def connect_klines(bnc_wss, _pairs):
 
     for pair in _pairs:
         conn_keys += [
-            bnc_wss.start_kline_socket(pair, receive_kline,
-                interval=KLINE_INTERVAL_1MINUTE),
+            #bnc_wss.start_kline_socket(pair, receive_kline,
+            #    interval=KLINE_INTERVAL_1MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,
                 interval=KLINE_INTERVAL_5MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,

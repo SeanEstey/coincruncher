@@ -1,10 +1,11 @@
 # strategy.py
 import logging
 from binance.client import Client
+from collections import OrderedDict as odict
 import numpy as np
 from app.common.utils import colors, utc_datetime as now
 import app.bnc
-from app.bnc import signals
+from app.bnc import signals, printer
 from docs.rules import RULES as rules
 from app import strtofreq, freqtostr
 def tradelog(msg): log.log(99, msg)
@@ -41,28 +42,42 @@ def snapshot(candle):
         rules['macd']['short_period'],
         rules['macd']['long_period']
     )
+
     # Isolate histogram group
     last = np.float64(macd.tail(1)['macd_diff'])
-    marker = macd[macd['macd_diff'] > 0].iloc[-1] if last < 0 else macd[macd['macd_diff'] < 0].iloc[-1]
-    histo = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
+    if last < 0:
+        marker = macd[macd['macd_diff'] > 0].iloc[-1]
+    else:
+        marker = macd[macd['macd_diff'] < 0].iloc[-1]
 
-    return {
+    histo = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
+    # Convert datetime index to str for mongodb storage.
+    histo.index = [ str(n)[:-10] for n in histo.index.values ]
+
+    return odict({
         'time': now(),
-        'price': candle['close'],
-        'ask_price': float(ob['askPrice']),
-        'bid_price': float(ob['bidPrice']),
-        'volume': candle['volume'],
-        'buy_ratio': candle['buy_ratio'],
-        'z_close': round(z['close'], 2),
-        'z_volume': round(z['volume'], 2),
-        'z_buy_ratio': round(z['buy_ratio'], 2),
-        'macd_diff': last.round(5),
-        'macd_histogram': histo.describe().round(5).to_dict(),
-        'ema_pct_change': signals.ema_pct_change(
-            candle,
-            rules['ema']['span']
-        ).iloc[-1]
-    }
+        'price': odict({
+            'close': candle['close'],
+            'z-score': round(z['close'], 2),
+            'emaDiff': signals.ema_pct_change(
+                candle, rules['ema']['span']).iloc[-1],
+            'ask': float(ob['askPrice']),
+            'bid': float(ob['bidPrice'])
+        }),
+        'volume': odict({
+            'value': candle['volume'],
+            'z-score': round(z['volume'],2),
+        }),
+        'buyRatio': odict({
+            'value': round(candle['buy_ratio'],2),
+            'z-score': round(z['buy_ratio'], 2),
+        }),
+        'macd': odict({
+            'value': last.round(10),
+            'histo': histo.round(10).to_dict(odict),
+            'desc': histo.describe().round(10).to_dict()
+        })
+    })
 
 #------------------------------------------------------------------------------
 def _macd(candle, record=None):
@@ -77,35 +92,47 @@ def _macd(candle, record=None):
     # Isolate histogram group
     marker = df[df['macd_diff'] > 0].iloc[-1] if last < 0 else df[df['macd_diff'] < 0].iloc[-1]
     hist = df.loc[slice(marker.name, df.iloc[-1].name)].iloc[1:]['macd_diff']
+    ss = snapshot(candle)
 
     if record is None:
-        # Buy on peak negative histogram value.
+        # Buy after the bottom peak on macd histogram as the price slope
+        # begins rising again.
         if candle['freq'] not in rules['macd']['freq'] or \
-           len(hist) < 1 or \
-           last >= 0 or \
-           abs(last) >= abs(hist.describe()['mean']):
+            ss['volume']['z-score'] < 0 or \
+            len(hist) < 1 or \
+            last >= 0 or \
+            abs(last) >= abs(hist.describe()['mean']):
             return
         else:
-            ss = snapshot(candle)
             return {
                 'strategy': 'macd',
                 'snapshot': ss,
                 'details': {
-                    'macd_diff > 0': '{:+.2f} > 0'.format(float(ss['macd_diff']))
+                    'macd_diff > 0': '{:+.2f} > 0'.format(float(ss['macd']['value']))
                 }
             }
     elif record:
         ss = snapshot(candle)
+
+        # percent max loss
+        stop_loss = 0.02
+        if candle['close'] < record['buy']['candle']['close'] * (1 - stop_loss):
+            return {
+                'action': 'sell',
+                'snapshot': ss,
+                'details': 'stop loss'
+            }
+
         # Don't sell if histogram hasn't peaked
         if last < 0 or \
-           abs(last) >= abs(hist.describe()['mean']):
+            abs(last) >= abs(hist.describe()['max']):
             return {'action':None, 'snapshot':ss}
         else:
             return {
                 'action': 'sell',
                 'snapshot': ss,
                 'details': {
-                    'macd_diff < 0': '{:+.2f} < 0'.format(float(ss['macd_diff']))
+                    'macd_diff < 0': '{:+.2f} < 0'.format(float(ss['macd']['value']))
                 }
             }
 
