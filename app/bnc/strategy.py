@@ -40,11 +40,11 @@ def snapshot(candle):
         df,
         rules['macd']['short_period'],
         rules['macd']['long_period']
-    )['macd_diff']
+    )
     # Isolate histogram group
-    last = np.float64(macd.tail(1))
-    marker = macd[macd > 0].iloc[-1] if last < 0 else macd[macd < 0].iloc[-1]
-    histo = df.loc[slice(marker.name, df.iloc[-1].name)].iloc[1:]['macd_diff']
+    last = np.float64(macd.tail(1)['macd_diff'])
+    marker = macd[macd['macd_diff'] > 0].iloc[-1] if last < 0 else macd[macd['macd_diff'] < 0].iloc[-1]
+    histo = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
 
     return {
         'time': now(),

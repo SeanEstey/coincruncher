@@ -10,6 +10,7 @@ from app.common.timer import Timer
 import app.bnc
 from docs.data import BINANCE
 from app.bnc import pct_diff, pairs, candles, printer, strategy
+from docs.rules import ACTIVE as trade_pairs
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -62,19 +63,19 @@ def update(_freq_str):
     tradelog('*'*80)
 
     # Evaluate existing positions
-    active = list(db.trades.find({'status':'open', 'freq':freq_str}))
+    active = list(db.trades.find({'status':'open', 'buy.candle.freq':freq_str}))
 
     for trade in active:
         candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
         result = strategy.update(candle, trade)
-        if r.get('action') == 'sell':
+        if result.get('action') == 'sell':
             trade_ids += [sell(trade, candle, criteria=result)]
         else:
             db.trades.update_one({"_id": trade["_id"]},
                 {"$push": {"snapshots": result['snapshot']}})
 
     # Inverse active list and evaluate opening new positions
-    inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
+    inactive = sorted(list(set(trade_pairs) - set([n['pair'] for n in active])))
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bnc.dfc)

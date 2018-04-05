@@ -15,6 +15,7 @@ Thesis:
     fall within the range.
 """
 
+ACTIVE = ['ICNBTC', 'CTRBTC', 'ONTBTC', 'BTCUSDT']
 MAX_POSITIONS = 6
 RULES = {
     "macd": {
