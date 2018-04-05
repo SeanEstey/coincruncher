@@ -15,33 +15,19 @@ Thesis:
     fall within the range.
 """
 
+MAX_POSITIONS = 6
 RULES = {
-    "1m": {
-        "MACD": {
-            "SHORT_PERIODS": 12,
-            "LONG_PERIODS": 26
-        },
-        "EMA": {
-            "SPAN": 20              # Num candle periods
-        },
-        "Z-SCORE": {
-            "PERIODS": 20,       # Periods to use to smoothen signal
-            "BUY_THRESH": -3.0,     # Buy threshold (deviations from μ)
-            "SELL_THRESH": 0.0
-        }
+    "macd": {
+        'freq': ['1m', '5m', '1h'],
+        "short_period": 12,
+        "long_period": 26
     },
-    "5m": {
-        "MACD": {
-            "SHORT_PERIODS": 12,
-            "LONG_PERIODS": 26
-        },
-        "EMA": {
-            "SPAN": 20              # Num candle periods
-        },
-        "Z-SCORE": {
-            "PERIODS": 20,       # Periods to use to smoothen signal
-            "BUY_THRESH": -3.0,     # Buy threshold (deviations from μ)
-            "SELL_THRESH": 0.0
-        }
+    "ema": {
+        "span": 20              # Num candle periods
+    },
+    "z-score": {
+        "periods": 20,       # Periods to use to smoothen signal
+        "buy_thresh": -3.0,     # Buy threshold (deviations from μ)
+        "sell_thresh": 0.0
     }
 }

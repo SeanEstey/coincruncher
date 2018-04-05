@@ -8,7 +8,6 @@ def pct_diff(a,b): return ((b-a)/a)*100
 # VARS
 pairs = BINANCE['PAIRS']
 # FIXME
-rules = RULES['1m']
 dfc = pd.DataFrame()
 client = Client("", "")
 

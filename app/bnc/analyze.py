@@ -10,6 +10,7 @@ from docs.data import BINANCE
 from app.common.timer import Timer
 from app.common.utils import utc_datetime as now
 import app.bnc
+from docs.rules import RULES as rules
 from app import freqtostr
 from . import candles, signals
 log = logging.getLogger('analyze')
@@ -64,7 +65,7 @@ def top_performers(n, idx_filter=None):
         _df.loc[idx] = [
             np.float64(pct_desc['close']['std']) * 100,
             desc['buy_ratio']['mean'] * 100,
-            signals.ema_pct_change(candle).iloc[-1]
+            signals.ema_pct_change(candle, rules['ema']['span']).iloc[-1]
         ]
 
     top = top.rename(columns={'close':'c', 'tradedMoney':'usd_vol', 'volume':'vol'})

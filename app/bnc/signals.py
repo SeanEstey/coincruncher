@@ -5,15 +5,12 @@ import numpy as np
 import app, app.bnc
 from . import candles
 from app import strtofreq, freqtostr
+from docs.rules import RULES as rules
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def MACD(df, n_fast, n_slow):
+def macd(df, n_fast, n_slow):
     """MACD, MACD Signal and MACD difference
-    original code:
-        EMAfast = pd.Series(pd.ewma(df['Close'], span = n_fast, min_periods = n_slow - 1))
-        EMAslow = pd.Series(pd.ewma(df['Close'], span = n_slow, min_periods = n_slow - 1))
-        MACDsign = pd.Series(pd.ewma(MACD, span = 9, min_periods = 8), name = 'MACDsign_' + str(n_fast) + '_' + str(n_slow))
     """
     EMAfast = df['close'].ewm(span=n_fast, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
     EMAslow = df['close'].ewm(span=n_slow, min_periods=n_slow - 1, adjust=True, ignore_na=False).mean()
@@ -42,12 +39,10 @@ def rsi(candle):
     pass
 
 #-----------------------------------------------------------------------------
-def ema_pct_change(candle):
+def ema_pct_change(candle, span):
     """Calculate percent change of candle 'close' price exponential moving
     average for preset time span.
     """
-    span = app.bnc.rules['EMA']['SPAN']
-
     # Convert span to time range
     _range = {
         '1m': delta(minutes = span * 2),
@@ -73,10 +68,8 @@ def z_score(candle, periods):
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
-    smoothen = app.bnc.rules['Z-SCORE']['PERIODS']
     df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
-
-    co,cf = candle['open_time'], candle['freq']
+    co, cf = candle['open_time'], candle['freq']
 
     if cf == '1m':
         end = co - delta(minutes=1)
@@ -91,7 +84,7 @@ def z_score(candle, periods):
     history = df.loc[slice(start, end)]
 
     # Smooth signal/noise ratio with EMA.
-    ema = history.ewm(span=smoothen).mean()
+    ema = history.ewm(span=periods).mean()
 
     # Mean and SD
     stats = ema.describe()

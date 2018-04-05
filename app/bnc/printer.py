@@ -6,7 +6,7 @@ from datetime import datetime
 import pytz
 import pandas as pd
 import app
-from app.common.utils import to_relative_str, utc_datetime as now
+from app.common.utils import colors, to_relative_str, utc_datetime as now
 import app.bnc
 from app.bnc import *
 from app.bnc import trade
@@ -62,8 +62,8 @@ def new_trades(trade_ids):
                 'SELL',
                 pct_diff(c1['close'], candle['close']),
                 ss2['ema_pct_change'],
-                ss2['z-score']['close'],
-                ss2['z-score']['close'] - ss1['z-score']['close'],
+                ss2['z_close'],
+                ss2['z_close'] - ss1['z_close'],
                 to_relative_str(now() - record['start_time'])
             ])
         # Buy trade
@@ -72,7 +72,7 @@ def new_trades(trade_ids):
                 'BUY',
                 0.0,
                 ss2['ema_pct_change'],
-                ss1['z-score']['close'],
+                ss1['z_close'],
                 0.0,
                 "-"
             ])
@@ -92,6 +92,27 @@ def new_trades(trade_ids):
     }).split("\n")
     tradelog("{} trade(s) executed:".format(len(df)))
     [tradelog(line) for line in lines]
+
+#------------------------------------------------------------------------------
+def candle_sig(candle):
+    from docs.rules import RULES as rules
+    ss = strategy.snapshot(candle)
+    color, weight = None, None
+
+    if candle['freq'] == '5m':
+        color = colors.GRN
+    elif candle['freq'] == '1h' or candle['freq'] == '1d':
+        color = colors.BLUE
+    else:
+        color = colors.WHITE
+
+    threshold = rules['z-score']['buy_thresh']
+    if ss['z_close'] < threshold or ss['z_volume'] > threshold*-1:
+        color += colors.UNDERLINE
+
+    siglog("{}{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv {:>+10.2f} m {:>+10.2f} macd{}{}"\
+        .format(color, candle['pair'], candle['freq'], ss['z_close'], ss['z_volume'],
+            candle['buy_ratio'], ss['ema_pct_change'], ss['macd_diff'], colors.ENDC, colors.ENDC))
 
 #------------------------------------------------------------------------------
 def positions(_type):
@@ -118,8 +139,8 @@ def positions(_type):
             data.append([
                 pct_diff(c1['close'], c2['close']),
                 ss2['ema_pct_change'],
-                ss2['z-score']['close'],
-                ss2['z-score']['close'] - ss1['z-score']['close'],
+                ss2['z_close'],
+                ss2['z_close'] - ss1['z_close'],
                 ss2['macd_diff'],
                 to_relative_str(now() - record['start_time'])
             ])

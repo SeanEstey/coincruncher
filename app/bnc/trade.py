@@ -61,29 +61,26 @@ def update(_freq_str):
     tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*80)
 
-    # Evaluate Sells
-    active = list(db.trades.find({'status':'open'})) #, 'pair':{"$in":pairs}}))
+    # Evaluate existing positions
+    active = list(db.trades.find({'status':'open', 'freq':freq_str}))
 
     for trade in active:
         candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
-        result = strategy.evaluate('SELL', candle, record=trade)
-        if result:
-            if result.get('action') == 'sell':
-                trade_ids += [sell(trade, candle, criteria=result)]
-            else:
-                db.trades.update_one(
-                    {"_id": trade["_id"]},
-                    {"$push": {"snapshots": result['snapshot']}},
-                )
+        result = strategy.update(candle, trade)
+        if r.get('action') == 'sell':
+            trade_ids += [sell(trade, candle, criteria=result)]
+        else:
+            db.trades.update_one({"_id": trade["_id"]},
+                {"$push": {"snapshots": result['snapshot']}})
 
-    # Evaluate Buys
+    # Inverse active list and evaluate opening new positions
     inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bnc.dfc)
-        result = strategy.evaluate('BUY', candle)
-        if result:
-            trade_ids += [buy(candle, criteria=result)]
+        results = strategy.evaluate(candle)
+        for r in results:
+            trade_ids += [buy(candle, criteria=r)]
 
     tradelog('-'*80)
     printer.new_trades([n for n in trade_ids if n])

@@ -111,7 +111,7 @@ if __name__ == '__main__':
             candles.update(pairs, '1m',
                 start='24 hours ago utc', force=True)
             candles.update(pairs, '5m',
-                start='24 hours ago utc', force=True)
+                start='100 hours ago utc', force=True)
             candles.update(pairs, '1h',
                 start='72 hours ago utc', force=True)
             candles.update(pairs, '1d',
