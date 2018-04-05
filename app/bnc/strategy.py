@@ -35,6 +35,17 @@ def snapshot(candle):
     client = Client("","")
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
 
+    df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    macd = signals.macd(
+        df,
+        rules['macd']['short_period'],
+        rules['macd']['long_period']
+    )['macd_diff']
+    # Isolate histogram group
+    last = np.float64(macd.tail(1))
+    marker = macd[macd > 0].iloc[-1] if last < 0 else macd[macd < 0].iloc[-1]
+    histo = df.loc[slice(marker.name, df.iloc[-1].name)].iloc[1:]['macd_diff']
+
     return {
         'time': now(),
         'price': candle['close'],
@@ -45,11 +56,8 @@ def snapshot(candle):
         'z_close': round(z['close'], 2),
         'z_volume': round(z['volume'], 2),
         'z_buy_ratio': round(z['buy_ratio'], 2),
-        'macd_diff': signals.macd(
-            app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]],
-            rules['macd']['short_period'],
-            rules['macd']['long_period']
-        ).iloc[-1]['macd_diff'].round(1),
+        'macd_diff': last.round(5),
+        'macd_histogram': histo.describe().round(5).to_dict(),
         'ema_pct_change': signals.ema_pct_change(
             candle,
             rules['ema']['span']
