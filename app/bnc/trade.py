@@ -66,7 +66,7 @@ def update(_freq_str):
 
     # Output candle signals to siglog
     if freq_str in siglog_freq:
-        siglog('*'*80)
+        siglog('-'*80)
         for pair in pairs:
             printer.candle_sig(candles.newest(pair, freq_str, df=app.bnc.dfc))
 
@@ -76,7 +76,11 @@ def update(_freq_str):
     for trade in active:
         candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
         result = strategy.update(candle, trade)
-        if result.get('action') == 'sell':
+
+        print('{} {} {}'.format(
+            candle['pair'], candle['freq'], result['snapshot']['details']))
+
+        if result['action'] == 'SELL':
             trade_ids += [sell(trade, candle, criteria=result)]
         else:
             db.trades.update_one({"_id": trade["_id"]},
@@ -88,8 +92,12 @@ def update(_freq_str):
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bnc.dfc)
         results = strategy.evaluate(candle)
-        for r in results:
-            trade_ids += [buy(candle, criteria=r)]
+        for res in results:
+            print('{} {} {}'.format(
+                candle['pair'], candle['freq'], res['snapshot']['details']))
+
+            if res['action'] == 'BUY':
+                trade_ids += [buy(candle, criteria=res)]
 
     tradelog('-'*80)
     printer.new_trades([n for n in trade_ids if n])
@@ -142,7 +150,7 @@ def sell(doc, candle, orderbook=None, criteria=None):
     buy_quote = np.float64(doc['orders'][0]['quote'])
     p1 = np.float64(doc['orders'][0]['price'])
 
-    pct_gain = pct_diff(p1, candle['price'])
+    pct_gain = pct_diff(p1, candle['close'])
     quote = buy_quote * (1 - pct_fee/100)
     fee = (bid * buy_vol) * (pct_fee/100)
     pct_net_gain = net_earn = pct_gain - (pct_fee*2) #quote - buy_quote

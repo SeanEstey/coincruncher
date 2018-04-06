@@ -1,4 +1,5 @@
 # app.bnc.scanner
+from pprint import pprint
 import logging
 import pandas as pd
 import numpy as np
@@ -18,7 +19,10 @@ def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
 def update(n, idx_filter=None):
-    columns = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney', 'volume']
+    columns = [
+        'status', 'active', 'open', 'high', 'low', 'close',  'tradedMoney',
+        'quoteAsset'
+    ]
     client = Client("","")
     products = client.get_products()
     df = pd.DataFrame(products['data'],
@@ -30,7 +34,7 @@ def update(n, idx_filter=None):
     df = df[df['active'] == True]
     del df['status']
     del df['active']
-    df = df.astype('float64')
+    df[['open','high','low','close','tradedMoney']] = df[['open','high','low','close','tradedMoney']].astype('float64')
 
     # Custom filter str
     if idx_filter:
@@ -63,19 +67,25 @@ def update(n, idx_filter=None):
             signals.ema_pct_change(candle, rules['ema']['span']).iloc[-1]
         ]
 
+    quote_symbol = candle['pair']
     top = top.rename(columns={'close':'price', 'tradedMoney':'quoteVol'})
     top = top.join(_df)
-    top = top[['price', 'price.std', 'close - open', 'high - low', 'emaSlope', 'quoteVol', 'buyRatio']]
+    top = top[[
+        'price', 'price.std', 'close - open', 'high - low',
+        'emaSlope', 'quoteVol', 'quoteAsset', 'buyRatio'
+    ]]
     top = top.sort_values(['close - open', 'price.std'])
+    pprint(top.to_string())
 
     lines = top.to_string(formatters={
         "price": '{:>15.8g}'.format,
         "price.std": '{:>10.2f}%'.format,
-        "close - open": '{:>+10.2f}%'.format,
-        "high - low": '{:>+10.2f}%'.format,
+        "close - open": '{:>+10.1f}%'.format,
+        "high - low": '{:>+10.1f}%'.format,
         "emaSlope": '{:>+10.2f}'.format,
-        "quoteVol": '{:>13.5g}'.format,
-        "buyRatio": '{:>10.5g}%'.format
+        "quoteVol": '{:>13,.0f}'.format,
+        "quoteAsset": '{:>10}'.format,
+        "buyRatio": '{:>10.1f}%'.format
     }).split("\n")
 
     scanlog('-' * 80)

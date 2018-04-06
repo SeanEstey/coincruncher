@@ -80,9 +80,16 @@ def receive_kline(msg):
     else:
         color = colors.WHITE
 
-    print("{}{:%H:%M:%S:} {:<7} {:>5} {:>18.8f} {:>18.8f}{}".format(
-        color, to_local(doc['close_time']),
-        doc['pair'], doc['freq'], doc['close'], doc['volume'], colors.ENDC))
+    print("{}{:%H:%M:%S:} {:<7} {:>5} {:>12g}{}"\
+        .format(
+            colors.WHITE,
+            to_local(doc['close_time']),
+            doc['pair'],
+            doc['freq'],
+            doc['close'],
+            #doc['volume'],
+            colors.ENDC
+        ))
 
     db.candles.insert_one(doc)
 
@@ -141,8 +148,8 @@ def connect_klines(bnc_wss, _pairs):
 
     for pair in _pairs:
         conn_keys += [
-            bnc_wss.start_kline_socket(pair, receive_kline,
-                interval=KLINE_INTERVAL_1MINUTE),
+            #bnc_wss.start_kline_socket(pair, receive_kline,
+            #    interval=KLINE_INTERVAL_1MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,
                 interval=KLINE_INTERVAL_5MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,
