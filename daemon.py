@@ -68,7 +68,7 @@ def _trading():
 
     while True:
         if timer_5m.remain() == 0:
-            time.sleep(15)
+            time.sleep(10)
             trade.update('5m')
             timer_5m.reset()
         """if timer_1m.remain() == 0:

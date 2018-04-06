@@ -36,13 +36,13 @@ def snapshot(candle):
     client = Client("","")
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
 
+    # MACD + analysis
     df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     macd = signals.macd(
         df,
         rules['macd']['short_period'],
         rules['macd']['long_period']
     )
-
     # Isolate histogram group
     last = np.float64(macd.tail(1)['macd_diff'])
     if last < 0:
@@ -52,11 +52,34 @@ def snapshot(candle):
     histo = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
     # Convert datetime index to str for mongodb storage.
     histo.index = [ str(n)[:-10] for n in histo.index.values ]
+    desc = histo.describe()
+    # Describe histogram momentum
+    if len(histo) == 1:
+        details = 'MACD new histogram.'
+    else:
+        if last < 0:
+            details = 'MACD below zero, {0} bottom, trending {1}.\n'\
+                'Bottom is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
+                .format(
+                    'ABOVE' if last > desc['min'] else 'AT',
+                    'UPWARD' if last > histo.iloc[-2] else 'DOWNWARD',
+                    float(desc['min']),
+                    float(desc['mean']),
+                    float(last))
+        elif last >= 0:
+            details = 'MACD above zero, {0} peak, trending {1}.\n'\
+                'Peak is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
+                .format(
+                    'BELOW' if last < desc['max'] else 'AT',
+                    'UPWARD' if last > histo.iloc[-2] else 'DOWNWARD',
+                    float(desc['max']),
+                    float(desc['mean']),
+                    float(last))
 
     return odict({
         'time': now(),
         'strategy': None,
-        'details': None,
+        'details': details,
         'price': odict({
             'close': candle['close'],
             'z-score': round(z['close'], 2),
@@ -76,80 +99,54 @@ def snapshot(candle):
         'macd': odict({
             'value': last.round(10),
             'histo': histo.round(10).to_dict(odict),
-            'desc': histo.describe().round(10).to_dict()
+            'desc': desc.round(10).to_dict()
         })
     })
 
 #------------------------------------------------------------------------------
 def _macd(candle, record=None):
-    """
-    Return one of 3 actions: BUY, SELL, HODL, SKIP
+    """Return one of 3 actions: BUY, SELL, HODL, SKIP
     TODO: implement dollar cost averaging into position as MACD decreases.
     dollar cost average out as MACd increases.
     """
     ss = snapshot(candle)
     ss['strategy'] = 'macd'
+    macd, histo, desc = ss['macd']['value'], ss['macd']['histo'], ss['macd']['desc']
 
-    # Buy after the bottom peak on macd histogram as the price slope
-    # begins rising again.
+    # BUY options.
     if record is None:
+        ss['details'] += \
+            'Volume Z-Score is {0:+.1f}.\n'.format(ss['volume']['z-score'])
+
         if candle['freq'] not in rules['macd']['freq'] or \
-            ss['volume']['z-score'] < 0 or \
-            len(ss['macd']['histo']) < 1 or \
-            ss['macd']['value'] >= 0 or \
-            abs(ss['macd']['value']) >= abs(ss['macd']['desc']['mean']):
-        # END
-            ss['details'] = \
-                'Macd: {0:+g}, Histo.mean: {1:+g}, '\
-                'Vol.Z-score: {2:+.1f}.'\
-                .format(
-                    ss['macd']['value'],
-                    ss['macd']['desc']['mean'],
-                    ss['volume']['z-score'])
+            len(histo) == 1 or \
+            macd >= 0 or \
+            macd < list(histo.values())[-2] or \
+            macd == desc['min'] or \
+            ss['volume']['z-score'] < 1 or \
+            ss['buyRatio']['value'] < 0.5:
             return {'action':'SKIP', 'snapshot':ss}
         else:
-            ss['details'] = \
-                'MACD below zero, trending UPWARD. '\
-                'Bottom was {0:+g}, mean is {1:+g}, now at {2:+g}. '\
-                'Volume Z-Score above zero at {3:+.1f}.'\
-                .format(
-                    float(ss['macd']['desc']['min']),
-                    float(ss['macd']['desc']['mean']),
-                    float(ss['macd']['value']),
-                    float(ss['volume']['z-score']))
             return {'action':'BUY', 'snapshot':ss}
+    # SELL/HODL options
     elif record:
-        # percent max loss
         stop_loss = 0.005
         if candle['close'] < record['orders'][0]['candle']['close'] * (1 - stop_loss):
-            ss['details'] = \
-                'Stop loss executed at {0:.2f}% below buy price. '\
-                'Bought at {1:g}, now at {2:g}.'\
+            ss['details'] += \
+                'Stop loss executed at {0:.2f}% below buy price.\n'\
+                'Bought at {1:g}, now at {2:g}.\n'\
                 .format(
                     stop_loss * 100,
                     record['orders'][0]['price'],
                     candle['close'])
             return {'action': 'SELL', 'snapshot': ss}
 
-        # Don't sell if histogram hasn't peaked
-        if ss['macd']['value'] < 0 or \
-            abs(ss['macd']['value']) >= abs(ss['macd']['desc']['max']):
-
-            ss['details'] = \
-                'MACD above zero, trending UPWARD. '\
-                'Now at {0:+g}, mean is {1:+g}.'\
-                .format(
-                    float(ss['macd']['value']),
-                    float(ss['macd']['desc']['mean']))
-            return {'action':'HODL', 'snapshot':ss}
-        else:
-            ss['details'] = \
-                'MACD above zero, trending DOWNWARD. '\
-                'Peaked at {0:+g}, now {1:+g}.'\
-                .format(
-                    float(ss['macd']['desc']['max']),
-                    float(ss['macd']['value']))
+        if macd > 0 and macd < desc['max']:
+            # Optimal selling point.
             return {'action': 'SELL', 'snapshot': ss}
+        else:
+            return {'action':'HOD', 'snapshot':ss}
+
 
 #------------------------------------------------------------------------------
 def _zscore(candle, record=None):

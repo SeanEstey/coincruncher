@@ -75,7 +75,6 @@ def update(n, idx_filter=None):
         'emaSlope', 'quoteVol', 'quoteAsset', 'buyRatio'
     ]]
     top = top.sort_values(['close - open', 'price.std'])
-    pprint(top.to_string())
 
     lines = top.to_string(formatters={
         "price": '{:>15.8g}'.format,
