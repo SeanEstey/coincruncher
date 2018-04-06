@@ -1,6 +1,7 @@
 import logging
 import numpy as np
 import pandas as pd
+from collections import OrderedDict as odict
 from pymongo import ReturnDocument
 from binance.client import Client
 from datetime import timedelta as delta
@@ -70,7 +71,7 @@ def update(_freq_str):
             printer.candle_sig(candles.newest(pair, freq_str, df=app.bnc.dfc))
 
     # Evaluate existing positions
-    active = list(db.trades.find({'status':'open', 'buy.candle.freq':freq_str}))
+    active = list(db.trades.find({'status':'open', 'freq':freq_str}))
 
     for trade in active:
         candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
@@ -105,33 +106,28 @@ def buy(candle, criteria):
     """
     global client
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
-    order = {
-        'exchange': 'Binance',
-        'price': candle['close'],
-        #'price': np.float64(orderbook['askPrice']),
-        'volume': 1.0,  # FIXME
-        'quote': BINANCE['TRADE_AMT'],
-        'pct_fee': BINANCE['PCT_FEE'],
-        'fee': BINANCE['TRADE_AMT'] * (BINANCE['PCT_FEE']/100),
-    }
 
-    criteria['snapshot']['strategy'] = criteria['strategy']
-    criteria['details'] = criteria['details']
-
-    return get_db().trades.insert_one({
+    return get_db().trades.insert_one(odict({
         'pair': candle['pair'],
+        'freq': candle['freq'],
         'status': 'open',
         'start_time': now(),
-        'snapshots': [criteria['snapshot']],
-        'buy': {
-            'strategy': criteria['strategy'],
-            'details': criteria['details'],
+        'strategy': criteria['snapshot']['strategy'],
+        'snapshots': [
+            criteria['snapshot']
+        ],
+        'orders': [odict({
+            'action':'BUY',
+            'ex': 'Binance',
             'time': now(),
-            'candle': candle,
+            'price': candle['close'], # np.float64(orderbook['askPrice']),
+            'volume': 1.0,
+            'quote': BINANCE['TRADE_AMT'],
+            'fee': BINANCE['TRADE_AMT'] * (BINANCE['PCT_FEE']/100),
             'orderbook': orderbook,
-            'order': order
-        }
-    }).inserted_id
+            'candle': candle
+        })]
+    })).inserted_id
 
 #------------------------------------------------------------------------------
 def sell(doc, candle, orderbook=None, criteria=None):
@@ -142,17 +138,14 @@ def sell(doc, candle, orderbook=None, criteria=None):
     bid = np.float64(ob['bidPrice'])
 
     pct_fee = BINANCE['PCT_FEE']
-    buy_vol = np.float64(doc['buy']['order']['volume'])
-    buy_quote = np.float64(doc['buy']['order']['quote'])
-    p1 = np.float64(doc['buy']['order']['price'])
+    buy_vol = np.float64(doc['orders'][0]['volume'])
+    buy_quote = np.float64(doc['orders'][0]['quote'])
+    p1 = np.float64(doc['orders'][0]['price'])
 
-    pct_pdiff = pct_diff(p1, bid)
-    quote = (bid * buy_vol) * (1 - pct_fee/100)
+    pct_gain = pct_diff(p1, candle['price'])
+    quote = buy_quote * (1 - pct_fee/100)
     fee = (bid * buy_vol) * (pct_fee/100)
-
-    #net_earn = quote - buy_quote
-    pct_net = net_earn = pct_pdiff - (pct_fee*2) #quote - buy_quote
-    #pct_net = pct_diff(buy_quote, quote)
+    pct_net_gain = net_earn = pct_gain - (pct_fee*2) #quote - buy_quote
 
     duration = now() - doc['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
@@ -161,27 +154,25 @@ def sell(doc, candle, orderbook=None, criteria=None):
         {'_id': doc['_id']},
         {
             '$push': {'snapshots':criteria['snapshot']},
+            '$push': {
+                'orders': odict({
+                    'action': 'SELL',
+                    'ex': 'Binance',
+                    'time': now(),
+                    'price': candle['close'],
+                    'volume': 1.0,
+                    'quote': buy_quote,
+                    'fee': fee,
+                    'orderbook': ob,
+                    'candle': candle,
+                })
+            },
             '$set': {
                 'status': 'closed',
                 'end_time': now(),
                 'duration': int(duration.total_seconds()),
-                'pct_pdiff': pct_pdiff.round(4),
-                'pct_earn': pct_net.round(4),
-                'net_earn': net_earn.round(4),
-                'sell': {
-                    'time': now(),
-                    'candle': candle,
-                    'orderbook': ob,
-                    'order': {
-                        'exchange':'Binance',
-                        #'price': bid,
-                        'price': candle['close'],
-                        'volume': 1.0,
-                        'quote': quote,
-                        'pct_fee': pct_fee,
-                        'fee': fee
-                    }
-                }
+                'pct_gain': pct_gain.round(4),
+                'pct_net_gain': pct_net_gain.round(4),
             }
         }
     )

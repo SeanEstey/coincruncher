@@ -14,7 +14,7 @@ log = logging.getLogger('strategy')
 
 #-------------------------------------------------------------------------------
 def update(candle, record):
-    return _strategies[record['buy']['strategy']](candle, record=record)
+    return _strategies[record['strategy']](candle, record=record)
 
 #-------------------------------------------------------------------------------
 def evaluate(candle):
@@ -31,7 +31,6 @@ def evaluate(candle):
 
 #------------------------------------------------------------------------------
 def snapshot(candle):
-    # FIXME: add proper rule check for correct freq
     z = signals.z_score(candle, rules['z-score']['periods']).to_dict()
     client = Client("","")
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
@@ -49,13 +48,14 @@ def snapshot(candle):
         marker = macd[macd['macd_diff'] > 0].iloc[-1]
     else:
         marker = macd[macd['macd_diff'] < 0].iloc[-1]
-
     histo = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
     # Convert datetime index to str for mongodb storage.
     histo.index = [ str(n)[:-10] for n in histo.index.values ]
 
     return odict({
         'time': now(),
+        'strategy': None,
+        'details': None,
         'price': odict({
             'close': candle['close'],
             'z-score': round(z['close'], 2),
@@ -85,38 +85,36 @@ def _macd(candle, record=None):
     TODO: implement dollar cost averaging into position as MACD decreases.
     dollar cost average out as MACd increases.
     """
-    # Analyze current phase histogram
-    df = signals.macd(app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]],
-        rules['macd']['short_period'], rules['macd']['long_period'])
-    last = np.float64(df.tail(1)['macd_diff'])
-    # Isolate histogram group
-    marker = df[df['macd_diff'] > 0].iloc[-1] if last < 0 else df[df['macd_diff'] < 0].iloc[-1]
-    hist = df.loc[slice(marker.name, df.iloc[-1].name)].iloc[1:]['macd_diff']
     ss = snapshot(candle)
+    ss['strategy'] = 'macd'
 
     if record is None:
         # Buy after the bottom peak on macd histogram as the price slope
         # begins rising again.
         if candle['freq'] not in rules['macd']['freq'] or \
             ss['volume']['z-score'] < 0 or \
-            len(hist) < 1 or \
-            last >= 0 or \
-            abs(last) >= abs(hist.describe()['mean']):
+            len(ss['macd']['histo']) < 1 or \
+            ss['macd']['value'] >= 0 or \
+            abs(ss['macd']['value']) >= abs(ss['macd']['desc']['mean']):
+
+            print(str(ss['macd']['value']) + '\n' + str(ss['macd']['desc']))
             return
         else:
-            return {
-                'strategy': 'macd',
-                'snapshot': ss,
-                'details': {
-                    'macd_diff > 0': '{:+.2f} > 0'.format(float(ss['macd']['value']))
-                }
-            }
+            ss['details'] = \
+                'MACD trending UP toward 0. '+\
+                'Bottom was {:+.10f}, mean is {:+.10f}, now {:+.10f}.'+\
+                'Volume z-score GOOD at {:+.1f}'\
+                .format(
+                    float(ss['macd']['desc']['min']),
+                    float(ss['macd']['desc']['mean']),
+                    float(ss['macd']['value']),
+                    float(ss['volume']['z-score'])
+                )
+            return {'action':'buy', 'snapshot':ss}
     elif record:
-        ss = snapshot(candle)
-
         # percent max loss
         stop_loss = 0.02
-        if candle['close'] < record['buy']['candle']['close'] * (1 - stop_loss):
+        if candle['close'] < record['orders'][0]['candle']['close'] * (1 - stop_loss):
             return {
                 'action': 'sell',
                 'snapshot': ss,
@@ -124,17 +122,24 @@ def _macd(candle, record=None):
             }
 
         # Don't sell if histogram hasn't peaked
-        if last < 0 or \
-            abs(last) >= abs(hist.describe()['max']):
+        if ss['macd']['value'] < 0 or \
+            abs(ss['macd']['value']) >= abs(ss['macd']['desc']['max']):
+
+            ss['details'] = \
+                'MACD trending UP toward peak.'+\
+                'Now {:+.10f}, mean is {:+.10f}'\
+                .format(
+                    float(ss['macd']['value']),
+                    float(ss['macd']['desc']['mean']))
             return {'action':None, 'snapshot':ss}
         else:
-            return {
-                'action': 'sell',
-                'snapshot': ss,
-                'details': {
-                    'macd_diff < 0': '{:+.2f} < 0'.format(float(ss['macd']['value']))
-                }
-            }
+            ss['details'] = \
+                'MACD trending DOWN from peak.'+\
+                'Peaked at {:+.10f}, now {:+.10f}'\
+                .format(
+                    float(ss['macd']['desc']['max']),
+                    float(ss['macd']['value']))
+            return {'action': 'sell', 'snapshot': ss}
 
 #------------------------------------------------------------------------------
 def _zscore(candle, record=None):

@@ -64,7 +64,7 @@ def _trading():
     print('Preloading historic data....')
     trade.init()
 
-    #timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
+    timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
     timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')
 
     while True:
@@ -73,10 +73,10 @@ def _trading():
             trade.update('5m')
             timer_5m.reset()
 
-        #if timer_1m.remain() == 0:
-        #    #time.sleep(8)
-        #    #trade.update('1m')
-        #    timer_1m.reset()
+        if timer_1m.remain() == 0:
+            time.sleep(8)
+            trade.update('1m')
+            timer_1m.reset()
 
         time.sleep(5)
 

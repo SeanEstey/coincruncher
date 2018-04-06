@@ -141,8 +141,8 @@ def connect_klines(bnc_wss, _pairs):
 
     for pair in _pairs:
         conn_keys += [
-            #bnc_wss.start_kline_socket(pair, receive_kline,
-            #    interval=KLINE_INTERVAL_1MINUTE),
+            bnc_wss.start_kline_socket(pair, receive_kline,
+                interval=KLINE_INTERVAL_1MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,
                 interval=KLINE_INTERVAL_5MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,

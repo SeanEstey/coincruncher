@@ -50,14 +50,14 @@ def new_trades(trade_ids):
 
     for _id in trade_ids:
         record = db.trades.find_one({"_id":_id})
-        freq_str = record['buy']['candle']['freq']
+        freq_str = record['orders'][0]['candle']['freq']
         indexes.append(record['pair'])
         candle = candles.newest(record['pair'], freq_str, df=dfc)
         ss1 = record['snapshots'][0]
         ss2 = record['snapshots'][-1]
 
-        if record.get('sell'):
-            c1 = record['buy']['candle']
+        if len(record['orders']) > 1:
+            c1 = record['orders'][0]['candle']
             data.append([
                 'SELL',
                 pct_diff(c1['close'], candle['close']),
@@ -135,7 +135,7 @@ def positions(_type):
             {'status':'open', 'pair':{"$in":pairs}}))
 
         for record in _trades:
-            c1 = record['buy']['candle']
+            c1 = record['orders'][0]['candle']
             c2 = candles.newest(record['pair'], c1['freq'], df=dfc)
             ss1 = record['snapshots'][0]
             ss2 = record['snapshots'][-1]
@@ -179,14 +179,14 @@ def positions(_type):
 
         #print("%s trades today ending after %s" % (len(closed), start))
 
-        n_win, pct_earn = 0, 0
+        n_win, pct_net_gain = 0, 0
         for n in closed:
-            if n['pct_pdiff'] > 0:
+            if n['pct_net_gain'] > 0:
                 n_win += 1
-            pct_earn += n['pct_earn']
+            pct_net_gain += n['pct_net_gain']
 
         ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
 
         tradelog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))
         duration = to_relative_str(now() - start)
-        tradelog("{:+.2f}% net profit today.".format(pct_earn))
+        tradelog("{:+.2f}% net profit today.".format(pct_net_gain))
