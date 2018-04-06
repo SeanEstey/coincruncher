@@ -5,8 +5,8 @@ from binance.client import Client
 from collections import OrderedDict as odict
 import numpy as np
 from app.common.utils import colors, utc_datetime as now
-import app.bnc
-from app.bnc import signals, printer
+import app.bot
+from app.bot import signals, printer
 from docs.rules import RULES as rules
 from app import strtofreq, freqtostr
 def tradelog(msg): log.log(99, msg)
@@ -37,7 +37,7 @@ def snapshot(candle):
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
 
     # MACD + analysis
-    df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     macd = signals.macd(
         df,
         rules['macd']['short_period'],

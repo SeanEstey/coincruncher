@@ -24,7 +24,7 @@ from docs.rules import TRADING_PAIRS as pairs
 from app import set_db, get_db
 from app.common.utils import colors, to_local, utc_datetime as now
 from app.common.timer import Timer
-import app.bnc
+import app.bot
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 conn_keys = []

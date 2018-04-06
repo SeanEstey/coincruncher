@@ -1,4 +1,4 @@
-# app.bnc.printer
+# app.bot.printer
 import logging
 import tzlocal
 import dateparser
@@ -7,9 +7,9 @@ import pytz
 import pandas as pd
 import app
 from app.common.utils import colors, to_relative_str, utc_datetime as now
-import app.bnc
-from app.bnc import *
-from app.bnc import trade, strategy
+import app.bot
+from app.bot import *
+from app.bot import trade, strategy
 from .markets import agg_pct_change
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -19,7 +19,7 @@ log = logging.getLogger('print')
 def agg_mkts():
     """
     """
-    dfc = app.bnc.dfc
+    dfc = app.bot.dfc
     labels = ['5 min', '1 hr', '4 hrs', '12 hrs', '24 hrs']
     row_label = 'Agg.Price'
     _list = [
@@ -44,7 +44,7 @@ def agg_mkts():
 #------------------------------------------------------------------------------
 def new_trades(trade_ids):
     db = app.get_db()
-    dfc = app.bnc.dfc
+    dfc = app.bot.dfc
     cols = ["Type", "ΔPrice", "Slope", "Z-Score", "ΔZ-Score", "Time"]
     data, indexes = [], []
 
@@ -125,7 +125,7 @@ def positions(_type):
     """
     from docs.rules import TRADING_PAIRS as pairs
     db = app.get_db()
-    dfc = app.bnc.dfc
+    dfc = app.bot.dfc
 
     if _type == 'open':
         cols = ["ΔPrice", "Slope", " Z-Score", " ΔZ-Score", "Macd", "Time"]

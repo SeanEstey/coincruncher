@@ -5,7 +5,7 @@ import app
 from app import GracefulKiller
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate
-from app.bnc import scanner, candles, trade
+from app.bot import scanner, candles, trade
 from app.cmc import tickers
 from app.common import forex
 from docs.config import TICKER_LIMIT

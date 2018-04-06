@@ -8,9 +8,9 @@ from datetime import timedelta as delta
 from app import get_db, strtofreq
 from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
-import app.bnc
+import app.bot
 from docs.data import BINANCE
-from app.bnc import pct_diff, candles, printer, strategy
+from app.bot import pct_diff, candles, printer, strategy
 from docs.rules import TRADING_PAIRS as pairs
 
 def tradelog(msg): log.log(99, msg)
@@ -35,13 +35,13 @@ def init():
     log.info('Preloading historic data...')
 
     span = delta(days=7)
-    app.bnc.dfc = candles.merge_new(pd.DataFrame(), pairs, span=span)
+    app.bot.dfc = candles.merge_new(pd.DataFrame(), pairs, span=span)
 
     global client
     client = Client("","")
 
     log.info('{:,} records loaded in {:,.1f}s.'.format(
-        len(app.bnc.dfc), t1.elapsed(unit='s')))
+        len(app.bot.dfc), t1.elapsed(unit='s')))
 
 #------------------------------------------------------------------------------
 def update(_freq_str):
@@ -56,7 +56,7 @@ def update(_freq_str):
     db = get_db()
 
     # Update candles updated by websocket
-    app.bnc.dfc = candles.merge_new(app.bnc.dfc, pairs, span=None)
+    app.bot.dfc = candles.merge_new(app.bot.dfc, pairs, span=None)
 
     tradelog('*'*80)
     duration = to_relative_str(now() - start)
@@ -68,13 +68,13 @@ def update(_freq_str):
     if freq_str in siglog_freq:
         siglog('-'*80)
         for pair in pairs:
-            printer.candle_sig(candles.newest(pair, freq_str, df=app.bnc.dfc))
+            printer.candle_sig(candles.newest(pair, freq_str, df=app.bot.dfc))
 
     # Evaluate existing positions
     active = list(db.trades.find({'status':'open', 'freq':freq_str}))
 
     for trade in active:
-        candle = candles.newest(trade['pair'], freq_str, df=app.bnc.dfc)
+        candle = candles.newest(trade['pair'], freq_str, df=app.bot.dfc)
         result = strategy.update(candle, trade)
 
         print('{} {} {}'.format(
@@ -90,7 +90,7 @@ def update(_freq_str):
     inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
 
     for pair in inactive:
-        candle = candles.newest(pair, freq_str, df=app.bnc.dfc)
+        candle = candles.newest(pair, freq_str, df=app.bot.dfc)
         results = strategy.evaluate(candle)
         for res in results:
             print('{} {} {}'.format(

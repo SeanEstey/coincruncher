@@ -1,4 +1,4 @@
-# app.bnc.scanner
+# app.bot.scanner
 from pprint import pprint
 import logging
 import pandas as pd
@@ -9,7 +9,7 @@ import app
 from app import strtofreq
 from app.common.timer import Timer
 from app.common.utils import utc_datetime as now
-import app.bnc
+import app.bot
 from docs.rules import RULES as rules
 from app import freqtostr
 from . import candles, signals
@@ -55,11 +55,11 @@ def update(n, idx_filter=None):
         freq_str = '1h'
 
         candles.update([idx], freq_str, start="24 hours ago utc")
-        app.bnc.dfc = candles.merge_new(app.bnc.dfc, [idx], span=delta(hours=periods))
-        hist = app.bnc.dfc.loc[idx].xs(strtofreq[freq_str], level=0).tail(periods)
+        app.bot.dfc = candles.merge_new(app.bot.dfc, [idx], span=delta(hours=periods))
+        hist = app.bot.dfc.loc[idx].xs(strtofreq[freq_str], level=0).tail(periods)
         desc = hist.describe()
         pct_desc = hist.pct_change().describe()
-        candle = candles.newest(idx, freq_str, df=app.bnc.dfc)
+        candle = candles.newest(idx, freq_str, df=app.bot.dfc)
 
         _df.loc[idx] = [
             np.float64(pct_desc['close']['std']) * 100,

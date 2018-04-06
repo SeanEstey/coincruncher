@@ -2,7 +2,7 @@ import logging
 from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
-import app, app.bnc
+import app, app.bot
 from . import candles
 from app import strtofreq, freqtostr
 from docs.rules import RULES as rules
@@ -54,7 +54,7 @@ def ema_pct_change(candle, span):
         '1d': delta(days = span * 2)
     }
 
-    df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     sliced = df.loc[slice(
         candle['open_time'] - _range[candle['freq']],
         candle['open_time']
@@ -71,7 +71,7 @@ def z_score(candle, periods):
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
-    df = app.bnc.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     co, cf = candle['open_time'], candle['freq']
 
     if cf == '1m':

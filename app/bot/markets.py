@@ -1,8 +1,8 @@
 import logging
 import pandas as pd
-import app.bnc
+import app.bot
 from app import strtofreq
-log = logging.getLogger('bnc.markets')
+log = logging.getLogger('bot.markets')
 
 #-----------------------------------------------------------------------------
 def agg_pct_change(freq_str, span=None, label=None):
@@ -10,7 +10,7 @@ def agg_pct_change(freq_str, span=None, label=None):
     # FIXME: only pull up to date candle data. slice by date
     # to make sure no other data is distorting the results.
     """
-    dfc = app.bnc.dfc
+    dfc = app.bot.dfc
     freq = strtofreq[freq_str]
     label = label if label else ''
 
