@@ -123,8 +123,8 @@ def _macd(candle, record=None):
             macd >= 0 or \
             macd < list(histo.values())[-2] or \
             macd == desc['min'] or \
-            ss['volume']['z-score'] < 1 or \
-            ss['buyRatio']['value'] < 0.5:
+            ss['volume']['z-score'] < rules['macd']['min_volume_zscore'] or \
+            ss['buyRatio']['value'] < rules['macd']['min_buy_ratio']:
             return {'action':'SKIP', 'snapshot':ss}
         else:
             return {'action':'BUY', 'snapshot':ss}

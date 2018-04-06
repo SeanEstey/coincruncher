@@ -21,8 +21,10 @@ MAX_POSITIONS = 6
 RULES = {
     "macd": {
         'freq': ['5m'],
-        "short_period": 12,
-        "long_period": 26
+        'short_period': 12,
+        'long_period': 26,
+        'min_volume_zscore': 2,     # Adjust this higher in bearish markets for stronger bullish reversal confirmation
+        'min_buy_ratio': 0.5        # Ditto
     },
     "ema": {
         "span": 20
