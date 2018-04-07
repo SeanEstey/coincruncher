@@ -1,6 +1,6 @@
 import pandas as pd
 from binance.client import Client
-from docs.rules import RULES
+from docs.rules import STRATS
 from docs.data import BINANCE
 
 def pct_diff(a,b): return ((b-a)/a)*100

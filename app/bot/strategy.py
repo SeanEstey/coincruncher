@@ -7,7 +7,7 @@ import numpy as np
 from app.common.utils import colors, utc_datetime as now
 import app.bot
 from app.bot import signals, printer
-from docs.rules import RULES as rules
+from docs.rules import STRATS as rules
 from app import strtofreq, freqtostr
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -40,8 +40,8 @@ def snapshot(candle):
     df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     macd = signals.macd(
         df,
-        rules['macd']['short_period'],
-        rules['macd']['long_period']
+        rules['macd']['short_ema_span'],
+        rules['macd']['long_ema_span']
     )
     # Isolate histogram group
     last = np.float64(macd.tail(1)['macd_diff'])
@@ -58,7 +58,9 @@ def snapshot(candle):
         details = 'MACD new histogram.'
     else:
         if last < 0:
-            details = 'MACD below zero, {0} bottom, trending {1}.\n'\
+            #if last > desc['min']:
+            #    pct = app.bot.pct_diff(desc['min'], last)
+            details = 'MACD below mean, {0} bottom, trending {1}.\n'\
                 'Bottom is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
                 .format(
                     'ABOVE' if last > desc['min'] else 'AT',
@@ -146,7 +148,6 @@ def _macd(candle, record=None):
             return {'action': 'SELL', 'snapshot': ss}
         else:
             return {'action':'HOD', 'snapshot':ss}
-
 
 #------------------------------------------------------------------------------
 def _zscore(candle, record=None):

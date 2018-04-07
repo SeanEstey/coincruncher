@@ -95,7 +95,6 @@ def new_trades(trade_ids):
 
 #------------------------------------------------------------------------------
 def candle_sig(candle):
-    from docs.rules import RULES as rules
     ss = strategy.snapshot(candle)
     color, weight = None, None
 

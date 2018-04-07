@@ -5,13 +5,14 @@ import numpy as np
 import app, app.bot
 from . import candles
 from app import strtofreq, freqtostr
-from docs.rules import RULES as rules
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
 def macd(df, n_fast, n_slow):
     """MACD, MACD Signal and MACD difference
     """
+
+    # Generate MACD lines + oscillator
     EMAfast = df['close'].ewm(span=n_fast, min_periods=n_slow - 1,
         adjust=True, ignore_na=False).mean()
     EMAslow = df['close'].ewm(span=n_slow, min_periods=n_slow - 1,
@@ -24,6 +25,16 @@ def macd(df, n_fast, n_slow):
     df = df.join(MACD)
     df = df.join(MACDsign)
     df = df.join(MACDdiff)
+
+    # Normalize oscillator
+    pos = pd.DataFrame(df[df['macd_diff'] >= 0]['macd_diff'])
+    n1 = ((pos - pos.min()) / ( pos.max() - pos.min()))
+    neg = pd.DataFrame(abs(df[df['macd_diff'] < 0]['macd_diff']))
+    n2 = ((neg - neg.min()) / ( neg.max() - neg.min())) * -1
+    norm = n1.append(n2)
+    norm = norm.rename(columns={'macd_diff':'normalized'})
+    df = df.join(norm)
+
     return df
 
 #-----------------------------------------------------------------------------
@@ -136,7 +147,7 @@ def thresh_adapt():
     # values for Z-Scores. Offset by temporarily lowering support threshold.
     #
     # A) Breakout (ZP > Threshold)
-    #   breakout = rules['Z-SCORE']['BUY_BREAK_REST']
+    #   breakout = strats['Z-SCORE']['BUY_BREAK_REST']
     #   if z_score > breakout:
     #       msg="{:+.2f} Z-Score > {:.2f} Breakout.".format(z_score, breakout)
     #    return open_holding(candle, scores, extra=msg)
