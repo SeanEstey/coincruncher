@@ -36,52 +36,16 @@ def snapshot(candle):
     client = Client("","")
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
 
-    # MACD + analysis
-    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
-    macd = signals.macd(
-        df,
-        rules['macd']['short_ema_span'],
-        rules['macd']['long_ema_span']
-    )
-    # Isolate histogram group
-    last = np.float64(macd.tail(1)['macd_diff'])
-    if last < 0:
-        marker = macd[macd['macd_diff'] > 0].iloc[-1]
-    else:
-        marker = macd[macd['macd_diff'] < 0].iloc[-1]
-    histo = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
+    macd_desc = macd.describe(candle)
+    phase = macd_desc['phase']
     # Convert datetime index to str for mongodb storage.
-    histo.index = [ str(n)[:-10] for n in histo.index.values ]
-    desc = histo.describe()
-    # Describe histogram momentum
-    if len(histo) == 1:
-        details = 'MACD new histogram.'
-    else:
-        if last < 0:
-            #if last > desc['min']:
-            #    pct = app.bot.pct_diff(desc['min'], last)
-            details = 'MACD below mean, {0} bottom, trending {1}.\n'\
-                'Bottom is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
-                .format(
-                    'ABOVE' if last > desc['min'] else 'AT',
-                    'UPWARD' if last > histo.iloc[-2] else 'DOWNWARD',
-                    float(desc['min']),
-                    float(desc['mean']),
-                    float(last))
-        elif last >= 0:
-            details = 'MACD above zero, {0} peak, trending {1}.\n'\
-                'Peak is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
-                .format(
-                    'BELOW' if last < desc['max'] else 'AT',
-                    'UPWARD' if last > histo.iloc[-2] else 'DOWNWARD',
-                    float(desc['max']),
-                    float(desc['mean']),
-                    float(last))
+    phase.index = [ str(n)[:-10] for n in phase.index.values ]
+    last = phase.iloc[-1]
 
     return odict({
         'time': now(),
         'strategy': None,
-        'details': details,
+        'details': macd_desc['details'],
         'price': odict({
             'close': candle['close'],
             'z-score': round(z['close'], 2),
@@ -100,8 +64,8 @@ def snapshot(candle):
         }),
         'macd': odict({
             'value': last.round(10),
-            'histo': histo.round(10).to_dict(odict),
-            'desc': desc.round(10).to_dict()
+            'phase': phase.round(10).to_dict(odict),
+            'desc': phase.describe().round(10).to_dict()
         })
     })
 

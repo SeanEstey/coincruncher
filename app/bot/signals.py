@@ -22,17 +22,17 @@ def macd(df, n_fast, n_slow):
     MACDsign.name='macd_sign'
     MACDdiff = pd.Series(MACD - MACDsign, name = 'macd_diff')
 
-    df = df.join(MACD)
-    df = df.join(MACDsign)
-    df = df.join(MACDdiff)
+    #df = df.join(MACD)
+    #df = df.join(MACDsign)
+    #df = df.join(MACDdiff)
 
     # Normalize oscillator
-    pos = pd.DataFrame(df[df['macd_diff'] >= 0]['macd_diff'])
+    pos = pd.DataFrame(MACDdiff[MACDdiff >= 0])
     n1 = ((pos - pos.min()) / ( pos.max() - pos.min()))
-    neg = pd.DataFrame(abs(df[df['macd_diff'] < 0]['macd_diff']))
+    neg = pd.DataFrame(abs(MACDdiff[MACDdiff < 0]))
     n2 = ((neg - neg.min()) / ( neg.max() - neg.min())) * -1
     norm = n1.append(n2)
-    norm = norm.rename(columns={'macd_diff':'normalized'})
+    #norm = norm.rename(columns={'macd_diff':'normalized'})
     df = df.join(norm)
 
     return df
