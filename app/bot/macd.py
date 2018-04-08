@@ -1,10 +1,11 @@
 # app.bot.macd
 import logging
+from datetime import timedelta as delta, datetime
 import numpy as np
 import pandas as pd
 from docs.rules import STRATS
 from app import strtofreq
-from app.utils.timer import Timer
+from app.common.timer import Timer
 import app.bot
 from app.bot import pct_diff
 
@@ -12,37 +13,44 @@ log = logging.getLogger('macd')
 rules = STRATS['macd']
 
 #-----------------------------------------------------------------------------
-def oscilator(df, fast_span=None, slow_span=None, normalize=True):
+def generate(df, ema=None, normalize=True):
     """Append normalized macd oscilator column to given dataframe.
     Normalized values in range(-1,1).
     """
-    n_fast = fast_span if fast_span else rules['fast_span']
-    n_slow = slow_span if slow_span else rules['slow_span']
+    _ema = ema if ema else rules['ema']
 
-    ema_fast = df['close'].ewm(
-        span=n_fast,
-        min_periods=n_slow - 1,
+    fast = df['close'].ewm(
+        span=_ema[0],
+        #min_periods=_ema[1] - 1,
         adjust=True,
         ignore_na=False
     ).mean()
+    fast.name = 'fast'
 
-    ema_slow = df['close'].ewm(
-        span=n_slow,
-        min_periods=n_slow - 1,
+    slow = df['close'].ewm(
+        span=_ema[1],
+        #min_periods=_ema[1] - 1,
         adjust=True,
         ignore_na=False
     ).mean()
+    slow.name='slow'
 
-    macd = pd.Series(ema_fast - ema_slow)
+    macd = pd.Series(fast - slow, name='macd')
 
-    macd_sign = macd.ewm(
-        span=9,
-        min_periods=8,
+    signal = macd.ewm(
+        span=_ema[2],
+        #min_periods=_ema[1] - 1,
         adjust=True,
         ignore_na=False
     ).mean()
+    signal.name='signal'
 
-    oscilator = pd.Series(macd - macd_sign, name='macd_diff')
+    df = df.join(fast)
+    df = df.join(slow)
+    df = df.join(macd)
+    df = df.join(signal)
+
+    oscilator = pd.Series(macd - signal, name='macd_diff')
 
     # Probably a more efficient way to do this transformation.
     if normalize:
@@ -59,14 +67,13 @@ def oscilator(df, fast_span=None, slow_span=None, normalize=True):
     return df
 
 #------------------------------------------------------------------------------
-def describe(candle, fast_span=None, slow_span=None):
+def describe(candle, ema=None):
     """Describe current oscilator phase.
     """
-    n_fast = fast_span if fast_span else rules['fast_span']
-    n_slow = slow_span if slow_span else rules['slow_span']
+    _ema = ema if ema else rules['ema']
 
     df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
-    macd = oscilator(df, fast_span=n_fast, slow_span=n_slow)
+    macd = generate(df, ema=_ema)
 
     # Isolate current oscilator phase
     last = np.float64(macd.tail(1)['macd_diff'])
@@ -106,18 +113,15 @@ def describe(candle, fast_span=None, slow_span=None):
 
 #------------------------------------------------------------------------------
 def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
-    """Describe all oscilator phases in historical period.
+    """Describe aggregate macd positive/negative oscilator phases in timespan.
     """
     t1 = Timer()
-    from datetime import timedelta as delta
-    from app.common.utils import to_relative_str
+    from app.common.utils import to_relative_str as relative
     freq = strtofreq[freqstr]
 
-    df_macd = oscilator(
-        app.bot.dfc.loc[pair, freq],
-        strats['macd']['fast_span'],
-        strats['macd']['slow_span']
-    ).tail(n_periods).asfreq(pdfreqstr)
+    df_macd = generate(
+        app.bot.dfc.loc[pair, freq]
+    ).dropna().tail(n_periods).asfreq(pdfreqstr)
 
     phases=[]
     last_iloc = 0
@@ -127,12 +131,21 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
         if not phase:
             break
         phases.append(phase)
-        last_iloc = histo['iloc'][1]
+        last_iloc = phase['iloc'][1]
 
-    summary = []
-    summary.append("\n{} MACD Analysis".format(pair))
-    summary.append("Freq: {}, Phases: {}".format(
-        df_macd.index.freq.freqstr, len(phases)))
+    stats = {
+        'pair':pair,
+        'freqstr':freqstr,
+        'periods':len(df_macd['macd_diff']),
+        'phases': len(phases)
+    }
+
+    #"{} MACD Phase Analysis\n"\
+    summary = "\n"\
+        "Freq: {}, Periods: {}, Total Phases: {}\n"\
+        .format(
+            #pair,
+            freqstr, len(df_macd['macd_diff']), len(phases))
 
     for sign in ['POSITIVE', 'NEGATIVE']:
         grp = [ n for n in phases if n['sign'] == sign ]
@@ -146,12 +159,9 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
             periods = np.array([0])
 
         duration = np.array([ n['seconds'] for n in grp])
-        if len(duration) > 0:
-            mean_duration = to_relative_str(delta(seconds=duration.mean()))
-        else:
-            mean_duration = 0
+        if len(duration) == 0:
+            duration = np.array([0])
 
-        # Total percent gain in area
         price_diff = np.array([
             pct_diff(
                 n['df'].iloc[0]['close'],
@@ -159,19 +169,36 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
             ) for n in grp
         ])
 
-        summary.append("{} Oscillations: {}\n"\
-            "\tPrice: {:+.2f}%\n"\
-            .format(sign.title(), len(grp), price_diff.sum()))
-        summary.append("\tTotal_Area: {:.2f}, Mean_Area: {:.2f},\n"\
-            "\tTotal_Periods: {:}, Mean_Periods: {:.2f}\n"\
-            "\tMean_Duration: {}"\
+        summary += \
+            "\t{} Phases: {}\n"\
+            "\tPrice: {:+.2f}% (mean: {:+.2f}%)\n"\
+            "\tArea: {:.2f} (mean: {:.2f})\n"\
+            "\tPeriods: {:} (mean: {:.2f})\n"\
+            "\tDuration: {:} (mean: {})\n"\
             .format(
-                abs(area.sum()),
-                abs(area.mean()),
-                periods.sum(),
-                periods.mean(),
-                mean_duration))
-    return {'summary':summary, 'phases':phases, 'elapsed_ms':t1.elapsed()}
+                sign.title(),
+                len(grp),
+                price_diff.sum(), price_diff.mean(),
+                abs(area.sum()), abs(area.mean()),
+                periods.sum(), periods.mean(),
+                relative(delta(seconds=int(duration.sum()))),
+                relative(delta(seconds=int(duration.mean())))
+            )
+
+        stats[sign] = {
+            'n_phases': len(grp),
+            'price_diff': pd.DataFrame(price_diff).describe().to_dict(),
+            'area': pd.DataFrame(area).describe().to_dict(),
+            'periods': pd.DataFrame(periods).describe().to_dict(),
+            'duration': pd.DataFrame(duration).describe().to_dict()
+        }
+
+    return {
+        'summary':summary,
+        'stats':stats,
+        'phases':phases,
+        'elapsed_ms':t1.elapsed()
+    }
 
 #------------------------------------------------------------------------------
 def _get_phase(df, start_iloc):
@@ -202,3 +229,83 @@ def _get_phase(df, start_iloc):
         'area': _df['macd_diff'].sum(),
         'df':_df
     }
+
+#------------------------------------------------------------------------------
+def plot(pair, units, n_units, n_periods):
+    from dateparser import parse
+    import plotly.offline as offline
+    import plotly.tools as tools, plotly.graph_objs as go
+    from app.common.utils import utc_datetime as now
+    from . import candles
+
+    freqstr = ('%s%s'%(n_units, units[1]), '%s%s'%(n_units, units[2]))
+    freq = strtofreq[freqstr[0]]
+    start_str = "{} {} ago utc".format((n_periods + 75) * n_units, units[0])
+
+    candles.update([pair], freqstr[0],
+        start=start_str, force=True)
+    app.bot.dfc = candles.merge_new(pd.DataFrame(), [pair],
+        span=now()-parse(start_str))
+    df_macd = generate(app.bot.dfc.loc[pair, freq])
+    scan = agg_describe(pair, freqstr[0], n_periods, pdfreqstr=freqstr[1])
+    scan['summary'] = scan['summary'].replace("\n", "<br>")
+
+    # Stacked Subplots with a Shared X-Axis
+    t1 = go.Scatter(
+        x=df_macd.index,
+        y=df_macd['close'],
+        name="Price")
+    t2 = go.Bar(
+        x=df_macd.index,
+        y=df_macd['macd_diff'],
+        name="MACD_diff (normalized)",
+        yaxis='y2')
+    t3 = go.Bar(
+        x=df_macd.index,
+        y=df_macd['volume'],
+        name="Volume",
+        yaxis='y3')
+    data = [t1, t2, t3]
+
+    layout = go.Layout(
+        title='{} MACD'.format(pair),
+        yaxis=dict(
+            domain=[0.4, 1]
+        ),
+        yaxis2=dict(
+            domain=[0.2, 0.4]
+        ),
+        yaxis3=dict(
+            domain=[0, 0.2]
+        ),
+        xaxis=dict(
+            anchor = "y3",
+            #domain=[0.0, 0.1],
+            title="<BR>" + scan['summary']
+        ),
+        margin = dict(l=100, r=100, b=400, t=75, pad=25)
+        #fig['layout']['xaxis1'].update(titlefont=dict(
+        #    family='Arial, sans-serif',
+        #    size=18,
+        #    color='grey'
+        #))
+    )
+
+    fig = go.Figure(data=data, layout=layout)
+    return fig
+
+    """fig = tools.make_subplots(
+        rows=3,
+        cols=1,
+        specs=[ [{}], [{}], [{}] ],
+        shared_xaxes=True,
+        shared_yaxes=True,
+        vertical_spacing=0.005
+    )
+    # Layout
+    #fig['layout'].update(
+    #    title='{} MACD'.format(pair))
+    #fig['layout']['xaxis1'].update(
+    #    title="<BR>" + scan['summary'])
+    return fig
+    """
