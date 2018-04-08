@@ -1,3 +1,5 @@
+![alt text](https://github.com/SeanEstey/coincruncher/blob/master/Screen%20Shot%202018-04-08%20at%209.16.00%20AM.png)
+
 ### Installing bson-numpy
 
 ```
