@@ -7,7 +7,7 @@ import bsonnumpy
 from binance.client import Client
 import app
 from app import strtofreq
-from docs.data import BINANCE
+from docs.conf import binance as _conf
 from app.common.timer import Timer
 from app.common.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms,\
 dt_to_ms, utc_datetime as now
@@ -140,7 +140,7 @@ def update(pairs, freq, start=None, force=False):
                 float(x[10]),
                 None
             ]
-            d = dict(zip(BINANCE['KLINE_FIELDS'], x))
+            d = dict(zip(_conf['kline_fields'], x))
             d.update({'pair': pair, 'freq': freq})
             if d['volume'] > 0:
                 d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)

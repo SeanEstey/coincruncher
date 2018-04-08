@@ -1,9 +1,9 @@
 # app
 import logging
-import signal
+import signal as libsignal
 import textwrap
 from logging import DEBUG, ERROR, INFO, WARNING, CRITICAL
-from docs.config import *
+from docs.conf import *
 from app.common.utils import colors
 logging.addLevelName(SIGNAL, "Signal")
 logging.addLevelName(TRADE, "Trade")
@@ -38,8 +38,8 @@ class GracefulKiller:
     def __init__(self):
         """
         """
-        signal.signal(signal.SIGINT, self.exit_gracefully)
-        signal.signal(signal.SIGTERM, self.exit_gracefully)
+        libsignal.signal(libsignal.SIGINT, self.exit_gracefully)
+        libsignal.signal(libsignal.SIGTERM, self.exit_gracefully)
     def exit_gracefully(self,signum, frame):
         """
         """
@@ -48,7 +48,7 @@ class GracefulKiller:
 #---------------------------------------------------------------------------
 class WrappedFixedIndentingLog(logging.Formatter):
     def __init__(self, fmt=None, datefmt=None, style='%',
-        width=MAX_LOG_LINE_WIDTH, indent=LOG_NEWL_INDENT):
+        width=max_log_line_width, indent=log_newl_indent):
         """
         """
         super().__init__(fmt=fmt, datefmt=datefmt, style=style)
@@ -90,7 +90,7 @@ def eod_tasks():
     from docs.mongo_key import DBUSER, DBPASSWORD, AUTHDB
     from app.common import forex
 
-    forex.update_1d()
+    #forex.update_1d()
 
     log.debug('running mongodump...')
 
@@ -178,11 +178,11 @@ db = None
 logging.basicConfig(
     level=DEBUG,
     handlers=[
-        file_handler(DEBUG, DEBUGFILE, filters=[DEBUG]),
-        file_handler(INFO, LOGFILE, filters=[CRITICAL]),
-        file_handler(SIGNAL, SIGNALFILE, filters=[SIGNAL]),
-        file_handler(TRADE, TRADEFILE, filters=[TRADE]),
-        file_handler(SCAN, SCANNERFILE, filters=[SCAN])
+        file_handler(DEBUG, debugfile, filters=[DEBUG]),
+        file_handler(INFO, logfile, filters=[CRITICAL]),
+        file_handler(SIGNAL, signalfile, filters=[SIGNAL]),
+        file_handler(TRADE, tradefile, filters=[TRADE]),
+        file_handler(SCAN, scannerfile, filters=[SCAN])
     ]
 )
 

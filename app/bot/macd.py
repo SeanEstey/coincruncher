@@ -3,14 +3,14 @@ import logging
 from datetime import timedelta as delta, datetime
 import numpy as np
 import pandas as pd
-from docs.rules import STRATS
+from docs.conf import strategies
 from app import strtofreq
 from app.common.timer import Timer
 import app.bot
 from app.bot import pct_diff
 
 log = logging.getLogger('macd')
-rules = STRATS['macd']
+rules = strategies['macd']
 
 #-----------------------------------------------------------------------------
 def generate(df, ema=None, normalize=True):

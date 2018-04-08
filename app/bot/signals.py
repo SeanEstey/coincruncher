@@ -2,61 +2,34 @@ import logging
 from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
+from docs.conf import strategies as strats
 import app, app.bot
 from . import candles
 from app import strtofreq, freqtostr
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
-def macd(df, n_fast, n_slow):
-    """MACD, MACD Signal and MACD difference
-    """
-
-    # Generate MACD lines + oscillator
-    EMAfast = df['close'].ewm(span=n_fast, min_periods=n_slow - 1,
-        adjust=True, ignore_na=False).mean()
-    EMAslow = df['close'].ewm(span=n_slow, min_periods=n_slow - 1,
-        adjust=True, ignore_na=False).mean()
-    MACD = pd.Series(EMAfast - EMAslow, name='macd')
-    MACDsign = MACD.ewm(span=9, min_periods=8, adjust=True, ignore_na=False).mean()
-    MACDsign.name='macd_sign'
-    MACDdiff = pd.Series(MACD - MACDsign, name = 'macd_diff')
-
-    #df = df.join(MACD)
-    #df = df.join(MACDsign)
-    #df = df.join(MACDdiff)
-
-    # Normalize oscillator
-    pos = pd.DataFrame(MACDdiff[MACDdiff >= 0])
-    n1 = ((pos - pos.min()) / ( pos.max() - pos.min()))
-    neg = pd.DataFrame(abs(MACDdiff[MACDdiff < 0]))
-    n2 = ((neg - neg.min()) / ( neg.max() - neg.min())) * -1
-    norm = n1.append(n2)
-    #norm = norm.rename(columns={'macd_diff':'normalized'})
-    df = df.join(norm)
-
-    return df
-
-#-----------------------------------------------------------------------------
-def macd_histo():
-    pass
-
-#-----------------------------------------------------------------------------
 def vwap():
-    # buy volume * price / total volume
+    """Writeme.
+    buy volume * price / total volume
+    """
     pass
 
 #-----------------------------------------------------------------------------
 def rsi(candle):
-    #https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI
-    #RSI = 100 – [100 / ( 1 + (Average of Upward Price Change / Average of Downward Price Change ) ) ]
+    """Writeme.
+    https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI
+    RSI = 100 – [100 / ( 1 + (Average of Upward Price Change / Average of Downward Price Change ) ) ]
+    """
     pass
 
 #-----------------------------------------------------------------------------
-def ema_pct_change(candle, span):
+def ema_pct_change(candle, span=None):
     """Calculate percent change of candle 'close' price exponential moving
     average for preset time span.
     """
+    _span = span if span else strats['ema']['span']
+
     # Convert span to time range
     _range = {
         '1m': delta(minutes = span * 2),
@@ -114,159 +87,11 @@ def z_score(candle, periods):
     return pd.Series(data, index=cols).astype('float64').round(8)
 
 #------------------------------------------------------------------------------
-def weighted_avg(df, col):
-    """_df = grp.loc[grp['OPEN_TIME'] > now() - delta(hours=4)]
-    _df = _df.select_dtypes(include=[np.number])
-    _df['weights'] = np.linspace(0, 1, len(_df))
-    pd_avg = (np.array(w) * pandas.DataFrame(a)).mean(axis=1)
-    df = dfc.xs(60,level=1).reset_index().groupby('PAIR').apply(linseq)
+def weighted_avg(df, col, weights:
     """
-    weights = []
+    """
     try:
         return (df[col] * weights).sum() / sum(weights)
     except Exception as e:
         log.error("Div/0 error. Returning unweighted mean.")
         return df[col].mean()
-
-#-----------------------------------------------------------------------------
-def thresh_adapt():
-    # ********************************************************************
-    # TODO: Optimize by trying to group period logically via new "settled"
-    # price range, if possible.
-    # If bull/bear market, shorten historic period range
-    #if abs(mkt_ma) > 0.05 and abs(mkt_ma) < 0.1:
-    #    shorten = 0.75
-    #elif abs(mkt_ma) >= 0.1 and abs(mkt_ma) < 0.15:
-    #    shorten = 0.6
-    #elif abs(mkt_ma) > 0.15:
-    #    shorten = 0.5
-    #
-    # Correct for distorted Z-Score values in sudden bearish/bullish swings.
-    # A volatile bearish swing pushes Z-Scores downwards faster than the mean
-    # adjusts to represent the new "price level", creating innacurate deviation
-    # values for Z-Scores. Offset by temporarily lowering support threshold.
-    #
-    # A) Breakout (ZP > Threshold)
-    #   breakout = strats['Z-SCORE']['BUY_BREAK_REST']
-    #   if z_score > breakout:
-    #       msg="{:+.2f} Z-Score > {:.2f} Breakout.".format(z_score, breakout)
-    #    return open_holding(candle, scores, extra=msg)
-    # ********************************************************************
-    #z_thresh = RULES[freq_str]['Z-SCORE']['THRESH']
-    # Example: -0.1% MA and -2.0 support => -3.0 support
-    if mkt_ma < 0:
-        return z_thresh * (1 + (abs(mkt_ma) * 5))
-    # Example: +0.1% MA and +2.0 support => +0.83 support
-    else:
-        return z_thresh * (1 - (mkt_ma * 1.75))
-
-#------------------------------------------------------------------------------
-def pca(df):
-    """Run Principal Component Analysis (PCA) to identify time-lagged
-    price correlations between coins.
-    Code author: Dr. Pawel Lachowicz
-    Source: https://tinyurl.com/yaswrf9u
-    """
-    m = df.mean(axis=0)
-    s = df.std(ddof=1, axis=0)
-
-    # normalised time-series as an input for PCA
-    dfPort = (df - m)/s
-
-    c = np.cov(dfPort.values.T)     # covariance matrix
-    co = np.corrcoef(df.values.T)  # correlation matrix
-
-    tickers = list(df.columns)
-
-    # perform PCA
-    w, v = np.linalg.eig(c)
-
-    # choose PC-k numbers
-    k1 = -1  # the last PC column in 'v' PCA matrix
-    k2 = -2  # the second last PC column
-
-    # begin constructing bi-plot for PC(k1) and PC(k2)
-    # loadings
-
-    # compute the distance from (0,0) point
-    dist = []
-    for i in range(v.shape[0]):
-        x = v[i,k1]
-        y = v[i,k2]
-        d = np.sqrt(x**2 + y**2)
-        dist.append(d)
-
-    # check and save membership of a coin to
-    # a quarter number 1, 2, 3 or 4 on the plane
-    quar = []
-    for i in range(v.shape[0]):
-        x = v[i,k1]
-        y = v[i,k2]
-        d = np.sqrt(x**2 + y**2)
-
-        #if(d > np.mean(dist) + np.std(dist, ddof=1)):
-        # THESE IFS WERE NESTED IN ABOVE IF CLAUSE
-        if((x > 0) and (y > 0)):
-            quar.append((i, 1))
-        elif((x < 0) and (y > 0)):
-            quar.append((i, 2))
-        elif((x < 0) and (y < 0)):
-            quar.append((i, 3))
-        elif((x > 0) and (y < 0)):
-            quar.append((i, 4))
-
-    for i in range(len(quar)):
-        # Q1 vs Q3
-        if(quar[i][1] == 1):
-            for j in range(len(quar)):
-                if(quar[j][1] == 3):
-                    # highly correlated coins according to the PC analysis
-                    print(tickers[quar[i][0]], tickers[quar[j][0]])
-                    ts1 = df[tickers[quar[i][0]]]  # time-series
-                    ts2 = df[tickers[quar[j][0]]]
-                    # correlation metrics and their p_values
-                    slope, intercept, r2, pvalue, _ = stats.linregress(ts1, ts2)
-                    ktau, kpvalue = stats.kendalltau(ts1, ts2)
-                    print(r2, pvalue)
-                    print(ktau, kpvalue)
-        # Q2 vs Q4
-        if(quar[i][1] == 2):
-            for j in range(len(quar)):
-                if(quar[j][1] == 4):
-                    print(tickers[quar[i][0]], tickers[quar[j][0]])
-                    ts1 = df[tickers[quar[i][0]]]
-                    ts2 = df[tickers[quar[j][0]]]
-                    slope, intercept, r2, pvalue, _ = stats.linregress(ts1, ts2)
-                    ktau, kpvalue = stats.kendalltau(ts1, ts2)
-                    print(r2, pvalue)
-                    print(ktau, kpvalue)
-
-#------------------------------------------------------------------------------
-def thresholding_algo(y, lag, threshold, influence):
-
-    signals = np.zeros(len(y))
-    filteredY = np.array(y)
-    avgFilter = [0]*len(y)
-    stdFilter = [0]*len(y)
-    avgFilter[lag - 1] = np.mean(y[0:lag])
-    stdFilter[lag - 1] = np.std(y[0:lag])
-
-    for i in range(lag, len(y)):
-        if abs(y[i] - avgFilter[i-1]) > threshold * stdFilter [i-1]:
-            if y[i] > avgFilter[i-1]:
-                signals[i] = 1
-            else:
-                signals[i] = -1
-
-            filteredY[i] = influence * y[i] + (1 - influence) * filteredY[i-1]
-            avgFilter[i] = np.mean(filteredY[(i-lag):i])
-            stdFilter[i] = np.std(filteredY[(i-lag):i])
-        else:
-            signals[i] = 0
-            filteredY[i] = y[i]
-            avgFilter[i] = np.mean(filteredY[(i-lag):i])
-            stdFilter[i] = np.std(filteredY[(i-lag):i])
-
-    return dict(signals = np.asarray(signals),
-                avgFilter = np.asarray(avgFilter),
-                stdFilter = np.asarray(stdFilter))

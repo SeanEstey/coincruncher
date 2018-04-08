@@ -11,7 +11,7 @@ from app.common.timer import Timer
 from app.common.utils import utc_datetime as now, to_relative_str
 import app.bot
 from app.bot import pct_diff
-from docs.rules import STRATS as strats
+from docs.conf import strategies as strats
 from app import freqtostr
 from . import candles, signals
 log = logging.getLogger('scanner')
@@ -108,15 +108,15 @@ def indicators(df):
         # Calc indicators
         pct_close_std = np.float64(dfc['close'].pct_change().describe()['std'] * 100)
         br_mean = dfc['buy_ratio'].describe()['mean'] * 100
-        ema_slope = signals.ema_pct_change(candle, strats['ema']['span']).iloc[-1]
+        #ema_slope = signals.ema_pct_change(candle, strats['ema']['span']).iloc[-1]
 
         # Price movement (total, velocity, momentum)
         pdelta = dfc['close'].tail(24).pct_change() * 100
         pos_pdelta = pdelta[pdelta > 0]
         neg_pdelta = pdelta[pdelta < 0]
-        macd = signals.macd(dfc,
-            strats['macd']['fast_span'],
-            strats['macd']['slow_span']
+        macd = signals.macd(dfc
+            #strats['macd']['fast_span'],
+            #strats['macd']['slow_span']
         )
         pos_mom = macd[macd['macd_diff'] > 0]['macd_diff'].sum()
         neg_mom = abs(macd[macd['macd_diff'] < 0]['macd_diff'].sum())

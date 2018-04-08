@@ -8,20 +8,17 @@ https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-so
 import logging
 import itertools
 import importlib
-import signal
 import time
 import sys
 import pandas as pd
 import numpy as np
 from app.common.utils import utc_datetime as now
 from twisted.internet import reactor
-from pprint import pprint
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from binance.enums import *
-import docs.data
-from docs.rules import TRADING_PAIRS as pairs
-from app import set_db, get_db
+from docs.conf import trading_pairs as pairs
+from app import GracefulKiller, set_db, get_db
 from app.common.utils import colors, to_local, utc_datetime as now
 from app.common.timer import Timer
 import app.bot
@@ -29,16 +26,6 @@ import app.bot
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 conn_keys = []
 bnc_wss = None
-
-#---------------------------------------------------------------------------
-class GracefulKiller:
-    kill_now = False
-    def __init__(self):
-        signal.signal(signal.SIGINT, self.exit_gracefully)
-        signal.signal(signal.SIGTERM, self.exit_gracefully)
-
-    def exit_gracefully(self,signum, frame):
-        self.kill_now = True
 
 #---------------------------------------------------------------------------
 def receive_kline(msg):
@@ -97,16 +84,16 @@ def receive_kline(msg):
 def detect_pair_change():
     """Detect changes in pairs tracking conf
     """
-    importlib.reload(docs.data)
-    from docs.rules import TRADING_PAIRS
+    importlib.reload(docs.conf)
+    from docs.conf import trading_pairs
     global pairs, conn_keys
 
-    if pairs == TRADING_PAIRS:
+    if pairs == trading_pairs:
         return pairs
     else:
         print("Detected change in trading pair(s).")
-        rmvd = set(pairs) - set(TRADING_PAIRS)
-        added = set(TRADING_PAIRS) - set(pairs)
+        rmvd = set(pairs) - set(trading_pairs)
+        added = set(trading_pairs) - set(pairs)
 
         if len(rmvd) > 0:
             print("Removing {}...".format(rmvd))
@@ -135,7 +122,7 @@ def detect_pair_change():
 
         #print("Done. {} connections.".format(len(conn_keys)))
 
-        pairs = TRADING_PAIRS
+        pairs = trading_pairs
         return pairs
 
 #---------------------------------------------------------------------------

@@ -5,41 +5,14 @@ import dateparser
 from datetime import datetime
 import pytz
 import pandas as pd
-import app
+from docs.conf import trading_pairs as pairs
 from app.common.utils import colors, to_relative_str, utc_datetime as now
-import app.bot
-from app.bot import *
-from app.bot import trade, strategy
+import app, app.bot
+from . import trade, strategy
 from .markets import agg_pct_change
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('print')
-
-#-----------------------------------------------------------------------------
-def agg_mkts():
-    """
-    """
-    dfc = app.bot.dfc
-    labels = ['5 min', '1 hr', '4 hrs', '12 hrs', '24 hrs']
-    row_label = 'Agg.Price'
-    _list = [
-        agg_pct_change('1m', span=5, label='5 min'),
-        agg_pct_change('1m', span=60, label='1 hr'),
-        agg_pct_change('1h', span=4, label='4 hr'),
-        agg_pct_change('1h', span=12, label='12 hr'),
-        agg_pct_change('1h', span=24, label='24 hr')
-    ]
-    df = pd.DataFrame(
-        {labels[n]:_list[n] for n in range(0,len(labels))},
-        index=[row_label])
-    df = df[labels]
-
-    # Print values to % str
-    for n in range(0,len(labels)):
-        value = df[df.columns[n]][0]
-        # FIXME. Deprecated set_value()
-        df.set_value(row_label, df.columns[n], "{:+,.2f}%".format(value))
-    return df
 
 #------------------------------------------------------------------------------
 def new_trades(trade_ids):
@@ -122,7 +95,6 @@ def positions(_type):
     @_type: 'open', 'closed'
     @start: datetime.datetime for closed trades
     """
-    from docs.rules import TRADING_PAIRS as pairs
     db = app.get_db()
     dfc = app.bot.dfc
 

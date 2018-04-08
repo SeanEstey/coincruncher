@@ -7,7 +7,7 @@ import numpy as np
 from app.common.utils import colors, utc_datetime as now
 import app.bot
 from app.bot import signals, printer
-from docs.rules import STRATS as rules
+from docs.conf import strategies as strats
 from app import strtofreq, freqtostr
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -19,9 +19,9 @@ def update(candle, record):
 
 #-------------------------------------------------------------------------------
 def evaluate(candle):
-    from docs.rules import MAX_POSITIONS
+    from docs.conf import max_positions
     n_active = app.get_db().trades.find({'status':'open'}).count()
-    if n_active >= MAX_POSITIONS:
+    if n_active >= max_positions:
         return [{'action':'SKIP'}]
 
     # Execute any viable strategies
@@ -31,50 +31,12 @@ def evaluate(candle):
     return results
 
 #------------------------------------------------------------------------------
-def snapshot(candle):
-    z = signals.z_score(candle, rules['z-score']['periods']).to_dict()
-    client = Client("","")
-    ob = client.get_orderbook_ticker(symbol=candle['pair'])
-
-    macd_desc = macd.describe(candle)
-    phase = macd_desc['phase']
-    # Convert datetime index to str for mongodb storage.
-    phase.index = [ str(n)[:-10] for n in phase.index.values ]
-    last = phase.iloc[-1]
-
-    return odict({
-        'time': now(),
-        'strategy': None,
-        'details': macd_desc['details'],
-        'price': odict({
-            'close': candle['close'],
-            'z-score': round(z['close'], 2),
-            'emaDiff': signals.ema_pct_change(
-                candle, rules['ema']['span']).iloc[-1],
-            'ask': float(ob['askPrice']),
-            'bid': float(ob['bidPrice'])
-        }),
-        'volume': odict({
-            'value': candle['volume'],
-            'z-score': round(z['volume'],2),
-        }),
-        'buyRatio': odict({
-            'value': round(candle['buy_ratio'],2),
-            'z-score': round(z['buy_ratio'], 2),
-        }),
-        'macd': odict({
-            'value': last.round(10),
-            'phase': phase.round(10).to_dict(odict),
-            'desc': phase.describe().round(10).to_dict()
-        })
-    })
-
-#------------------------------------------------------------------------------
-def _macd(candle, record=None):
+def my_macd(candle, record=None):
     """Return one of 3 actions: BUY, SELL, HODL, SKIP
     TODO: implement dollar cost averaging into position as MACD decreases.
     dollar cost average out as MACd increases.
     """
+    conf = strats['macd']
     ss = snapshot(candle)
     ss['strategy'] = 'macd'
     macd, histo, desc = ss['macd']['value'], ss['macd']['histo'], ss['macd']['desc']
@@ -84,13 +46,13 @@ def _macd(candle, record=None):
         ss['details'] += \
             'Volume Z-Score is {0:+.1f}.\n'.format(ss['volume']['z-score'])
 
-        if candle['freq'] not in rules['macd']['freq'] or \
+        if candle['freq'] not in conf['freq'] or \
             len(histo) == 1 or \
             macd >= 0 or \
             macd < list(histo.values())[-2] or \
             macd == desc['min'] or \
-            ss['volume']['z-score'] < rules['macd']['min_volume_zscore'] or \
-            ss['buyRatio']['value'] < rules['macd']['min_buy_ratio']:
+            ss['volume']['z-score'] < conf['min_volume_zscore'] or \
+            ss['buyRatio']['value'] < conf['min_buy_ratio']:
             return {'action':'SKIP', 'snapshot':ss}
         else:
             return {'action':'BUY', 'snapshot':ss}
@@ -122,9 +84,10 @@ def _zscore(candle, record=None):
     if candle['freq'] != '1m':
         return None
 
-    periods = rules['z-score']['periods']
+    conf = strats['z-score']
+    periods = conf['periods']
     z = signals.z_score(candle, periods)
-    ema = signals.ema_pct_change(candle, rules['ema']['span'])
+    ema = signals.ema_pct_change(candle, conf['ema'])
 
     snapshot = {
         'time': now(),
@@ -136,7 +99,7 @@ def _zscore(candle, record=None):
     }
 
     if record is None:
-        threshold = rules['z-score']['buy_thresh']
+        threshold = conf['buy_thresh']
         if z.close > threshold:
             print('z.close < threshold')
             return None
@@ -153,7 +116,7 @@ def _zscore(candle, record=None):
             }
         }
     elif record:
-        threshold = rules['z-score']['sell_thresh']
+        threshold = conf['sell_thresh']
         if z.close < threshold:
             return {'action':None, 'snapshot':snapshot}
 
@@ -173,7 +136,7 @@ def _zscore(candle, record=None):
         }
 
 #------------------------------------------------------------------------------
-def _momentum(candle, record=None):
+def my_momentum(candle, record=None):
     """Evaluate positive momentum for buy/sell decision.
     Buy: on confirmation of price/volume.
     Sell: at peak price slope.
@@ -182,7 +145,8 @@ def _momentum(candle, record=None):
     if candle['freq'] != '5m':
         return None
 
-    periods = rules['z-score']['periods']
+    conf = strats['ema']
+    periods = conf['span']
     z = signals.z_score(candle, periods)
     ema = signals.ema_pct_change(candle)
 
@@ -228,9 +192,3 @@ def _momentum(candle, record=None):
                     ob['bidPrice'], record['snapshots'][0]['ask_price'])
             }
         }
-
-_strategies = {
-    'macd': _macd,
-    #'z-score': _zscore,
-    #'momentum': _momentum
-}

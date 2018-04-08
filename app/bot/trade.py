@@ -2,24 +2,21 @@ import logging
 import numpy as np
 import pandas as pd
 from collections import OrderedDict as odict
-from pymongo import ReturnDocument
 from binance.client import Client
 from datetime import timedelta as delta
+from docs.conf import binance as _conf, trading_pairs as pairs,\
+candle_freq, strategies as strats
 from app import get_db, strtofreq
 from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bot
-from docs.data import BINANCE
-from app.bot import pct_diff, candles, printer, strategy
-from docs.rules import TRADING_PAIRS as pairs
+from app.bot import pct_diff, candles, macd, printer, strategy
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 
-log = logging.getLogger('trade')
-
 # GLOBALS
-siglog_freq = ['5m', '1h', '1d']
+log = logging.getLogger('trade')
 n_cycles = 0
 start = now()
 freq = None
@@ -65,7 +62,7 @@ def update(_freq_str):
     tradelog('*'*80)
 
     # Output candle signals to siglog
-    if freq_str in siglog_freq:
+    if freq_str in candle_freq:
         siglog('-'*80)
         for pair in pairs:
             printer.candle_sig(candles.newest(pair, freq_str, df=app.bot.dfc))
@@ -130,8 +127,8 @@ def buy(candle, criteria):
             'time': now(),
             'price': candle['close'], # np.float64(orderbook['askPrice']),
             'volume': 1.0,
-            'quote': BINANCE['TRADE_AMT'],
-            'fee': BINANCE['TRADE_AMT'] * (BINANCE['PCT_FEE']/100),
+            'quote': _conf['trade_amt'],
+            'fee': _conf['trade_amt'] * (_conf['pct_fee']/100),
             'orderbook': orderbook,
             'candle': candle
         })]
@@ -145,7 +142,7 @@ def sell(doc, candle, orderbook=None, criteria=None):
     ob = orderbook if orderbook else client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(ob['bidPrice'])
 
-    pct_fee = BINANCE['PCT_FEE']
+    pct_fee = _conf['pct_fee']
     buy_vol = np.float64(doc['orders'][0]['volume'])
     buy_quote = np.float64(doc['orders'][0]['quote'])
     p1 = np.float64(doc['orders'][0]['price'])
@@ -185,3 +182,44 @@ def sell(doc, candle, orderbook=None, criteria=None):
         }
     )
     return doc['_id']
+
+#------------------------------------------------------------------------------
+def snapshot(candle):
+    """Gather state of trade--candle, indicators--each tick and save to DB.
+    """
+    z = signals.z_score(candle, strats['z-score']['periods']).to_dict()
+    client = Client("","")
+    ob = client.get_orderbook_ticker(symbol=candle['pair'])
+
+    macd_desc = macd.describe(candle)
+    phase = macd_desc['phase']
+    # Convert datetime index to str for mongodb storage.
+    phase.index = [ str(n)[:-10] for n in phase.index.values ]
+    last = phase.iloc[-1]
+
+    return odict({
+        'time': now(),
+        'strategy': None,
+        'details': macd_desc['details'],
+        'price': odict({
+            'close': candle['close'],
+            'z-score': round(z['close'], 2),
+            'emaDiff': signals.ema_pct_change(
+                candle, strats['ema']['span']).iloc[-1],
+            'ask': float(ob['askPrice']),
+            'bid': float(ob['bidPrice'])
+        }),
+        'volume': odict({
+            'value': candle['volume'],
+            'z-score': round(z['volume'],2),
+        }),
+        'buyRatio': odict({
+            'value': round(candle['buy_ratio'],2),
+            'z-score': round(z['buy_ratio'], 2),
+        }),
+        'macd': odict({
+            'value': last.round(10),
+            'phase': phase.round(10).to_dict(odict),
+            'desc': phase.describe().round(10).to_dict()
+        })
+    })
