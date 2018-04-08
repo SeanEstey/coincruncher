@@ -1,3 +1,5 @@
+![alt text](https://github.com/SeanEstey/coincruncher/raw/master/docs/chart.png)
+
 ### Installing bson-numpy
 
 ```
