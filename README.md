@@ -1,4 +1,4 @@
-![alt text](https://github.com/SeanEstey/coincruncher/raw/master/docs/chart.png)
+![macd chart](https://raw.githubusercontent.com/SeanEstey/coincruncher/master/charts/chart.png)
 
 ### Installing bson-numpy
 
