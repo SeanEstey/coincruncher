@@ -11,7 +11,6 @@ from app.common.timer import Timer
 from app.common.utils import utc_datetime as now, to_relative_str
 import app.bot
 from app.bot import pct_diff
-from docs.conf import strategies as strats
 from app import freqtostr
 from . import candles, signals
 log = logging.getLogger('scanner')

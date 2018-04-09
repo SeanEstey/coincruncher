@@ -4,13 +4,13 @@ import pandas as pd
 from collections import OrderedDict as odict
 from binance.client import Client
 from datetime import timedelta as delta
-from docs.conf import binance as _conf, trading_pairs as pairs,\
-candle_freq, strategies as strats
+from docs.conf import binance as _binance, trade_pairs as pairs
+from docs.conf import trade_strategies as strategies
 from app import get_db, strtofreq
 from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bot
-from app.bot import pct_diff, candles, macd, printer, strategy
+from app.bot import pct_diff, candles, macd, printer, signals, strategy
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -22,14 +22,49 @@ start = now()
 freq = None
 freq_str = None
 client = None
+strats = []
+
+#-------------------------------------------------------------------------------
+def add_strat(name):
+    """Each strats element is a dict of keys: 'name', 'conf', 'callback'
+    """
+    global strats
+
+    names = [ n['name'] for n in strategies ]
+    conf = strategies[names.index(name)]
+
+    if conf['callback']['str_func'].index('strategy.') == -1:
+        print("strat callback func must be in app.bot.strategy module")
+        return
+    else:
+        func = conf['callback']['str_func'].split('.')[-1]
+        strats.append({
+            'name':conf['name'],
+            'conf':conf,
+            'callback':getattr(strategy, func)
+        })
 
 #------------------------------------------------------------------------------
-def init():
+def rmv_strat(name):
+    global strats
+    del strats[[ n['name'] for n in strats].index(name)]
+
+#------------------------------------------------------------------------------
+def get_strat(name):
+    return strats[[ n['name'] for n in strats ].index(name)]
+
+#------------------------------------------------------------------------------
+def init(strat_names=None):
     """Preload candles records from mongoDB to global dataframe.
     Performance: ~3,000ms/100k records
     """
+    if strat_names:
+        [add_strat(n) for n in strat_names]
+        print('Loaded {} trading strategies.'.format(len(strats)))
+        print('Active strategies: %s' % strats)
+
     t1 = Timer()
-    log.info('Preloading historic data...')
+    log.info('Preloading historic candle data...')
 
     span = delta(days=7)
     app.bot.dfc = candles.merge_new(pd.DataFrame(), pairs, span=span)
@@ -43,14 +78,22 @@ def init():
 #------------------------------------------------------------------------------
 def update(_freq_str):
     """Evaluate Binance market data and execute buy/sell trades.
+    # TODO: add back in:
+    # Any active strategies trading on this freq?
+    # if freq_str in trade_freq:
+    #    siglog('-'*80)
+    #    for pair in pairs:
+    #        candles.describe(candles.newest(
+    #           pair, freq_str, df=app.bot.dfc))
     """
     global n_cycles, freq_str, freq
 
-    trade_ids=[]
+    _ids=[]
     freq_str = _freq_str
     freq = strtofreq[freq_str]
     t1 = Timer()
     db = get_db()
+    my_open = list(db.trades.find({'status':'open', 'freq':freq_str}))
 
     # Update candles updated by websocket
     app.bot.dfc = candles.merge_new(app.bot.dfc, pairs, span=None)
@@ -61,43 +104,52 @@ def update(_freq_str):
     tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*80)
 
-    # Output candle signals to siglog
-    if freq_str in candle_freq:
-        siglog('-'*80)
-        for pair in pairs:
-            printer.candle_sig(candles.newest(pair, freq_str, df=app.bot.dfc))
-
-    # Evaluate existing positions
-    active = list(db.trades.find({'status':'open', 'freq':freq_str}))
-
-    for trade in active:
+    # Manage open positions
+    for trade in my_open:
         candle = candles.newest(trade['pair'], freq_str, df=app.bot.dfc)
-        result = strategy.update(candle, trade)
-
-        print('{} {} {}'.format(
-            candle['pair'], candle['freq'], result['snapshot']['details']))
+        strat = get_strat(trade['strategy'])
+        ss = snapshot(candle, strat['conf'])
+        callback = strat['callback']
+        result = callback(candle, ss, conf=strat['conf'], record=trade)
+        ss['details'] += result.get('details','')
 
         if result['action'] == 'SELL':
-            trade_ids += [sell(trade, candle, criteria=result)]
+            print("sell details: %s" % result['details'])
+            _ids.append(sell(trade, candle, ss))
         else:
-            db.trades.update_one({"_id": trade["_id"]},
-                {"$push": {"snapshots": result['snapshot']}})
+            db.trades.update_one({"_id":trade["_id"]},
+                {"$push": {"snapshots":ss}})
 
-    # Inverse active list and evaluate opening new positions
-    inactive = sorted(list(set(pairs) - set([n['pair'] for n in active])))
+        print('{} {} {}'.format(
+            candle['pair'], candle['freq'], ss['details']))
+
+    # Manage new positions
+    inactive = sorted(list(
+        set(pairs)-set([n['pair'] for n in my_open])
+    ))
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bot.dfc)
-        results = strategy.evaluate(candle)
-        for res in results:
-            print('{} {} {}'.format(
-                candle['pair'], candle['freq'], res['snapshot']['details']))
 
-            if res['action'] == 'BUY':
-                trade_ids += [buy(candle, criteria=res)]
+        for n in strats:
+            # Skip if callback doesn't subscribe to current frequency
+            if freq_str not in n['conf']['callback']['freq']:
+                continue
+
+            ss = snapshot(candle, n['conf'])
+            callback = n['callback']
+            result = callback(candle, ss, conf=n['conf'])
+
+            if result['action'] == 'BUY':
+                _ss = ss.copy()
+                _ss['details'] += result.get('details','')
+                _ids.append(buy(candle, n['name'], _ss))
+
+            print('{} {} {}'.format(
+                candle['pair'], candle['freq'], ss.get('details','')))
 
     tradelog('-'*80)
-    printer.new_trades([n for n in trade_ids if n])
+    printer.new_trades([n for n in _ids if n])
     tradelog('-'*80)
     printer.positions('open')
     tradelog('-'*80)
@@ -106,7 +158,7 @@ def update(_freq_str):
     n_cycles +=1
 
 #------------------------------------------------------------------------------
-def buy(candle, criteria):
+def buy(candle, strat_name, ss):
     """Create or update existing position for zscore above threshold value.
     """
     global client
@@ -117,48 +169,45 @@ def buy(candle, criteria):
         'freq': candle['freq'],
         'status': 'open',
         'start_time': now(),
-        'strategy': criteria['snapshot']['strategy'],
-        'snapshots': [
-            criteria['snapshot']
-        ],
+        'strategy': strat_name,
+        #'strat_conf': get_strat(criteria['snapshot']['strategy'])['conf'],
+        'snapshots': [ss],
         'orders': [odict({
             'action':'BUY',
             'ex': 'Binance',
             'time': now(),
             'price': candle['close'], # np.float64(orderbook['askPrice']),
             'volume': 1.0,
-            'quote': _conf['trade_amt'],
-            'fee': _conf['trade_amt'] * (_conf['pct_fee']/100),
+            'quote': _binance['trade_amt'],
+            'fee': _binance['trade_amt'] * (_binance['pct_fee']/100),
             'orderbook': orderbook,
             'candle': candle
         })]
     })).inserted_id
 
 #------------------------------------------------------------------------------
-def sell(doc, candle, orderbook=None, criteria=None):
+def sell(record, candle, ss):
     """Close off existing position and calculate earnings.
     """
-    global client
-    ob = orderbook if orderbook else client.get_orderbook_ticker(symbol=candle['pair'])
-    bid = np.float64(ob['bidPrice'])
+    bid = np.float64(ss['orderBook']['bidPrice'])
 
-    pct_fee = _conf['pct_fee']
-    buy_vol = np.float64(doc['orders'][0]['volume'])
-    buy_quote = np.float64(doc['orders'][0]['quote'])
-    p1 = np.float64(doc['orders'][0]['price'])
+    pct_fee = _binance['pct_fee']
+    buy_vol = np.float64(record['orders'][0]['volume'])
+    buy_quote = np.float64(record['orders'][0]['quote'])
+    p1 = np.float64(record['orders'][0]['price'])
 
     pct_gain = pct_diff(p1, candle['close'])
     quote = buy_quote * (1 - pct_fee/100)
     fee = (bid * buy_vol) * (pct_fee/100)
-    pct_net_gain = net_earn = pct_gain - (pct_fee*2) #quote - buy_quote
+    pct_net_gain = net_earn = pct_gain - (pct_fee*2)
 
-    duration = now() - doc['start_time']
+    duration = now() - record['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
 
     get_db().trades.update_one(
-        {'_id': doc['_id']},
+        {'_id': record['_id']},
         {
-            '$push': {'snapshots':criteria['snapshot']},
+            '$push': {'snapshots':ss},
             '$push': {
                 'orders': odict({
                     'action': 'SELL',
@@ -168,7 +217,7 @@ def sell(doc, candle, orderbook=None, criteria=None):
                     'volume': 1.0,
                     'quote': buy_quote,
                     'fee': fee,
-                    'orderbook': ob,
+                    'orderbook': ss['orderBook'],
                     'candle': candle,
                 })
             },
@@ -181,17 +230,17 @@ def sell(doc, candle, orderbook=None, criteria=None):
             }
         }
     )
-    return doc['_id']
+    return record['_id']
 
 #------------------------------------------------------------------------------
-def snapshot(candle):
+def snapshot(candle, conf):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
-    z = signals.z_score(candle, strats['z-score']['periods']).to_dict()
+    z = signals.z_score(candle, 25).to_dict() #strats['z-score']['periods']).to_dict()
     client = Client("","")
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
 
-    macd_desc = macd.describe(candle)
+    macd_desc = macd.describe(candle, ema=conf.get('ema'))
     phase = macd_desc['phase']
     # Convert datetime index to str for mongodb storage.
     phase.index = [ str(n)[:-10] for n in phase.index.values ]
@@ -199,13 +248,11 @@ def snapshot(candle):
 
     return odict({
         'time': now(),
-        'strategy': None,
+        #'strategy': None,
         'details': macd_desc['details'],
         'price': odict({
             'close': candle['close'],
             'z-score': round(z['close'], 2),
-            'emaDiff': signals.ema_pct_change(
-                candle, strats['ema']['span']).iloc[-1],
             'ask': float(ob['askPrice']),
             'bid': float(ob['bidPrice'])
         }),
@@ -221,5 +268,6 @@ def snapshot(candle):
             'value': last.round(10),
             'phase': phase.round(10).to_dict(odict),
             'desc': phase.describe().round(10).to_dict()
-        })
+        }),
+        'orderBook':ob
     })

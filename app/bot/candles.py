@@ -228,3 +228,16 @@ def query_api(pair, freq, start=None, end=None, force=False):
     log.debug('%s %s %s queried [%ss].', len(results), freq, pair,
         t1.elapsed(unit='s'))
     return results
+
+#------------------------------------------------------------------------------
+def describe(candle):
+    from app.bot.trade import snapshot
+    ss = snapshot(candle)
+
+    line = "{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv"\
+           "{:>+10.2f} m" #{:>+10.2f} macd{}{}"
+
+    siglog(line.format(candle['pair'], candle['freq'],
+        ss['price']['z-score'], ss['volume']['z-score'], candle['buy_ratio'],
+        ss['price']['emaDiff']
+    ))

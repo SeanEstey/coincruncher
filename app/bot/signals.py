@@ -2,33 +2,19 @@ import logging
 from datetime import timedelta as delta
 import pandas as pd
 import numpy as np
-from docs.conf import strategies as strats
+from docs.conf import ema9
 import app, app.bot
-from . import candles
 from app import strtofreq, freqtostr
+from . import candles
+
 log = logging.getLogger('signals')
-
-#-----------------------------------------------------------------------------
-def vwap():
-    """Writeme.
-    buy volume * price / total volume
-    """
-    pass
-
-#-----------------------------------------------------------------------------
-def rsi(candle):
-    """Writeme.
-    https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI
-    RSI = 100 – [100 / ( 1 + (Average of Upward Price Change / Average of Downward Price Change ) ) ]
-    """
-    pass
 
 #-----------------------------------------------------------------------------
 def ema_pct_change(candle, span=None):
     """Calculate percent change of candle 'close' price exponential moving
     average for preset time span.
     """
-    _span = span if span else strats['ema']['span']
+    _span = span if span else ema9[0]
 
     # Convert span to time range
     _range = {
@@ -87,7 +73,7 @@ def z_score(candle, periods):
     return pd.Series(data, index=cols).astype('float64').round(8)
 
 #------------------------------------------------------------------------------
-def weighted_avg(df, col, weights:
+def weighted_avg(df, col, weights):
     """
     """
     try:
@@ -95,3 +81,18 @@ def weighted_avg(df, col, weights:
     except Exception as e:
         log.error("Div/0 error. Returning unweighted mean.")
         return df[col].mean()
+
+#-----------------------------------------------------------------------------
+def vwap():
+    """Writeme.
+    buy volume * price / total volume
+    """
+    pass
+
+#-----------------------------------------------------------------------------
+def rsi(candle):
+    """Writeme.
+    https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI
+    RSI = 100 – [100 / ( 1 + (Average of Upward Price Change / Average of Downward Price Change ) ) ]
+    """
+    pass

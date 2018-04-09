@@ -1,42 +1,79 @@
-# conf.py
-#
-# Settings for formatting/subscribing to API data and trading bot.
+"""conf.py
 
-from app.bot import strategy
-from app.common.utils import to_dt, to_int
+Settings for formatting/subscribing to API data and trading bot.
+"""
 
-#---General App Settings--------------------------------------------------------
+#### App #####################################################################
+
 host = "45.79.176.125"
 mongo_port = 27017
 db_name = "coincruncher"
+
+# DB backup (daily)
 db_dump_path = "~/Dropbox/mongodumps"
 dropboxd_path = "/opt/dropbox/dropboxd"
-# Register new log levels
-SCAN, TRADE, SIGNAL = 98, 99, 100
+
+# Custom logging.logger levels for separate logfile data
+SCAN = 98
+TRADE = 99
+SIGNAL = 100
+
 debugfile = "logs/debug.log"
 logfile = "logs/info.log"
 signalfile = "logs/signals.log"
 scannerfile = "logs/scanner.log"
 tradefile = "logs/trade.log"
+
 max_log_date_width = 14
 max_log_name_width = 8
 max_log_line_width = 125
 log_newl_indent = 25
 
-#---Screen Client Settings------------------------------------------------------
-client = {
-    'disp_refresh_delay': 30000,
-    'disp_scroll_sp': 5,
-    'disp_pad_height': 200
-}
+### Screen Client #############################################################
 
-#---API Subscription Settings---------------------------------------------------
-candle_freq = [
+disp_refresh_delay = 30000
+disp_scroll_sp = 5
+disp_pad_height = 200
+
+### Trade Indicators ##########################################################
+
+zscore_thresh = (-3.0, 3.0)
+
+ema9 = (9,)
+
+# Ema spans for (fast,slow,signal)
+macd_ema = (12,26,9)
+
+### Trade Algorithms ###########################################################
+#
+# User-defined trade strategy settings. Callback functions must be defined in
+# app.bot.strategy and must have the following signature:
+#       def myfunc(candle, snapshot, conf=None, record=None):
+# The callback must return a dict containing "action" key set to any of the
+# following values:
+#       ["BUY", "SELL", "SKIP", "HODL"]
+# Callback defined as str value here, invoked every trade cycle.
+#
+# It's possible to have any number of simultaneously running strategies, with
+# any config/callback combination, as long as the the dict keys below are
+# unique.
+################################################################################
+
+# Max simultaneous open trades
+max_positions = 6
+
+stop_loss = 0.005
+
+# Candle freqs for Binance WSS client to subscribe
+trade_freq = [
+    '1m',
     '5m',
     '1h',
     '1d'
 ]
-trading_pairs = [
+
+# Trade pairs for Binance WSS client to subcribe
+trade_pairs = [
     'BNBBTC',
     'BTCUSDT',
     'DGDBTC',
@@ -46,36 +83,42 @@ trading_pairs = [
     'XVGBTC'
 ]
 
-#---Trading Bot Settings--------------------------------------------------------
-max_positions = 6
-stop_loss = 0.005
-strategies = {
-    "macd": {
-        'callback': strategy.my_macd,
-        'active': True,
-        'freq': ['5m'],
-        # Ema spans for (fast,slow,signal)
+# Trading algo definitions.
+trade_strategies = [
+    #{
+    #    'name': 'macd_1m',
+    #    'callback': {
+    #        'str_func': 'app.bot.strategy.my_macd',
+    #        'freq': ['1m']
+    #    },
+    #    'ema': (12, 26, 9),
+    #    'desc': 'macd(12,26,9) histogram strat on 1m freq.'
+    #},
+    {
+        'name': "macd_5m",
+        'callback': {
+            'str_func': 'app.bot.strategy.my_macd',
+            'freq': ['5m']
+        },
         'ema': (12, 26, 9),
-        'min_volume_zscore': 2,
-        'min_buy_ratio': 0.5,
-        'min_momo_ratio': 1
-    },
-    "ema": {
-        'callback': strategy.my_momentum,
-        'active': False,
-        "span": 20
-    },
-    "z-score": {
-        'callback': strategy.my_zscore,
-        'active': False,
-        'ema': (12, 26, 9),
-        "periods": 36,
-        "buy_thresh": -3.0,
-        "sell_thresh": 0.0
+        'desc': 'macd(12,26,9) histogram strat on 5m freq.'
     }
-}
+    #{
+    #    'name': 'zscore_5m',
+    #    'callback': {
+    #        'str_func':'app.bot.strategy.my_zscore',
+    #        'freq': ['5m']
+    #    },
+    #    'threshold': (-3.0, 3.0),
+    #    'ema': (12, 26, 9),
+    #    'desc': 'z-score volume/price indicator strat, '\
+    #            'buy/sell at defined s.d. thresholds.',
+    #}
+]
 
-#---API Data Formatting Settings------------------------------------------------
+### API Data ##################################################################
+
+from app.common.utils import to_dt, to_int
 # Candle format for both REST and WSS API
 binance = {
     "trade_amt": 50.00,
@@ -103,13 +146,13 @@ coinmarketcap = {
     'ticker_limit': 500,
     'currency': 'cad',
     "watch": [
-        "LTC", "BCH", "XMR", "NEBL", "OCN", "BLZ", "ETC", "BNB", "BTC", "LINK", "DRGN",
-        "ENJ", "EOS", "ETH", "GAS", "ICX", "JNT", "NANO", "NCASH", "NEO", "ODN", "OMG",
-        "POLY", "REQ", "AGI", "VEN", "WTC", "ZIL", "ZCL", "XRP"
+        "LTC", "BCH", "XMR", "NEBL", "OCN", "BLZ", "ETC", "BNB", "BTC", "LINK",
+        "DRGN", "ENJ", "EOS", "ETH", "GAS", "ICX", "JNT", "NANO", "NCASH", "NEO",
+        "ODN", "OMG", "POLY", "REQ", "AGI", "VEN", "WTC", "ZIL", "ZCL", "XRP"
     ],
     "correlation": [
-        "BLZ", "BTC", "BCH", "ETH", "EOS", "ETC", "ICX", "LTC", "NANO", "NEBL", "NEO",
-        "OMG", "VEN", "XMR", "XRP", "WTC"
+        "BLZ", "BTC", "BCH", "ETH", "EOS", "ETC", "ICX", "LTC", "NANO", "NEBL",
+        "NEO", "OMG", "VEN", "XMR", "XRP", "WTC"
     ],
     "api": {
         "markets": [

@@ -17,7 +17,8 @@ from twisted.internet import reactor
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from binance.enums import *
-from docs.conf import trading_pairs as pairs
+import docs.conf
+from docs.conf import trade_pairs as pairs
 from app import GracefulKiller, set_db, get_db
 from app.common.utils import colors, to_local, utc_datetime as now
 from app.common.timer import Timer
@@ -85,15 +86,15 @@ def detect_pair_change():
     """Detect changes in pairs tracking conf
     """
     importlib.reload(docs.conf)
-    from docs.conf import trading_pairs
+    from docs.conf import trade_pairs
     global pairs, conn_keys
 
-    if pairs == trading_pairs:
+    if pairs == trade_pairs:
         return pairs
     else:
         print("Detected change in trading pair(s).")
-        rmvd = set(pairs) - set(trading_pairs)
-        added = set(trading_pairs) - set(pairs)
+        rmvd = set(pairs) - set(trade_pairs)
+        added = set(trade_pairs) - set(pairs)
 
         if len(rmvd) > 0:
             print("Removing {}...".format(rmvd))
@@ -122,7 +123,7 @@ def detect_pair_change():
 
         #print("Done. {} connections.".format(len(conn_keys)))
 
-        pairs = trading_pairs
+        pairs = trade_pairs
         return pairs
 
 #---------------------------------------------------------------------------
@@ -135,8 +136,8 @@ def connect_klines(bnc_wss, _pairs):
 
     for pair in _pairs:
         conn_keys += [
-            #bnc_wss.start_kline_socket(pair, receive_kline,
-            #    interval=KLINE_INTERVAL_1MINUTE),
+            bnc_wss.start_kline_socket(pair, receive_kline,
+                interval=KLINE_INTERVAL_1MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,
                 interval=KLINE_INTERVAL_5MINUTE),
             bnc_wss.start_kline_socket(pair, receive_kline,

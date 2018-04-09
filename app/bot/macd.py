@@ -3,21 +3,20 @@ import logging
 from datetime import timedelta as delta, datetime
 import numpy as np
 import pandas as pd
-from docs.conf import strategies
+from docs.conf import macd_ema
 from app import strtofreq
 from app.common.timer import Timer
 import app.bot
 from app.bot import pct_diff
 
 log = logging.getLogger('macd')
-rules = strategies['macd']
 
 #-----------------------------------------------------------------------------
 def generate(df, ema=None, normalize=True):
     """Append normalized macd oscilator column to given dataframe.
     Normalized values in range(-1,1).
     """
-    _ema = ema if ema else rules['ema']
+    _ema = ema if ema else macd_ema
 
     fast = df['close'].ewm(
         span=_ema[0],
@@ -70,7 +69,7 @@ def generate(df, ema=None, normalize=True):
 def describe(candle, ema=None):
     """Describe current oscilator phase.
     """
-    _ema = ema if ema else rules['ema']
+    _ema = ema if ema else macd_ema
 
     df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
     macd = generate(df, ema=_ema)
@@ -232,6 +231,8 @@ def _get_phase(df, start_iloc):
 
 #------------------------------------------------------------------------------
 def plot(pair, units, n_units, n_periods):
+    """
+    """
     from dateparser import parse
     import plotly.offline as offline
     import plotly.tools as tools, plotly.graph_objs as go
@@ -269,6 +270,12 @@ def plot(pair, units, n_units, n_periods):
 
     layout = go.Layout(
         title='{} MACD'.format(pair),
+        margin = dict(l=100, r=100, b=400, t=75, pad=25),
+        xaxis=dict(
+            anchor = "y3",
+            #domain=[0.0, 0.1],
+            title="<BR>" + scan['summary']
+        ),
         yaxis=dict(
             domain=[0.4, 1]
         ),
@@ -277,13 +284,7 @@ def plot(pair, units, n_units, n_periods):
         ),
         yaxis3=dict(
             domain=[0, 0.2]
-        ),
-        xaxis=dict(
-            anchor = "y3",
-            #domain=[0.0, 0.1],
-            title="<BR>" + scan['summary']
-        ),
-        margin = dict(l=100, r=100, b=400, t=75, pad=25)
+        )
         #fig['layout']['xaxis1'].update(titlefont=dict(
         #    family='Arial, sans-serif',
         #    size=18,
@@ -294,18 +295,4 @@ def plot(pair, units, n_units, n_periods):
     fig = go.Figure(data=data, layout=layout)
     return fig
 
-    """fig = tools.make_subplots(
-        rows=3,
-        cols=1,
-        specs=[ [{}], [{}], [{}] ],
-        shared_xaxes=True,
-        shared_yaxes=True,
-        vertical_spacing=0.005
-    )
-    # Layout
-    #fig['layout'].update(
-    #    title='{} MACD'.format(pair))
-    #fig['layout']['xaxis1'].update(
-    #    title="<BR>" + scan['summary'])
-    return fig
-    """
+

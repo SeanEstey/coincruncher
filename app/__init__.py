@@ -2,9 +2,10 @@
 import logging
 import signal as libsignal
 import textwrap
-from logging import DEBUG, ERROR, INFO, WARNING, CRITICAL
 from docs.conf import *
+from logging import DEBUG, ERROR, INFO, WARNING, CRITICAL
 from app.common.utils import colors
+
 logging.addLevelName(SIGNAL, "Signal")
 logging.addLevelName(TRADE, "Trade")
 logging.addLevelName(SCAN, "Scan")
@@ -164,7 +165,7 @@ def set_db(host):
         port=27017,
         connect=True,
         auth=True)
-    db = client[DB_NAME]
+    db = client[db_name]
     return db
 
 #---------------------------------------------------------------------------
@@ -191,3 +192,5 @@ def keystostr(keys): return (keys[0], freqtostr[keys[1]], pertostr[keys[2]])
 # STFU
 logging.getLogger("requests").setLevel(logging.ERROR)
 logging.getLogger("urllib3.connectionpool").setLevel(logging.ERROR)
+
+

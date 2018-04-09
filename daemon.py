@@ -5,9 +5,10 @@ import app
 from app import GracefulKiller
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate
-from app.bot import scanner, candles, trade
-from app.cmc import tickers
-from docs.conf import trading_pairs
+from app.bot import candles, trade
+#scanner,
+#from app.cmc import tickers
+from docs.conf import trade_pairs
 
 log = logging.getLogger('daemon')
 
@@ -30,12 +31,12 @@ def _data(now=False):
 
 #---------------------------------------------------------------------------
 def _scanner():
-    scanner.update(25, idx_filter='BTC')
+    #scanner.update(25, idx_filter='BTC')
     scan = Timer(name='scanner', expire='every 30 clock min utc')
 
     while True:
         if scan.remain() == 0:
-            scanner.update(25, idx_filter='BTC')
+            #scanner.update(25, idx_filter='BTC')
             scan.reset()
 
         time.sleep(1800)
@@ -59,9 +60,9 @@ def _trading():
     """Main trade cycle loop.
     """
     print('Preloading historic data....')
-    trade.init()
+    trade.init(strat_names=['macd_5m'])
 
-    #timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
+    timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
     timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')
 
     while True:
@@ -69,11 +70,12 @@ def _trading():
             time.sleep(10)
             trade.update('5m')
             timer_5m.reset()
-        """if timer_1m.remain() == 0:
+
+        if timer_1m.remain() == 0:
             time.sleep(8)
             trade.update('1m')
             timer_1m.reset()
-        """
+
         time.sleep(5)
 
 #---------------------------------------------------------------------------
@@ -101,13 +103,13 @@ if __name__ == '__main__':
             set_db(arg)
         elif opt in('-c', '--candles'):
             # Preload binance candles w/o waiting on timer
-            candles.update(trading_pairs, '1m',
+            candles.update(trade_pairs, '1m',
                 start='24 hours ago utc', force=True)
-            candles.update(trading_pairs, '5m',
+            candles.update(trade_pairs, '5m',
                 start='72 hours ago utc', force=True)
-            candles.update(trading_pairs, '1h',
+            candles.update(trade_pairs, '1h',
                 start='72 hours ago utc', force=True)
-            candles.update(trading_pairs, '1d',
+            candles.update(trade_pairs, '1d',
                 start='7 days ago utc', force=True)
         elif opt in('-t', '--tickers'):
             # Preload cmc tickers w/o waiting on timer
@@ -115,8 +117,8 @@ if __name__ == '__main__':
 
     # Create threads
     try:
-        th1 = threading.Thread(
-            name='data', target=_data, kwargs=th1_kwargs)
+        #th1 = threading.Thread(
+        #    name='data', target=_data, kwargs=th1_kwargs)
         th2 = threading.Thread(
             name='daily', target=_daily)
         th3 = threading.Thread(
@@ -128,8 +130,8 @@ if __name__ == '__main__':
         print(str(e))
         sys.exit()
 
-    th1.setDaemon(True)
-    th1.start()
+    #th1.setDaemon(True)
+    #th1.start()
 
     th2.setDaemon(True)
     th2.start()
