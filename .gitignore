@@ -3,6 +3,6 @@ mongo_key.py
 *.pyc
 *.swp
 *logs/
-*charts/
+charts/*.html
 *.ipynb_checkpoints/
 
