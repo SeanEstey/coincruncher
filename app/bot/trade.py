@@ -125,14 +125,13 @@ def update(_freq_str):
 
     # Manage new positions
     inactive = sorted(list(
-        set(pairs)-set([n['pair'] for n in my_open])
-    ))
+        set(pairs)-set([n['pair'] for n in my_open])))
 
     for pair in inactive:
         candle = candles.newest(pair, freq_str, df=app.bot.dfc)
 
         for n in strats:
-            # Skip if callback doesn't subscribe to current frequency
+            # Skip if callback doesn't subscribe to freq
             if freq_str not in n['conf']['callback']['freq']:
                 continue
 

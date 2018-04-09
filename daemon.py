@@ -60,7 +60,7 @@ def _trading():
     """Main trade cycle loop.
     """
     print('Preloading historic data....')
-    trade.init(strat_names=['macd_5m'])
+    trade.init(strat_names=['macd_5m_max', 'macd_5m_mean'])
 
     timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
     timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')

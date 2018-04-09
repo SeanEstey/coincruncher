@@ -60,7 +60,7 @@ macd_ema = (12,26,9)
 ################################################################################
 
 # Max simultaneous open trades
-max_positions = 6
+max_positions = 10
 
 stop_loss = 0.005
 
@@ -85,35 +85,42 @@ trade_pairs = [
 
 # Trading algo definitions.
 trade_strategies = [
-    #{
-    #    'name': 'macd_1m',
-    #    'callback': {
-    #        'str_func': 'app.bot.strategy.my_macd',
-    #        'freq': ['1m']
-    #    },
-    #    'ema': (12, 26, 9),
-    #    'desc': 'macd(12,26,9) histogram strat on 1m freq.'
-    #},
     {
-        'name': "macd_5m",
-        'callback': {
-            'str_func': 'app.bot.strategy.my_macd',
-            'freq': ['5m']
+        "name": "macd_5m_max",
+        "desc": "macd(12,26,9) buy on + 5m histo, "\
+                "sell on + 1m/5m < peak.",
+        "callback": {
+            "str_func": "app.bot.strategy.my_macd",
+            "freq": ["1m", "5m"]
         },
-        'ema': (12, 26, 9),
-        'desc': 'macd(12,26,9) histogram strat on 5m freq.'
+        "ema": (12, 26, 9),
+        "buy": {
+            "freq": ["5m"]
+        },
+        "sell": {
+            "freq": ["1m", "5m"],
+            "value": 0.99,
+            "vs": "max"
+        }
+    },
+    {
+        "name": "macd_5m_mean",
+        "desc": "macd(12,26,9) buy on + 5m histo, "\
+                "sell when 1m/5m < mean.",
+        "callback": {
+            "str_func": "app.bot.strategy.my_macd",
+            "freq": ["1m", "5m"]
+        },
+        "ema": (12, 26, 9),
+        "buy": {
+            "freq": ["5m"]
+        },
+        "sell": {
+            "freq": ["1m", "5m"],
+            "value": 0.5,
+            "vs": "mean"
+        }
     }
-    #{
-    #    'name': 'zscore_5m',
-    #    'callback': {
-    #        'str_func':'app.bot.strategy.my_zscore',
-    #        'freq': ['5m']
-    #    },
-    #    'threshold': (-3.0, 3.0),
-    #    'ema': (12, 26, 9),
-    #    'desc': 'z-score volume/price indicator strat, '\
-    #            'buy/sell at defined s.d. thresholds.',
-    #}
 ]
 
 ### API Data ##################################################################

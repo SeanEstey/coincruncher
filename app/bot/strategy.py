@@ -15,7 +15,8 @@ def my_macd(candle, ss, conf, record=None):
 
     # Buy/Skip
     if record is None:
-        if macd <= 0:
+        if candle['freq'] not in conf['buy']['freq'] or \
+        macd <= 0:
             return {'action':'SKIP'}
         else:
             return {'action':'BUY'}
@@ -23,6 +24,10 @@ def my_macd(candle, ss, conf, record=None):
     last = record['orders'][0]['candle']
 
     # Manage existing position
+    if candle['freq'] not in conf['sell']['freq']:
+        return {'action':'HODL'}
+
+    # Stop loss
     if candle['close'] < last['close']*(1-stop_loss):
         return {
             'action':'SELL',
@@ -30,9 +35,22 @@ def my_macd(candle, ss, conf, record=None):
                 .format(stop_loss*100)
         }
 
+    # Sudden price drop
+    if candle['close'] < last['close']:
+        return {
+            'action':'SELL',
+            'details':'Selling due to sudden price drop.'}
+
+    # User-defined condition
+    if macd < (conf['sell']['value'] * desc[conf['sell']['vs']]):
+        return {
+            'action':'SELL',
+            'details':'Macd < {}*{}'.format(
+                conf['sell']['value'], conf['sell']['vs'])
+        }
+
+    # Histogram (-) phase change
     if macd < 0:
-        print("SELLING %s" % candle['pair'])
-        print(ss['macd'])
         return {'action':'SELL', 'details':'Histogram in (-) phase.'}
 
     return {'action':'HODL'}
