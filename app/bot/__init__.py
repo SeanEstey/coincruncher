@@ -1,7 +1,4 @@
 import pandas as pd
-from binance.client import Client
+dfc = pd.DataFrame()
 
 def pct_diff(a,b): return ((b-a)/a)*100
-
-dfc = pd.DataFrame()
-client = Client("", "")

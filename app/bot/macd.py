@@ -85,8 +85,11 @@ def describe(candle, ema=None):
     desc = phase.describe()
 
     if len(phase) == 1:
-        details = 'Oscilator phase change.'
+        details = 'Oscilator phase change.\n'
+        trend = 'UPWARD' if phase.iloc[0] >= 0 else 'DOWNWARD'
     else:
+        trend = 'UPWARD' if last > phase.iloc[-2] else 'DOWNWARD'
+
         if last < 0:
             #if last > desc['min']:
             #    pct = app.bot.pct_diff(desc['min'], last)
@@ -94,7 +97,7 @@ def describe(candle, ema=None):
                 'Bottom is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
                 .format(
                     'ABOVE' if last > desc['min'] else 'AT',
-                    'UPWARD' if last > phase.iloc[-2] else 'DOWNWARD',
+                    trend,
                     float(desc['min']),
                     float(desc['mean']),
                     float(last))
@@ -103,12 +106,12 @@ def describe(candle, ema=None):
                 'Peak is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
                 .format(
                     'BELOW' if last < desc['max'] else 'AT',
-                    'UPWARD' if last > phase.iloc[-2] else 'DOWNWARD',
+                    trend,
                     float(desc['max']),
                     float(desc['mean']),
                     float(last))
 
-    return {'phase':phase, 'details':details}
+    return {'phase':phase, 'trend':trend, 'details':details}
 
 #------------------------------------------------------------------------------
 def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):

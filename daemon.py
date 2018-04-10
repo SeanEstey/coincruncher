@@ -8,7 +8,7 @@ from app.common.utils import utc_dtdate
 from app.bot import candles, trade
 #scanner,
 #from app.cmc import tickers
-from docs.conf import trade_pairs
+from docs.botconf import trade_pairs as pairs
 
 log = logging.getLogger('daemon')
 
@@ -103,13 +103,13 @@ if __name__ == '__main__':
             set_db(arg)
         elif opt in('-c', '--candles'):
             # Preload binance candles w/o waiting on timer
-            candles.update(trade_pairs, '1m',
+            candles.update(pairs, '1m',
                 start='24 hours ago utc', force=True)
-            candles.update(trade_pairs, '5m',
+            candles.update(pairs, '5m',
                 start='72 hours ago utc', force=True)
-            candles.update(trade_pairs, '1h',
+            candles.update(pairs, '1h',
                 start='72 hours ago utc', force=True)
-            candles.update(trade_pairs, '1d',
+            candles.update(pairs, '1d',
                 start='7 days ago utc', force=True)
         elif opt in('-t', '--tickers'):
             # Preload cmc tickers w/o waiting on timer

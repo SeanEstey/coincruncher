@@ -17,8 +17,8 @@ from twisted.internet import reactor
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from binance.enums import *
-import docs.conf
-from docs.conf import trade_pairs as pairs
+import docs.botconf
+from docs.botconf import trade_pairs as pairs
 from app import GracefulKiller, set_db, get_db
 from app.common.utils import colors, to_local, utc_datetime as now
 from app.common.timer import Timer
@@ -85,8 +85,8 @@ def receive_kline(msg):
 def detect_pair_change():
     """Detect changes in pairs tracking conf
     """
-    importlib.reload(docs.conf)
-    from docs.conf import trade_pairs
+    importlib.reload(docs.botconf)
+    from docs.botconf import trade_pairs
     global pairs, conn_keys
 
     if pairs == trade_pairs:

@@ -1,12 +1,12 @@
 import logging
 import numpy as np
 import pandas as pd
+from pymongo import ReplaceOne
 from collections import OrderedDict as odict
 from binance.client import Client
-from datetime import timedelta as delta
-from docs.conf import binance as _binance, macd_ema, trade_pairs as pairs
-from docs.conf import trade_strategies as strategies
-from docs.conf import stop_loss
+from datetime import timedelta as delta, datetime
+from docs.conf import binance as _binance, macd_ema
+from docs.botconf import trade_pairs as pairs, strategies
 from app import get_db, strtofreq
 from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
@@ -23,6 +23,7 @@ start = now()
 freq = None
 freq_str = None
 client = None
+snapshots = {}
 
 #------------------------------------------------------------------------------
 def init():
@@ -38,14 +39,25 @@ def init():
     log.info('{:,} records loaded in {:,.1f}s.'.format(
         len(app.bot.dfc), t1.elapsed(unit='s')))
 
+    # Lookup/store Binance asset metadata for active trading pairs.
+    client = Client('','')
+    info = client.get_exchange_info()
+    meta = [n for n in info['symbols'] if n['symbol'] in pairs]
+    ops = [ ReplaceOne({'symbol':n['symbol']}, n, upsert=True) for n in meta ]
+    get_db().meta.bulk_write(ops)
+
+    # TODO: Determine all freqs required in trading algo's, return
+    # list to daemon to setup timers for each.
     print('{} active trading strategies.'.format(len(strategies)))
+
+    print('Initialized in {} ms. Ready to trade.'.format(t1.elapsed()))
 
 #------------------------------------------------------------------------------
 def update(freqstr):
     """Evaluate Binance market data and execute buy/sell trades.
     """
-    global client, n_cycles, freq_str, freq
-
+    global client, n_cycles, freq_str, freq, snapshots
+    # One Binance client instance per update cycle
     client = Client("","")
     _ids=[]
     freq_str = freqstr
@@ -54,7 +66,13 @@ def update(freqstr):
     db = get_db()
 
     # Update candles updated by websocket
+    tradelog('-'*80)
     app.bot.dfc = candles.merge_new(app.bot.dfc, pairs, span=None)
+
+    snapshots = {}
+    for pair in pairs:
+        candle = candles.newest(pair, freqstr)
+        snapshots[pair] = snapshot(candle)
 
     tradelog('*'*80)
     duration = to_relative_str(now() - start)
@@ -62,8 +80,8 @@ def update(freqstr):
     tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*80)
 
-    _ids += entries(freqstr)
     _ids += exits(freqstr)
+    _ids += entries(freqstr)
 
     tradelog('-'*80)
     printer.new_trades([n for n in _ids if n])
@@ -71,6 +89,8 @@ def update(freqstr):
     printer.positions('open')
     tradelog('-'*80)
     printer.positions('closed')
+    tradelog('-'*80)
+    earnings()
     n_cycles +=1
 
 #------------------------------------------------------------------------------
@@ -79,7 +99,7 @@ def entries(freqstr):
     _ids = []
     for pair in pairs:
         c = candles.newest(pair, freqstr)
-        ss = snapshot(c)
+        ss = snapshots[pair]
         for strat in strategies:
             if db.trades.find_one(
                 {'status':'open','strategy':strat['name'], 'pair':pair}
@@ -92,7 +112,7 @@ def entries(freqstr):
 
             # Entry Conditions
             results = [ i(c,ss) for i in strat['entry']['conditions'] ]
-            if any(i == True for i in results):
+            if all(i == True for i in results):
                 _ids.append(buy(c, strat['name'], ss))
     return _ids
 
@@ -100,29 +120,30 @@ def entries(freqstr):
 def exits(freqstr):
     db = get_db()
     _ids = []
-    for trade in db.trades.find({'status':'open', 'freq':freqstr}):
+    for trade in db.trades.find({'status':'open'}): #'freq':freqstr}):
         candle = candles.newest(trade['pair'], freqstr)
         conf = strategies[[n['name'] for n in strategies].index(trade['strategy'])]
-        ss = snapshot(candle)
+        ss = snapshots[trade['pair']]
 
-        # Must pass all user-defined exit filters
-        results = [ n(candle, ss, trade) for n in conf['exit']['filters']]
-        if any(n == False for n in results):
-            continue
-
-        # Sell on meeting any exit condition
-        results = [ n(candle, ss, trade) for n in conf['exit']['conditions']]
         # Stop loss
-        results.append(
-            candle['close'] < trade['orders'][0]['candle']['close']*(1-stop_loss)
-        )
+        if candle['freq'] in conf['stop_loss']['freq']:
+            pct = pct_diff(trade['orders'][0]['candle']['close'], candle['close'])
+            if pct < conf['stop_loss']['pct']:
+                _ids.append(sell(trade, candle, ss))
+                continue
 
-        if any(n == True for n in results):
-            _ids.append(sell(trade, candle, ss))
-        else:
-            db.trades.update_one(
-                {"_id":trade["_id"]}, {"$push": {"snapshots":ss}}
-            )
+        # Evaluate exit conditions if all filters passed.
+        conditions = []
+        filt = [ n(candle, ss, trade) for n in conf['exit']['filters']]
+        if all(n == True for n in filt):
+            conditions += [ n(candle, ss, trade) for n in conf['exit']['conditions']]
+
+            if any(n == True for n in conditions):
+                _ids.append(sell(trade, candle, ss))
+            else:
+                db.trades.update_one(
+                    {"_id":trade["_id"]}, {"$push": {"snapshots":ss}}
+                )
     return _ids
 
 #------------------------------------------------------------------------------
@@ -131,9 +152,15 @@ def buy(candle, strat_name, ss):
     """
     global client
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
+    bid = np.float64(orderbook['bidPrice'])
+    ask = np.float64(orderbook['askPrice'])
 
-    return get_db().trades.insert_one(odict({
+    db = get_db()
+    meta = db.meta.find_one({'symbol':candle['pair']})
+
+    result = db.trades.insert_one(odict({
         'pair': candle['pair'],
+        'quote_asset': meta['quoteAsset'],
         'freq': candle['freq'],
         'status': 'open',
         'start_time': now(),
@@ -143,33 +170,46 @@ def buy(candle, strat_name, ss):
             'action':'BUY',
             'ex': 'Binance',
             'time': now(),
-            'price': candle['close'], # np.float64(orderbook['askPrice']),
+            'price': ask,
+            'pct_spread': pct_diff(bid, ask),
+            'pct_slippage': pct_diff(candle['close'], ask),
             'volume': 1.0,
             'quote': _binance['trade_amt'],
             'fee': _binance['trade_amt'] * (_binance['pct_fee']/100),
             'orderbook': orderbook,
             'candle': candle
         })]
-    })).inserted_id
+    }))
+
+    print("BUY {} ({})".format(candle['pair'], strat_name))
+    return result.inserted_id
 
 #------------------------------------------------------------------------------
 def sell(record, candle, ss):
     """Close off existing position and calculate earnings.
     """
+    global client
+    orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(ss['orderBook']['bidPrice'])
+    ask = np.float64(orderbook['askPrice'])
+    pct_spread = pct_diff(bid, ask)
+    pct_slippage = pct_diff(candle['close'], bid)
+    pct_total_slippage = record['orders'][0]['pct_slippage'] + pct_slippage
 
     pct_fee = _binance['pct_fee']
     buy_vol = np.float64(record['orders'][0]['volume'])
     buy_quote = np.float64(record['orders'][0]['quote'])
     p1 = np.float64(record['orders'][0]['price'])
 
-    pct_gain = pct_diff(p1, candle['close'])
+    pct_gain = pct_diff(p1, bid)
     quote = buy_quote * (1 - pct_fee/100)
     fee = (bid * buy_vol) * (pct_fee/100)
     pct_net_gain = net_earn = pct_gain - (pct_fee*2)
 
     duration = now() - record['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
+
+    print("SELL {} ({})".format(candle['pair'], record['strategy']))
 
     get_db().trades.update_one(
         {'_id': record['_id']},
@@ -180,7 +220,9 @@ def sell(record, candle, ss):
                     'action': 'SELL',
                     'ex': 'Binance',
                     'time': now(),
-                    'price': candle['close'],
+                    'price': bid,
+                    'pct_spread': pct_spread,
+                    'pct_slippage': pct_slippage,
                     'volume': 1.0,
                     'quote': buy_quote,
                     'fee': fee,
@@ -194,6 +236,7 @@ def sell(record, candle, ss):
                 'duration': int(duration.total_seconds()),
                 'pct_gain': pct_gain.round(4),
                 'pct_net_gain': pct_net_gain.round(4),
+                'pct_slippage': pct_total_slippage
             }
         }
     )
@@ -203,9 +246,11 @@ def sell(record, candle, ss):
 def snapshot(candle):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
+    global client
     z = signals.z_score(candle, 25).to_dict()
-    client = Client("","")
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
+    ask = np.float64(ob['askPrice'])
+    bid = np.float64(ob['bidPrice'])
 
     macd_desc = macd.describe(candle, ema=macd_ema)
     phase = macd_desc['phase']
@@ -218,13 +263,14 @@ def snapshot(candle):
 
     return odict({
         'time': now(),
-        #'strategy': None,
         'details': macd_desc['details'],
         'price': odict({
             'close': candle['close'],
             'z-score': round(z['close'], 2),
-            'ask': float(ob['askPrice']),
-            'bid': float(ob['bidPrice'])
+            'ask': ask,
+            'bid': bid,
+            'pct_spread': pct_diff(bid, ask),
+            'pct_slippage': pct_diff(candle['close'], ask)
         }),
         'volume': odict({
             'value': candle['volume'],
@@ -236,6 +282,7 @@ def snapshot(candle):
         }),
         'macd': odict({
             'value': last.round(10),
+            'trend': macd_desc['trend'],
             'phase': phase.round(10).to_dict(odict),
             'desc': phase.describe().round(10).to_dict()
         }),
@@ -243,17 +290,50 @@ def snapshot(candle):
     })
 
 #-------------------------------------------------------------------------------
-def summarize():
+def earnings():
     """Performance summary of trades, grouped by day/strategy.
     """
-    results = db.trades.aggregate([
+    from pprint import pprint
+    db = get_db()
+
+    strats = list(db.trades.aggregate([
         { '$match': {
             'status':'closed'
         }},
         { '$group': {
             '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
             'totalGain': {'$sum':'$pct_net_gain'},
+            #'totalSlippage': {'$sum':'$pct_slippage'},
             'count': {'$sum': 1}
         }}
-    ])
-    print(results)
+    ]))
+
+    assets = list(db.trades.aggregate([
+        { '$match': {
+            'status':'closed'
+        }},
+        { '$group': {
+            '_id': {
+                'asset':'$quote_asset',
+                # This UTC time??
+                'day': {'$dayOfYear':'$end_time'}},
+            'totalGain': {'$sum':'$pct_net_gain'},
+            #'totalSlippage': {'$sum':'$pct_slippage'},
+            'count': {'$sum': 1}
+        }}
+    ]))
+
+    day_of_yr = int(datetime.today().date().strftime('%j'))
+    today_by_strat = [ n for n in strats if n['_id']['day'] == day_of_yr]
+    pprint(today_by_strat)
+    today_by_asset = [ n for n in assets if n['_id']['day'] == day_of_yr]
+    pprint(today_by_asset)
+
+    #ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
+    #tradelog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))
+    #duration = to_relative_str(now() - start)
+    #tradelog("{:+.2f}% net profit today.".format(pct_net_gain))
+    #tradelog('{:+.2f}% paid in slippage.'.format(pct_slip))
+    #tradelog('{:+.2f)% paid in fees.'.format(pct_fees))
+
+    return (strats, assets)
