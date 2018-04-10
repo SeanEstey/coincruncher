@@ -102,7 +102,7 @@ def indicators(df):
         app.bot.dfc = candles.merge_new(app.bot.dfc, [pair],
             span=now()-parse(start_str))
         dfc = app.bot.dfc.loc[pair].xs(freq, level=0).tail(periods)
-        candle = candles.newest(pair, freq_str, df=app.bot.dfc)
+        candle = candles.newest(pair, freq_str)
 
         # Calc indicators
         pct_close_std = np.float64(dfc['close'].pct_change().describe()['std'] * 100)

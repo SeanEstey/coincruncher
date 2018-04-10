@@ -5,7 +5,6 @@ parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir)
 from pprint import pprint, pformat
 from docs.conf import trade_strategies
-import app.bot.strategy
 import importlib
 import pandas as pd
 import numpy as np
@@ -18,7 +17,7 @@ db = app.get_db()
 
 from app.bot import candles, macd, trade
 
-trade.init(strategies=['macd_5m'])
+trade.init()
 trade.update('5m')
 
 #candles.update('BTCUSDT', '5m') #, start=start_str, force=True)

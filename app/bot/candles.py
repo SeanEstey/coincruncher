@@ -29,17 +29,16 @@ dtype = np.dtype([
 ])
 
 #------------------------------------------------------------------------------
-def newest(pair, freq_str, df=None):
+def newest(pair, freqstr):
     """Get most recently added candle to either dataframe or mongoDB.
     """
-    freq = strtofreq[freq_str]
-
-    if df is not None:
-        series = df.loc[pair, freq].iloc[-1]
-        open_time = df.loc[(pair,freq)].index[-1]
-        idx = dict(zip(df.index.names, [pair, freq_str, open_time]))
-        return {**idx, **series}
-    else:
+    dfc = app.bot.dfc
+    freq = strtofreq[freqstr]
+    series = dfc.loc[pair, freq].iloc[-1]
+    open_time = dfc.loc[(pair,freq)].index[-1]
+    idx = dict(zip(dfc.index.names, [pair, freqstr, open_time]))
+    return {**idx, **series}
+    """else:
         log.debug("Doing DB read for candle.newest!")
 
         db = app.get_db()
@@ -47,6 +46,7 @@ def newest(pair, freq_str, df=None):
             .sort("close_time",-1)\
             .limit(1)
         )[0]
+    """
 
 #------------------------------------------------------------------------------
 def merge_new(dfc, pairs, span=None):

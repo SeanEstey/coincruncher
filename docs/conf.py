@@ -46,14 +46,6 @@ macd_ema = (12,26,9)
 
 ### Trade Algorithms ###########################################################
 #
-# User-defined trade strategy settings. Callback functions must be defined in
-# app.bot.strategy and must have the following signature:
-#       def myfunc(candle, snapshot, conf=None, record=None):
-# The callback must return a dict containing "action" key set to any of the
-# following values:
-#       ["BUY", "SELL", "SKIP", "HODL"]
-# Callback defined as str value here, invoked every trade cycle.
-#
 # It's possible to have any number of simultaneously running strategies, with
 # any config/callback combination, as long as the the dict keys below are
 # unique.
@@ -87,38 +79,38 @@ trade_pairs = [
 trade_strategies = [
     {
         "name": "macd_5m_max",
-        "desc": "macd(12,26,9) buy on + 5m histo, "\
-                "sell on + 1m/5m < peak.",
-        "callback": {
-            "str_func": "app.bot.strategy.my_macd",
-            "freq": ["1m", "5m"]
-        },
         "ema": (12, 26, 9),
-        "buy": {
-            "freq": ["5m"]
+        # Entry on 5m MACD Histo > 0.
+        "entry": {
+            "filters": [lambda c, ss: c['freq'] == '5m'],
+            "conditions": [lambda c, ss: ss['macd']['value'] > 0]
         },
-        "sell": {
-            "freq": ["1m", "5m"],
-            "value": 0.99,
-            "vs": "max"
+        # Exit on 1m/5m MACD Histo < 0 or MAX.
+        "exit": {
+            "filters": [lambda c, ss, doc: c['freq'] in ['1m', '5m']],
+            "conditions": [
+                lambda c, ss, doc: ss['macd']['value'] < 0,
+                lambda c, ss, doc: ss['macd']['value'] < ss['macd']['desc']['max'],
+                lambda c, ss, doc: c['close'] < doc['orders'][0]['candle']['close'],
+            ]
         }
     },
     {
         "name": "macd_5m_mean",
-        "desc": "macd(12,26,9) buy on + 5m histo, "\
-                "sell when 1m/5m < mean.",
-        "callback": {
-            "str_func": "app.bot.strategy.my_macd",
-            "freq": ["1m", "5m"]
-        },
         "ema": (12, 26, 9),
-        "buy": {
-            "freq": ["5m"]
+        # Entry on 5m MACD Histo > 0.
+        "entry": {
+            "filters": [lambda c, ss: c['freq'] == '5m'],
+            "conditions": [lambda c, ss: ss['macd']['value'] > 0]
         },
-        "sell": {
-            "freq": ["1m", "5m"],
-            "value": 0.5,
-            "vs": "mean"
+        # Exit on 1m/5m MACD Histo < 0 or MEAN.
+        "exit": {
+            "filters": [lambda c, ss, doc: c['freq'] in ['1m', '5m']],
+            "conditions": [
+                lambda c, ss, doc: ss['macd']['value'] < 0,
+                lambda c, ss, doc: ss['macd']['value'] < ss['macd']['desc']['mean'],
+                lambda c, ss, doc: c['close'] < doc['orders'][0]['candle']['close'],
+            ]
         }
     }
 ]

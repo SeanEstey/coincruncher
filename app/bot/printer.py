@@ -27,7 +27,7 @@ def new_trades(trade_ids):
         record = db.trades.find_one({"_id":_id})
         freq_str = record['orders'][0]['candle']['freq']
         indexes.append(record['pair'])
-        candle = candles.newest(record['pair'], freq_str, df=dfc)
+        candle = candles.newest(record['pair'], freq_str)
         ss1 = record['snapshots'][0]
         ss2 = record['snapshots'][-1]
 
@@ -89,7 +89,7 @@ def positions(_type):
 
         for record in _trades:
             c1 = record['orders'][0]['candle']
-            c2 = candles.newest(record['pair'], c1['freq'], df=dfc)
+            c2 = candles.newest(record['pair'], c1['freq'])
             ss1 = record['snapshots'][0]
             ss2 = record['snapshots'][-1]
 
