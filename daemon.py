@@ -5,8 +5,7 @@ import app
 from app import GracefulKiller
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate
-from app.bot import candles, trade
-#scanner,
+from app.bot import candles, trade, scanner
 #from app.cmc import tickers
 from docs.botconf import trade_pairs as pairs
 
@@ -31,12 +30,12 @@ def _data(now=False):
 
 #---------------------------------------------------------------------------
 def _scanner():
-    #scanner.update(25, idx_filter='BTC')
+    scanner.update(20, idx_filter='BTC')
     scan = Timer(name='scanner', expire='every 30 clock min utc')
 
     while True:
         if scan.remain() == 0:
-            #scanner.update(25, idx_filter='BTC')
+            scanner.update(20, idx_filter='BTC')
             scan.reset()
 
         time.sleep(1800)
@@ -64,8 +63,14 @@ def _trading():
 
     timer_1m = Timer(name='trade_1m', expire='every 1 clock min utc')
     timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')
+    timer_1h = Timer(name='trade_1h', expire='every 60 clock min utc')
 
     while True:
+        if timer_1h.remain() == 0:
+            time.sleep(10)
+            trade.update('1h')
+            timer_1h.reset()
+
         if timer_5m.remain() == 0:
             time.sleep(10)
             trade.update('5m')

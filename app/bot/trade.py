@@ -88,7 +88,6 @@ def update(freqstr):
     tradelog('-'*80)
     printer.positions('open')
     tradelog('-'*80)
-    printer.positions('closed')
     tradelog('-'*80)
     earnings()
     n_cycles +=1
@@ -129,6 +128,7 @@ def exits(freqstr):
         if candle['freq'] in conf['stop_loss']['freq']:
             pct = pct_diff(trade['orders'][0]['candle']['close'], candle['close'])
             if pct < conf['stop_loss']['pct']:
+                print("STOP LOSS {} {}".format(candle['freq'], trade['pair']))
                 _ids.append(sell(trade, candle, ss))
                 continue
 
@@ -139,6 +139,7 @@ def exits(freqstr):
             conditions += [ n(candle, ss, trade) for n in conf['exit']['conditions']]
 
             if any(n == True for n in conditions):
+                print("SELL CONDITION(S) TRUE {} {}".format(candle['freq'], trade['pair']))
                 _ids.append(sell(trade, candle, ss))
             else:
                 db.trades.update_one(
@@ -214,15 +215,15 @@ def sell(record, candle, ss):
     get_db().trades.update_one(
         {'_id': record['_id']},
         {
-            '$push': {'snapshots':ss},
             '$push': {
+                'snapshots':ss,
                 'orders': odict({
                     'action': 'SELL',
                     'ex': 'Binance',
                     'time': now(),
                     'price': bid,
-                    'pct_spread': pct_spread,
-                    'pct_slippage': pct_slippage,
+                    'pct_spread': round(pct_spread,3),
+                    'pct_slippage': round(pct_slippage,3),
                     'volume': 1.0,
                     'quote': buy_quote,
                     'fee': fee,
@@ -236,7 +237,7 @@ def sell(record, candle, ss):
                 'duration': int(duration.total_seconds()),
                 'pct_gain': pct_gain.round(4),
                 'pct_net_gain': pct_net_gain.round(4),
-                'pct_slippage': pct_total_slippage
+                'pct_slippage': round(pct_total_slippage,3)
             }
         }
     )
@@ -269,8 +270,8 @@ def snapshot(candle):
             'z-score': round(z['close'], 2),
             'ask': ask,
             'bid': bid,
-            'pct_spread': pct_diff(bid, ask),
-            'pct_slippage': pct_diff(candle['close'], ask)
+            'pct_spread': round(pct_diff(bid, ask),3),
+            'pct_slippage': round(pct_diff(candle['close'], ask),3)
         }),
         'volume': odict({
             'value': candle['volume'],
@@ -281,10 +282,10 @@ def snapshot(candle):
             'z-score': round(z['buy_ratio'], 2),
         }),
         'macd': odict({
-            'value': last.round(10),
+            'value': last.round(3),
             'trend': macd_desc['trend'],
-            'phase': phase.round(10).to_dict(odict),
-            'desc': phase.describe().round(10).to_dict()
+            'phase': phase.round(3).to_dict(odict),
+            'desc': phase.describe().round(3).to_dict()
         }),
         'orderBook':ob
     })
@@ -296,44 +297,53 @@ def earnings():
     from pprint import pprint
     db = get_db()
 
-    strats = list(db.trades.aggregate([
-        { '$match': {
-            'status':'closed'
-        }},
-        { '$group': {
+    gain = list(db.trades.aggregate([
+        {'$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
+        {'$group': {
             '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
-            'totalGain': {'$sum':'$pct_net_gain'},
-            #'totalSlippage': {'$sum':'$pct_slippage'},
+            'total': {'$sum':'$pct_net_gain'},
             'count': {'$sum': 1}
         }}
     ]))
-
+    loss = list(db.trades.aggregate([
+        {'$match': {'status':'closed', 'pct_net_gain':{'$lt':0}}},
+        {'$group': {
+            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
+            'total': {'$sum':'$pct_net_gain'},
+            'count': {'$sum': 1}
+        }}
+    ]))
     assets = list(db.trades.aggregate([
-        { '$match': {
-            'status':'closed'
-        }},
+        { '$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
         { '$group': {
             '_id': {
                 'asset':'$quote_asset',
-                # This UTC time??
                 'day': {'$dayOfYear':'$end_time'}},
-            'totalGain': {'$sum':'$pct_net_gain'},
-            #'totalSlippage': {'$sum':'$pct_slippage'},
+            'total': {'$sum':'$pct_net_gain'},
             'count': {'$sum': 1}
         }}
     ]))
 
-    day_of_yr = int(datetime.today().date().strftime('%j'))
-    today_by_strat = [ n for n in strats if n['_id']['day'] == day_of_yr]
-    pprint(today_by_strat)
-    today_by_asset = [ n for n in assets if n['_id']['day'] == day_of_yr]
-    pprint(today_by_asset)
+    today = int(datetime.utcnow().strftime('%j'))
+    gain = [ n for n in gain if n['_id']['day'] == today]
+    loss = [ n for n in loss if n['_id']['day'] == today]
+    #today_by_asset = [ n for n in assets if n['_id']['day'] == day_of_yr]
+
+    for i in range(0, len(gain)):
+        tradelog("{:} today: {:} wins ({:+.2f}%), {:} losses ({:+.2f}%), {:+.2f}% total."\
+            .format(
+                gain[i]['_id']['strategy'],
+                gain[i]['count'],
+                gain[i]['total'],
+                loss[i]['count'],
+                loss[i]['total'],
+                gain[i]['total'] + loss[i]['total']
+            ))
 
     #ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
-    #tradelog("{} of {} trade(s) today were profitable.".format(n_win, len(closed)))
     #duration = to_relative_str(now() - start)
     #tradelog("{:+.2f}% net profit today.".format(pct_net_gain))
     #tradelog('{:+.2f}% paid in slippage.'.format(pct_slip))
     #tradelog('{:+.2f)% paid in fees.'.format(pct_fees))
 
-    return (strats, assets)
+    return (gain, loss, assets)

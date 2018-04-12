@@ -8,16 +8,26 @@ max_positions = 10
 
 # Trade pairs for Binance WSS client to subcribe
 trade_pairs = [
-    'BNBBTC',
+    'ADABTC',
+    'AIONBTC',
+    #'BNBBTC',
     #'BTCUSDT',
     #'DGDBTC',
-    'DNTBTC',
+    #'DNTBTC',
+    'ELFBTC',
+    'ETHUSDT',
+    'FUNBTC',
     'EOSBTC',
     #'ENJBTC',
-    'ONTBTC',
-    'QSPBTC',
-    'SALTBTC',
-    'XVGBTC'
+    'ICXBTC',
+    'LRCBTC',
+    #'ONTBTC',
+    'OSTBTC',
+    #'SALTBTC',
+    #'XVGBTC',
+    #'WANBTC',
+    'WTCBTC',
+    'ZILBTC'
 ]
 
 ### Trade Algorithms ###########################################################
@@ -26,17 +36,41 @@ trade_pairs = [
 ################################################################################
 strategies = [
     {
+        "name": "macd_1h_mean",
+        "ema": (12, 26, 9),
+        "stop_loss": {
+            "freq": ["1h"],
+            "pct": -0.75
+        },
+        "entry": {
+            "filters": [lambda c, ss: c['freq'] in ['1h']],
+            "conditions": [
+                lambda c,ss: ss['macd']['value'] > 0,
+                lambda c,ss: ss['macd']['value'] == ss['macd']['desc']['max'],
+                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+            ]
+        },
+        "exit": {
+            "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
+            "conditions": [
+                lambda c,ss,doc: ss['macd']['value'] < 0,
+                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['mean']
+            ]
+        }
+    },
+    {
         "name": "macd_5m_max",
         "ema": (12, 26, 9),
         "stop_loss": {
             "freq": ["1m", "5m"],
-            "pct": -0.001
+            "pct": -0.75
         },
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['5m']],
             "conditions": [
-                lambda c, ss: ss['macd']['value'] > 0,
-                lambda c, ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['value'] > 0,
+                lambda c,ss: ss['macd']['value'] == ss['macd']['desc']['max'],
+                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
             ]
         },
         "exit": {
@@ -52,13 +86,14 @@ strategies = [
         "ema": (12, 26, 9),
         "stop_loss": {
             "freq": ['1m', '5m'],
-            "pct": -0.1
+            "pct": -0.75
         },
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['5m']],
             "conditions": [
-                lambda c, ss: ss['macd']['value'] > 0,
-                lambda c, ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['value'] > 0,
+                lambda c,ss: ss['macd']['value'] == ss['macd']['desc']['max'],
+                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
             ]
         },
         "exit": {
@@ -74,13 +109,14 @@ strategies = [
         "ema": (12, 26, 9),
         "stop_loss": {
             "freq": ['1m', '5m'],
-            "pct": -0.001
+            "pct": -0.75
         },
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['5m']],
             "conditions": [
-                lambda c, ss: ss['macd']['value'] > 0,
-                lambda c, ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['value'] > 0,
+                lambda c,ss: ss['macd']['value'] == ss['macd']['desc']['max'],
+                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
             ]
         },
         "exit": {

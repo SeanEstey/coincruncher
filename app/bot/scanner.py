@@ -4,6 +4,7 @@ import logging
 import pandas as pd
 import numpy as np
 from datetime import timedelta as delta
+from dateparser import parse
 from binance.client import Client
 import app
 from app import strtofreq
@@ -12,7 +13,7 @@ from app.common.utils import utc_datetime as now, to_relative_str
 import app.bot
 from app.bot import pct_diff
 from app import freqtostr
-from . import candles, signals
+from . import candles, macd, signals
 log = logging.getLogger('scanner')
 
 def scanlog(msg): log.log(98, msg)
@@ -20,8 +21,7 @@ def scanlog(msg): log.log(98, msg)
 #------------------------------------------------------------------------------
 def update(n, idx_filter=None):
     columns = [
-        'status', 'active', 'open', 'high', 'low', 'close',  'tradedMoney',
-        'quoteAsset'
+        'status', 'active', 'open', 'high', 'low', 'close',  'tradedMoney'
     ]
     client = Client("","")
     products = client.get_products()
@@ -45,95 +45,86 @@ def update(n, idx_filter=None):
     df['high - low'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
 
     # Calc indicators
-    top = indicators(df)
-
-    quote_symbol = candle['pair']
-    top = top.rename(columns={'close':'price', 'tradedMoney':'quoteVol'})
-    #top = top.join(_df)
-    top = top[[
-        'price', 'price.std', 'close - open', 'high - low',
-        'emaSlope', 'quoteVol', 'quoteAsset', 'buyRatio'
+    dfi = indicators(df, n)
+    df = df.rename(columns={
+        'close':'P',
+        'close - open': '∆(C-O)',
+        'high - low': '∆(H-L)',
+        'tradedMoney':'quoteVol'
+    })
+    df = df.join(dfi)
+    df = df.dropna()
+    del df['high']
+    del df['low']
+    del df['open']
+    df = df[[
+        'P',
+        '∆(C-O)',
+        '∆(H-L)',
+        'SD(∆P)',
+        'Σ(∆P+)',
+        'μ(∆P+)',
+        'Σ(∆P-)',
+        'μ(∆P-)',
+        'MACD(+/-)',
+        'quoteVol'
     ]]
-    top = top.sort_values(['close - open', 'price.std'])
+    df = df.sort_values('∆(C-O)')
 
-    lines = top.tail(n).to_string(formatters={
-        "price": '{:>15.8g}'.format,
-        "price.std": '{:>10.2f}%'.format,
-        "close - open": '{:>+10.1f}%'.format,
-        "high - low": '{:>+10.1f}%'.format,
-        "emaSlope": '{:>+10.2f}'.format,
-        "quoteVol": '{:>13,.0f}'.format,
-        "quoteAsset": '{:>10}'.format,
-        "buyRatio": '{:>10.1f}%'.format
+    lines = df.tail(n).to_string(formatters={
+        'P': '{:.8g}'.format,
+        'SD(∆P)': ' {:.2f}%'.format,
+        '∆(C-O)': ' {:+.1f}%'.format,
+        '∆(H-L)': ' {:+.1f}%'.format,
+        'Σ(∆P+)': ' {:.2f}%'.format,
+        'μ(∆P+)': ' {:.2f}%'.format,
+        'Σ(∆P-)': ' {:.2f}%'.format,
+        'μ(∆P-)': ' {:.2f}%'.format,
+        'MACD(+/-)': '{:.2f}'.format,
+        "quoteVol": '{:.0f}'.format
+        #"buyRatio": '{:>10.1f}%'.format
     }).split("\n")
 
-    scanlog('-' * 80)
-    scanlog('Volatile/High Volume Trading Pairs in Past 24 Hours')
+    scanlog('')
+    scanlog('-' * 100)
     [ scanlog(line) for line in lines]
 
-    return top
+    return df
 
 #------------------------------------------------------------------------------
-def indicators(df):
-    freq_str, freq = '1h', 3600
-    start_str, periods = '48 hours ago utc', 48
-
-    top = df.sort_values('close - open')#.tail(n)
-
+def indicators(df, n):
+    freqstr, freq = '1h', 3600
+    startstr, periods = '48 hours ago utc', 48
+    df_top = df.sort_values('close - open').tail(n)
     _df = pd.DataFrame(
         columns=[
-            '∆(Close - Open)',
-            '∆(High - Low)',
             'SD(∆P)',
-            'Σ(∆P > 0)',
-            'μ(∆P > 0)',
-            'Σ(∆P < 0)',
-            'μ(∆P < 0)',
-            '+MACD/-MACD',
-            '∆ema',
-            'BuyVol',
+            'Σ(∆P+)',
+            'μ(∆P+)',
+            'Σ(∆P-)',
+            'μ(∆P-)',
+            'MACD(+/-)'
         ],
-        index=top.index
-    ).astype('float64')
+        index=df_top.index
+    ).astype('float64').round(3)
 
-    for pair, row in df.iterrows():
-        # API query/load candle data
-        candles.update([pair], freq_str, start=start, force=True)
+    # Query/load candles, calc indicators
+    for pair, row in df_top.iterrows():
+        candles.update([pair], freqstr, start=startstr, force=True)
         app.bot.dfc = candles.merge_new(app.bot.dfc, [pair],
-            span=now()-parse(start_str))
-        dfc = app.bot.dfc.loc[pair].xs(freq, level=0).tail(periods)
-        candle = candles.newest(pair, freq_str)
-
-        # Calc indicators
-        pct_close_std = np.float64(dfc['close'].pct_change().describe()['std'] * 100)
-        br_mean = dfc['buy_ratio'].describe()['mean'] * 100
-        #ema_slope = signals.ema_pct_change(candle, strats['ema']['span']).iloc[-1]
-
-        # Price movement (total, velocity, momentum)
-        pdelta = dfc['close'].tail(24).pct_change() * 100
-        pos_pdelta = pdelta[pdelta > 0]
-        neg_pdelta = pdelta[pdelta < 0]
-        macd = signals.macd(dfc
-            #strats['macd']['fast_span'],
-            #strats['macd']['slow_span']
-        )
-        pos_mom = macd[macd['macd_diff'] > 0]['macd_diff'].sum()
-        neg_mom = abs(macd[macd['macd_diff'] < 0]['macd_diff'].sum())
-        mom_ratio = pos_mom / neg_mom
-
-        # MACD Histogram analysis.
-        # Iterate through macd_diff, group histograms, calc avg length/depth
-
+            span=now()-parse(startstr))
+        df_macd = macd.generate(app.bot.dfc.loc[pair, freq])
+        scan = macd.agg_describe(pair, freqstr, 48, pdfreqstr='1H')
+        tail = app.bot.dfc.loc[pair, freq].tail(24)
+        sd = np.float64(tail['close'].pct_change().describe()['std'] * 100)
+        ppdiff = scan['stats']['POSITIVE']['price_diff']
+        npdiff = scan['stats']['NEGATIVE']['price_diff']
         _df.loc[pair] = [
-            # done already,
-            # done already,
-            pct_close_std,
-            p_up.sum(),
-            p_up.mean(),
-            p_down.sum(),
-            p_down.mean(),
-            mom_ratio,
-            br_mean,
-            ema_slope,
+            sd,
+            ppdiff['sum'],
+            ppdiff['mean'],
+            npdiff['sum'],
+            npdiff['mean'],
+            ppdiff['sum'] / npdiff['sum']
         ]
-    return _df
+    return _df.round(2)

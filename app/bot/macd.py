@@ -77,12 +77,22 @@ def describe(candle, ema=None):
     # Isolate current oscilator phase
     last = np.float64(macd.tail(1)['macd_diff'])
     if last < 0:
-        marker = macd[macd['macd_diff'] > 0].iloc[-1]
+        if len(macd[macd['macd_diff'] > 0]) > 0:
+            marker = macd[macd['macd_diff'] > 0].iloc[-1]
+        else:
+            marker = macd['macd_diff'].tail(1) #.iloc[-1]
     else:
-        marker = macd[macd['macd_diff'] < 0].iloc[-1]
+        if len(macd[macd['macd_diff'] < 0]) > 0:
+            marker = macd[macd['macd_diff'] < 0].iloc[-1]
+        else:
+            marker = macd['macd_diff'].tail(1) #.iloc[-1]
 
-    phase = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
-    desc = phase.describe()
+    try:
+        phase = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
+        desc = phase.describe()
+    except Exception as e:
+        phase = macd.iloc[1:]['macd_diff']
+        desc = phase.describe()
 
     if len(phase) == 1:
         details = 'Oscilator phase change.\n'
@@ -93,8 +103,8 @@ def describe(candle, ema=None):
         if last < 0:
             #if last > desc['min']:
             #    pct = app.bot.pct_diff(desc['min'], last)
-            details = 'MACD negative phase, {0} bottom, trending {1}.\n'\
-                'Bottom is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
+            details = 'MACD (-), {0} bottom, trending {1}.\n'\
+                'Bottom is {2:+.2f}, mean is {3:+.2f}, now at {4:+.2f}.\n'\
                 .format(
                     'ABOVE' if last > desc['min'] else 'AT',
                     trend,
@@ -102,8 +112,8 @@ def describe(candle, ema=None):
                     float(desc['mean']),
                     float(last))
         elif last >= 0:
-            details = 'MACD positive phase, {0} peak, trending {1}.\n'\
-                'Peak is {2:+g}, mean is {3:+g}, now at {4:+g}.\n'\
+            details = 'MACD (+), {0} peak, trending {1}.\n'\
+                'Peak is {2:+.2f}, mean is {3:+.2f}, now at {4:+.2f}.\n'\
                 .format(
                     'BELOW' if last < desc['max'] else 'AT',
                     trend,
@@ -144,9 +154,9 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
 
     #"{} MACD Phase Analysis\n"\
     summary = "\n"\
-        "Freq: {}, Periods: {}, Total Phases: {}\n"\
+        "{} Freq: {}, Periods: {}, Total Phases: {}\n"\
         .format(
-            #pair,
+            pair,
             freqstr, len(df_macd['macd_diff']), len(phases))
 
     for sign in ['POSITIVE', 'NEGATIVE']:
@@ -171,25 +181,29 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
             ) for n in grp
         ])
 
+        #"\tArea: {:.2f} (mean: {:.2f})\n"\
+        #"\tPeriods: {:} (mean: {:.2f})\n"\
         summary += \
-            "\t{} Phases: {}\n"\
+            "\t({}) phases: {}\n"\
             "\tPrice: {:+.2f}% (mean: {:+.2f}%)\n"\
-            "\tArea: {:.2f} (mean: {:.2f})\n"\
-            "\tPeriods: {:} (mean: {:.2f})\n"\
             "\tDuration: {:} (mean: {})\n"\
             .format(
-                sign.title(),
+                '+' if sign == 'POSITIVE' else '-',
                 len(grp),
-                price_diff.sum(), price_diff.mean(),
-                abs(area.sum()), abs(area.mean()),
-                periods.sum(), periods.mean(),
+                price_diff.sum(),
+                price_diff.mean() if len(price_diff) > 0 else 0,
+                #abs(area.sum()), abs(area.mean()),
+                #periods.sum(), periods.mean(),
                 relative(delta(seconds=int(duration.sum()))),
                 relative(delta(seconds=int(duration.mean())))
             )
 
         stats[sign] = {
             'n_phases': len(grp),
-            'price_diff': pd.DataFrame(price_diff).describe().to_dict(),
+            'price_diff':{
+                'sum': price_diff.sum(),
+                'mean': price_diff.mean()
+            },
             'area': pd.DataFrame(area).describe().to_dict(),
             'periods': pd.DataFrame(periods).describe().to_dict(),
             'duration': pd.DataFrame(duration).describe().to_dict()

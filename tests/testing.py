@@ -16,13 +16,13 @@ pd.set_option("display.width", 2000)
 app.set_db(["localhost", "45.79.176.125"][0])
 db = app.get_db()
 
-from app.bot import candles, macd, trade
+from app.bot import candles, macd, scanner, trade
 
 trade.init()
-trade.update('5m')
+#trade.update('5m')
 
 #candles.update('BTCUSDT', '5m') #, start=start_str, force=True)
-#app.bot.dfc = candles.merge_new(pd.DataFrame(), ['BTCUSDT'],
-#    span=now()-parse("2 hours ago utc"))
-#df_macd = macd.generate(app.bot.dfc.loc['BTCUSDT', 300])
+#app.bot.dfc = candles.merge_new(pd.DataFrame(), ['ONTBTC'],
+#    span=None) #now()-parse("2 hours ago utc"))
+#df_macd = macd.generate(app.bot.dfc.loc['ONTBTC',60])
 
