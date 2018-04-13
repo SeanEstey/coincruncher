@@ -7,7 +7,8 @@ from binance.client import Client
 from datetime import timedelta as delta, datetime
 from docs.conf import binance as _binance, macd_ema
 from docs.botconf import trade_pairs as pairs, strategies
-from app import get_db, strtofreq
+from app import get_db
+from app.common.timeutils import strtofreq
 from app.common.utils import utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bot
@@ -61,7 +62,7 @@ def update(freqstr):
     client = Client("","")
     _ids=[]
     freq_str = freqstr
-    freq = strtofreq[freq_str]
+    freq = strtofreq(freq_str)
     t1 = Timer()
     db = get_db()
 
@@ -248,7 +249,7 @@ def snapshot(candle):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
     global client
-    z = signals.z_score(candle, 25).to_dict()
+    #z = signals.z_score(candle, 25).to_dict()
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
     ask = np.float64(ob['askPrice'])
     bid = np.float64(ob['bidPrice'])
@@ -267,7 +268,7 @@ def snapshot(candle):
         'details': macd_desc['details'],
         'price': odict({
             'close': candle['close'],
-            'z-score': round(z['close'], 2),
+            #'z-score': round(z['close'], 2),
             'ask': ask,
             'bid': bid,
             'pct_spread': round(pct_diff(bid, ask),3),
@@ -275,11 +276,11 @@ def snapshot(candle):
         }),
         'volume': odict({
             'value': candle['volume'],
-            'z-score': round(z['volume'],2),
+            #'z-score': round(z['volume'],2),
         }),
         'buyRatio': odict({
             'value': round(candle['buy_ratio'],2),
-            'z-score': round(z['buy_ratio'], 2),
+            #'z-score': round(z['buy_ratio'], 2),
         }),
         'macd': odict({
             'value': last.round(3),

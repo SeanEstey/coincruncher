@@ -6,11 +6,10 @@ from bson import ObjectId
 import bsonnumpy
 from binance.client import Client
 import app
-from app import strtofreq
 from docs.conf import binance as _conf
 from app.common.timer import Timer
-from app.common.utils import intrvl_to_ms, datestr_to_dt, datestr_to_ms,\
-dt_to_ms, utc_datetime as now
+from app.common.timeutils import strtofreq
+from app.common.utils import datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
 from app.common.mongo import locked
 import app.bot
 log = logging.getLogger('candles')
@@ -33,7 +32,7 @@ def newest(pair, freqstr):
     """Get most recently added candle to either dataframe or mongoDB.
     """
     dfc = app.bot.dfc
-    freq = strtofreq[freqstr]
+    freq = strtofreq(freqstr)
     series = dfc.loc[pair, freq].iloc[-1]
     open_time = dfc.loc[(pair,freq)].index[-1]
     idx = dict(zip(dfc.index.names, [pair, freqstr, open_time]))
@@ -116,13 +115,13 @@ def merge_new(dfc, pairs, span=None):
     return df3
 
 #------------------------------------------------------------------------------
-def update(pairs, freq, start=None, force=False):
+def update(pairs, freqstr, start=None, force=False):
     idx = 0
     t1 = Timer()
     candles = []
 
     for pair in pairs:
-        data = query_api(pair, freq, start=start, force=force)
+        data = query_api(pair, freqstr, start=start, force=force)
         if len(data) == 0:
             continue
 
@@ -143,7 +142,7 @@ def update(pairs, freq, start=None, force=False):
                 None
             ]
             d = dict(zip(_conf['kline_fields'], x))
-            d.update({'pair': pair, 'freq': freq})
+            d.update({'pair': pair, 'freq': freqstr})
             if d['volume'] > 0:
                 d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
             else:
@@ -170,14 +169,14 @@ def update(pairs, freq, start=None, force=False):
             result = db.candles.insert_many(candles)
 
     log.info("%s %s records queried/stored. [%ss]",
-        len(candles), freq, t1.elapsed(unit='s'))
+        len(candles), freqstr, t1.elapsed(unit='s'))
 
     return candles
 
 #------------------------------------------------------------------------------
-def query_api(pair, freq, start=None, end=None, force=False):
+def query_api(pair, freqstr, start=None, end=None, force=False):
     """Get Historical Klines (candles) from Binance.
-    @freq: Binance kline frequency:
+    @freqstr: Binance kline frequency:
         1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M]
         m -> minutes; h -> hours; d -> days; w -> weeks; M -> months
     @force: if False, only query unstored data (faster). If True, query all.
@@ -187,7 +186,7 @@ def query_api(pair, freq, start=None, end=None, force=False):
     limit = 500
     idx = 0
     results = []
-    periodlen = intrvl_to_ms(freq)
+    periodlen = strtofreq(freqstr) * 1000
     end_ts = datestr_to_ms(end) if end else dt_to_ms(now())
     start_ts = datestr_to_ms(start) if start else end_ts - (periodlen * 20)
 
@@ -212,7 +211,7 @@ def query_api(pair, freq, start=None, end=None, force=False):
     #while len(results) < 500 and start_ts < end_ts:
     while start_ts < end_ts:
         try:
-            data = client.get_klines(symbol=pair, interval=freq,
+            data = client.get_klines(symbol=pair, interval=freqstr,
                 limit=limit, startTime=start_ts, endTime=end_ts)
 
             if len(data) == 0:
@@ -227,7 +226,7 @@ def query_api(pair, freq, start=None, end=None, force=False):
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
 
-    log.debug('%s %s %s queried [%ss].', len(results), freq, pair,
+    log.debug('%s %s %s queried [%ss].', len(results), freqstr, pair,
         t1.elapsed(unit='s'))
     return results
 

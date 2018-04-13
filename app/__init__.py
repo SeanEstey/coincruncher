@@ -11,30 +11,6 @@ logging.addLevelName(TRADE, "Trade")
 logging.addLevelName(SCAN, "Scan")
 log = logging.getLogger('app')
 
-# Frequency in seconds to str
-freqtostr = {
-    60: "1m",
-    300: "5m",
-    1800: "30m",
-    3600: "1h",
-    86400: "1d"
-}
-# Period in seconds to str
-pertostr = {
-    1800:"30m",
-    3600:"60m",
-    7200:"120m",
-    10800: "180m",
-    86400:"24h",
-    172800:"48h",
-    259200:"72h",
-    604800:"7d",
-    1209600:"14d",
-    1814400:"21d"
-}
-strtofreq = dict(zip(list(freqtostr.values()), list(freqtostr.keys())))
-strtoper = dict(zip(list(pertostr.values()), list(pertostr.keys())))
-
 #---------------------------------------------------------------------------
 class GracefulKiller:
     kill_now = False
@@ -188,8 +164,6 @@ logging.basicConfig(
         file_handler(SCAN, scannerfile, filters=[SCAN])
     ]
 )
-
-def keystostr(keys): return (keys[0], freqtostr[keys[1]], pertostr[keys[2]])
 
 # STFU
 logging.getLogger("requests").setLevel(logging.ERROR)

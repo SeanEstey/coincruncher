@@ -1,7 +1,7 @@
 import logging
 import pandas as pd
 import app.bot
-from app import strtofreq
+from app.common.timeutils import strtofreq
 log = logging.getLogger('bot.markets')
 
 #-----------------------------------------------------------------------------
@@ -11,7 +11,7 @@ def agg_pct_change(freq_str, span=None, label=None):
     # to make sure no other data is distorting the results.
     """
     dfc = app.bot.dfc
-    freq = strtofreq[freq_str]
+    freq = strtofreq(freq_str)
     label = label if label else ''
 
     span = span if span else 2

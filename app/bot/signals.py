@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 from docs.conf import ema9
 import app, app.bot
-from app import strtofreq, freqtostr
+from app.common.timeutils import strtofreq
 from . import candles
 
 log = logging.getLogger('signals')
@@ -24,7 +24,7 @@ def ema_pct_change(candle, span=None):
         '1d': delta(days = span * 2)
     }
 
-    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])]
     sliced = df.loc[slice(
         candle['open_time'] - _range[candle['freq']],
         candle['open_time']
@@ -41,7 +41,7 @@ def z_score(candle, periods):
     adjusting length of historic period. Perf: ~20ms
     Returns: pd.DataFrame w/ [5 x 4] dimensions
     """
-    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])]
     co, cf = candle['open_time'], candle['freq']
 
     if cf == '1m':

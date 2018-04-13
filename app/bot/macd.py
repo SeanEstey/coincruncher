@@ -1,10 +1,13 @@
 # app.bot.macd
 import logging
+from pprint import pprint
 from datetime import timedelta as delta, datetime
+from dateparser import parse
 import numpy as np
 import pandas as pd
 from docs.conf import macd_ema
-from app import strtofreq
+from app.common.utils import utc_datetime as now, to_relative_str as relative
+from app.common.timeutils import strtofreq, freqtostr
 from app.common.timer import Timer
 import app.bot
 from app.bot import pct_diff
@@ -71,7 +74,7 @@ def describe(candle, ema=None):
     """
     _ema = ema if ema else macd_ema
 
-    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]#.copy()
+    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])]
     macd = generate(df, ema=_ema)
 
     # Isolate current oscilator phase
@@ -124,21 +127,20 @@ def describe(candle, ema=None):
     return {'phase':phase, 'trend':trend, 'details':details}
 
 #------------------------------------------------------------------------------
-def agg_describe(df, pair, freqstr, n_periods, pdfreqstr=None):
+def agg_describe(df, pair, freqstr, periods):
     """Describe aggregate macd positive/negative oscilator phases in timespan.
     """
     t1 = Timer()
-    from app.common.utils import to_relative_str as relative
-    freq = strtofreq[freqstr]
 
     try:
-        #df = app.bot.dfc.loc[pair,freq].copy()
         df_macd = generate(df)
-        df_macd = df_macd.asfreq(pdfreqstr).tail(n_periods) #.dropna()
+        freq = strtofreq(freqstr)
+        pd_freqstr = freqtostr(freq, fmt='pandas')
+        df_macd = df_macd.asfreq(pd_freqstr).tail(periods)
     except Exception as e:
-        from pprint import pprint
+        print("Exception generating df_macd in agg_describe")
         pprint(df_macd[df_macd.index.duplicated()])
-        return None
+        raise
 
     phases=[]
     last_iloc = 0
@@ -267,14 +269,14 @@ def plot(pair, units, n_units, n_periods):
     #    color='grey'
     #))
     """
-    from dateparser import parse
+
     import plotly.offline as offline
     import plotly.tools as tools, plotly.graph_objs as go
-    from app.common.utils import utc_datetime as now
+
     from . import candles
 
     freqstr = ('%s%s'%(n_units, units[1]), '%s%s'%(n_units, units[2]))
-    freq = strtofreq[freqstr[0]]
+    freq = strtofreq(freqstr[0])
     start_str = "{} {} ago utc".format((n_periods + 75) * n_units, units[0])
 
     candles.update([pair], freqstr[0],
@@ -282,7 +284,7 @@ def plot(pair, units, n_units, n_periods):
     app.bot.dfc = candles.merge_new(pd.DataFrame(), [pair],
         span=now()-parse(start_str))
     df_macd = generate(app.bot.dfc.loc[pair, freq])
-    scan = agg_describe(pair, freqstr[0], n_periods, pdfreqstr=freqstr[1])
+    scan = agg_describe(pair, freqstr[0], n_periods)
     scan['summary'] = scan['summary'].replace("\n", "<br>")
 
     # Stacked Subplots with a Shared X-Axis

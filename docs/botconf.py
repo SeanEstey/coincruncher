@@ -22,6 +22,7 @@ trade_pairs = [
     #'ICXBTC',
     'HSRBTC',
     'LRCBTC',
+    'OMGBTC',
     #'ONTBTC',
     #'OSTBTC',
     #'SALTBTC',
@@ -63,6 +64,48 @@ strategies = [
     },
     #---------------------------------------------------------------------------
     {
+        "name": "macd_30m_mean",
+        "ema": (12, 26, 9),
+        "stop_loss": {"freq": ['5m'], "pct": -0.75},
+        "entry": {
+            "filters": [lambda c, ss: c['freq'] in ['30m']],
+            "conditions": [
+                lambda c,ss: ss['macd']['value'] < 0,
+                lambda c,ss: ss['macd']['value'] > ss['macd']['desc']['min'],
+                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+            ]
+        },
+        "exit": {
+           "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
+           "conditions": [
+               lambda c,ss,doc: ss['macd']['value'] > 0,
+               lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['mean'],
+               lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+           ]
+        }
+    },
+    #---------------------------------------------------------------------------
+    {
+        "name": "macd_30m_phase",
+        "ema": (12, 26, 9),
+        "stop_loss": {"freq": ['5m'], "pct": -0.75},
+        "entry": {
+            "filters": [lambda c, ss: c['freq'] in ['30m']],
+            "conditions": [
+                lambda c,ss: ss['macd']['value'] > 0,
+                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+            ]
+        },
+        "exit": {
+            "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
+            "conditions": [
+                lambda c,ss,doc: ss['macd']['value'] < 0,
+                lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+            ]
+        }
+    },
+    #---------------------------------------------------------------------------
+    {
         "name": "macd_1h_peak",
         "ema": (12, 26, 9),
         "stop_loss": {"freq": ["5m", "1h"], "pct": -0.75},
@@ -87,7 +130,7 @@ strategies = [
     {
         "name": "macd_1h_mean",
         "ema": (12, 26, 9),
-        "stop_loss": {"freq": ['5m', '1h'], "pct": -0.75},
+        "stop_loss": {"freq": ['5m'], "pct": -0.75},
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['1h']],
             "conditions": [
@@ -109,7 +152,7 @@ strategies = [
     {
         "name": "macd_1h_phase",
         "ema": (12, 26, 9),
-        "stop_loss": {"freq": ['5m', '1h'], "pct": -0.75},
+        "stop_loss": {"freq": ['5m'], "pct": -0.75},
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['1h']],
             "conditions": [
@@ -125,5 +168,4 @@ strategies = [
             ]
         }
     }
-    #---------------------------------------------------------------------------
 ]

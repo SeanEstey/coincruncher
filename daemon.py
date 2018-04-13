@@ -30,15 +30,16 @@ def _data(now=False):
 
 #---------------------------------------------------------------------------
 def _scanner():
-    scanner.update(20, idx_filter='BTC')
-    scan = Timer(name='scanner', expire='every 30 clock min utc')
+    scan_tmr = Timer(name='scanner', expire='every 30 clock min utc')
+
+    scanner.scan("30m", 8, 20, idx_filter='BTC')
 
     while True:
-        if scan.remain() == 0:
-            scanner.update(20, idx_filter='BTC')
-            scan.reset()
+        if scan_tmr.remain() == 0:
+            scanner.scan("30m", 8, 20, idx_filter='BTC')
+            scan_tmr.reset()
 
-        time.sleep(1800)
+        time.sleep(60)
 
 #---------------------------------------------------------------------------
 def _daily():
