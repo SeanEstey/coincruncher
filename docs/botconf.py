@@ -8,10 +8,10 @@ max_positions = 10
 
 # Trade pairs for Binance WSS client to subcribe
 trade_pairs = [
-    'ADABTC',
+    #'ADABTC',
     #'AIONBTC',
     #'BNBBTC',
-    #'BTCUSDT',
+    'BTCUSDT',
     #'DGDBTC',
     #'DNTBTC',
     #'ELFBTC',
@@ -20,17 +20,18 @@ trade_pairs = [
     #'EOSBTC',
     #'ENJBTC',
     #'ICXBTC',
-    'HSRBTC',
-    'LRCBTC',
+    #'HSRBTC',
+    #'LRCBTC',
     'OMGBTC',
+    #'POWRBTC',
     #'ONTBTC',
     #'OSTBTC',
     #'SALTBTC',
-    'STEEMBTC',
-    'SUBBTC',
+    #'STEEMBTC',
+    #'SUBBTC',
     #'XVGBTC',
-    'WABIBTC',
-    'WANBTC',
+    #'WABIBTC',
+    #'WANBTC',
     #'WTCBTC',
     #'ZILBTC'
 ]

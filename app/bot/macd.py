@@ -159,7 +159,6 @@ def agg_describe(df, pair, freqstr, periods):
         'phases': len(phases)
     }
 
-    #"{} MACD Phase Analysis\n"\
     summary = "\n"\
         "{} Freq: {}, Periods: {}, Total Phases: {}\n"\
         .format(
@@ -192,8 +191,6 @@ def agg_describe(df, pair, freqstr, periods):
             ) for n in grp
         ])
 
-        #"\tArea: {:.2f} (mean: {:.2f})\n"\
-        #"\tPeriods: {:} (mean: {:.2f})\n"\
         summary += \
             "\t({}) phases: {}\n"\
             "\tPrice: {:+.2f}% (mean: {:+.2f}%)\n"\
@@ -205,21 +202,23 @@ def agg_describe(df, pair, freqstr, periods):
                 price_diff.sum(),
                 price_diff.mean() if len(price_diff) > 0 else 0,
                 amplitude.mean(),
-                #abs(area.sum()), abs(area.mean()),
-                #periods.sum(), periods.mean(),
                 relative(delta(seconds=int(duration.sum()))),
                 relative(delta(seconds=int(duration.mean())))
             )
 
         stats[sign] = {
             'n_phases': len(grp),
+            'mean_amplitude': amplitude.mean(),
             'price_diff':{
                 'sum': price_diff.sum(),
                 'mean': price_diff.mean()
             },
             'area': pd.DataFrame(area).describe().to_dict(),
             'periods': pd.DataFrame(periods).describe().to_dict(),
-            'duration': pd.DataFrame(duration).describe().to_dict()
+            'duration': {
+                'sum': relative(delta(seconds=int(duration.sum()))),
+                'mean': relative(delta(seconds=int(duration.mean())))
+            }
         }
 
     return {

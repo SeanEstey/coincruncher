@@ -10,6 +10,18 @@ from . import candles
 log = logging.getLogger('signals')
 
 #-----------------------------------------------------------------------------
+def rsi(df, span):
+    """RSI indicator using EMA.
+    @df: pandas time-series w/ close price as column.
+    """
+    diff = df.diff()
+    gains = diff[diff > 0].ewm(span=span).mean()
+    losses = diff[diff < 0].ewm(span=span).mean()
+    rs = abs(gains.mean() / losses.mean())
+    rsi = 100 - (100 / (1.0 + rs))
+    return np.float64(rsi).round(2)
+
+#-----------------------------------------------------------------------------
 def ema_pct_change(candle, span=None):
     """Calculate percent change of candle 'close' price exponential moving
     average for preset time span.
@@ -74,13 +86,13 @@ def z_score(candle, periods):
 
 #------------------------------------------------------------------------------
 def weighted_avg(df, col, weights):
-    """
-    """
     try:
         return (df[col] * weights).sum() / sum(weights)
     except Exception as e:
         log.error("Div/0 error. Returning unweighted mean.")
         return df[col].mean()
+
+
 
 #-----------------------------------------------------------------------------
 def vwap():
@@ -89,10 +101,4 @@ def vwap():
     """
     pass
 
-#-----------------------------------------------------------------------------
-def rsi(candle):
-    """Writeme.
-    https://www.fidelity.com/learning-center/trading-investing/technical-analysis/technical-indicator-guide/RSI
-    RSI = 100 – [100 / ( 1 + (Average of Upward Price Change / Average of Downward Price Change ) ) ]
-    """
-    pass
+

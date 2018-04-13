@@ -23,7 +23,7 @@ from app.bot import candles, macd, scanner, trade
 
 trade.init()
 #df = scanner.scan("1h", 8, 20, idx_filter='BTC', quiet=True)
-df2 = scanner.scan("30m", 16, 20, idx_filter='BTC', quiet=True)
+#df2 = scanner.scan("30m", 16, 20, idx_filter='BTC', quiet=True)
 
 def macd_analysis():
     pair='WANBTC'

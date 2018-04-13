@@ -19,20 +19,20 @@ log = logging.getLogger('scanner')
 def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
-def scan(freqstr, periods, n_results, idx_filter=None, quiet=True):
-    columns = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney']
-    np_columns = ['open', 'high', 'low', 'close', 'tradedMoney']
-    del_columns = ['status', 'active', 'high', 'low', 'open']
+def scan(freqstr, periods, n_results, min_vol, idx_filter=None, quiet=True):
+    query_cols = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney']
+    np_cols = ['open', 'high', 'low', 'close', 'tradedMoney']
+    del_cols = ['status', 'active', 'high', 'low', 'open']
 
     # Query data
     client = Client("","")
     products = client.get_products()
     # To DataFrame
     df = pd.DataFrame(client.get_products()['data'],
-        columns=columns,
-        index = pd.Index([x['symbol'] for x in products['data']]))
+        columns=query_cols,
+        index=pd.Index([x['symbol'] for x in products['data']]))
     # Str->numpy float
-    df[np_columns] = df[np_columns].astype('float64')
+    df[np_cols] = df[np_cols].astype('float64')
 
     # Filters
     df = df[df['active'] == True]
@@ -40,41 +40,51 @@ def scan(freqstr, periods, n_results, idx_filter=None, quiet=True):
         df = df[df.index.str.contains(idx_filter)]
 
     # Indicators
-    df['close - open'] = (((df['close'] - df['open']) / df['open']) * 100).round(2)
-    df['high - low'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
-    df = df.sort_values('close - open').tail(n_results)
-    df = df.join(indicators(df.index, freqstr, periods, quiet=quiet))
+    # FIXME: Calculate C-O and H-L for given timespan only. These numbers are
+    # for 24 hour period.
+    df['∆(C-O)'] = (((df['close'] - df['open']) / df['open']) * 100).round(2)
+    df['∆(H-L)'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
+    df = df.sort_values('∆(C-O)').tail(n_results)
+    results = indicators(df.index, freqstr, periods, quiet=quiet)
 
-    # Filter indicators
-    df = df[df['quoteVol'] >= 1000]
-
-    # Format and print to scanlog
-    for col in del_columns:
+    # Format/filter columns some more
+    for col in del_cols:
         del df[col]
-    df = df.rename(columns={
-        'close':'P',
-        'close - open': '∆(C-O)',
-        'high - low': '∆(H-L)',
-        'tradedMoney':'quoteVol'
-    })
-    df = df[['P', '∆(C-O)', '∆(H-L)', 'Σ(MACD+)', 'μ(MACD+)', 'Σ(MACD-)',
-        'μ(MACD-)', 'MACD(+/-)', 'quoteVol']]
-    df = df.sort_values('μ(MACD+)')
-    df = df[df['μ(MACD+)'] != np.nan] #.dropna()
+    df = df.rename(columns={'close':'Price', 'tradedMoney':'quoteVol'})
+    df = df[df['quoteVol'] >= min_vol]
+
+    scanlog('')
+    scanlog('-' * 92)
+    scanlog("Scanner Analysis")
+    scanlog("Freq: '{}', Periods: {}".format(freqstr, periods))
+    scanlog("Symbol Filter: '{}'".format(idx_filter))
+    scanlog("Volume Filter: > {}".format(min_vol))
+
+    k1, k2, k3 = 'candle', 'macd+', 'macd-'
+    df1 = pd.concat([df[['Price', '∆(C-O)', '∆(H-L)', 'quoteVol']]],
+        axis=1, keys=[k1])
+    df2 = pd.concat([results[0]], axis=1, keys=[k2])
+    df3 = pd.concat([results[1]], axis=1, keys=[k3])
+    df = df1.join(df2)
+    df = df.join(df3)
+
     lines = df.to_string(formatters={
-        'P': '{:.8g}'.format,
-        '∆(C-O)': ' {:+.1f}%'.format,
-        '∆(H-L)': ' {:+.1f}%'.format,
-        'Σ(MACD+)': ' {:.2f}%'.format,
-        'μ(MACD+)': ' {:.2f}%'.format,
-        'Σ(MACD-)': ' {:.2f}%'.format,
-        'μ(MACD-)': ' {:.2f}%'.format,
-        'MACD(+/-)': '{:.2f}'.format,
-        "quoteVol": '{:.0f}'.format
-        #"buyRatio": '{:>10.1f}%'.format
+        (k1,'Price'):      '{:.8g}'.format,
+        (k1, 'quoteVol'):  '{:.0f}'.format,
+        (k1, '∆(C-O)'):    ' {:+.1f}%'.format,
+        (k1, '∆(H-L)'):    ' {:+.1f}%'.format,
+        (k2, 'N'):      '{:}'.format,
+        (k2, 'Amp'):    '{:.2f}'.format,
+        (k2, '∆P'):     ' {:.2f}%'.format,
+        (k2, 'μ∆P'):    ' {:.2f}%'.format,
+        (k2, 'μT'):     '{:}'.format,
+        (k3, 'N'):      '{:}'.format,
+        (k3, 'Amp'):    '{:.2f}'.format,
+        (k3, '∆P'):     ' {:.2f}%'.format,
+        (k3, 'μ∆P'):    ' {:.2f}%'.format,
+        (k3, 'μT'):     '{:}'.format
     }).split("\n")
     [ scanlog(line) for line in lines]
-
     return df
 
 #------------------------------------------------------------------------------
@@ -91,43 +101,33 @@ def indicators(idx, freqstr, periods, quiet=True):
     startstr = "{} {} ago utc".format(n * periods + 25, strunit)
     pprint("startstr={}".format(startstr))
     freq = strtofreq(freqstr)
+    results=[]
 
-    df = pd.DataFrame(
-        columns=[
-            'Σ(MACD+)',
-            'μ(MACD+)',
-            'Σ(MACD-)',
-            'μ(MACD-)',
-            'MACD(+/-)'
-        ],
-        index=idx
-    ).astype('float64').round(3)
+    for sign in ['POSITIVE', 'NEGATIVE']:
+        df = pd.DataFrame(
+            columns=['N', 'Amp', '∆P', 'μ∆P', 'μT'],
+            index=idx
+        ).astype('float64')
 
-    for pair, row in df.iterrows():
-        # Query/load candle data
-        candles.update([pair], freqstr, start=startstr, force=True)
-        dfp = candles.merge_new(pd.DataFrame(), [pair], span=delta(days=7))
-        dfp = dfp.loc[pair,freq]
+        for pair, row in df.iterrows():
+            # Query/load candle data
+            candles.update([pair], freqstr, start=startstr, force=True)
+            dfp = candles.merge_new(pd.DataFrame(), [pair], span=delta(days=7))
+            dfp = dfp.loc[pair,freq]
 
-        # Run MACD histogram analysis
-        histos = macd.agg_describe(dfp, pair, freqstr, periods)
+            # Run MACD histogram analysis
+            histos = macd.agg_describe(dfp, pair, freqstr, periods)
+            stats = histos['stats'][sign]
+            df.loc[pair] = [
+                stats['n_phases'],
+                stats['mean_amplitude'],
+                stats['price_diff']['sum'],
+                stats['price_diff']['mean'],
+                stats['duration']['mean']
+            ]
+            df = df.round(2)
 
-        if quiet != True:
-            [ scanlog(line) for line in histos['summary'].split('\n') ]
-
-        ppdiff = histos['stats']['POSITIVE']['price_diff']
-        npdiff = histos['stats']['NEGATIVE']['price_diff']
-        df.loc[pair] = [
-            ppdiff['sum'],
-            ppdiff['mean'],
-            npdiff['sum'],
-            npdiff['mean'],
-            ppdiff['sum'] / npdiff['sum']
-        ]
-
-    scanlog('')
-    scanlog('-' * 100)
-    scanlog("MACD Analysis for {} Freq in Last {} Periods".format(freqstr,periods))
-    scanlog("")
-
-    return df.round(2)
+            if quiet != True:
+                [ scanlog(line) for line in histos['summary'].split('\n') ]
+        results.append(df)
+    return results

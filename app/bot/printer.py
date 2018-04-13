@@ -9,7 +9,8 @@ from docs.botconf import trade_pairs as pairs
 import app, app.bot
 from app.bot import pct_diff
 from app.common.utils import colors, to_relative_str, utc_datetime as now
-from . import candles
+from app.common.timeutils import strtofreq
+from . import candles, signals
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -20,7 +21,7 @@ log = logging.getLogger('print')
 def new_trades(trade_ids):
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ['Freq', "Type", "ΔPrice", "Macd", "Time"]
+    cols = ['Freq', "Type", "ΔPrice", "Macd", "RSI", "Time", "Reason"]
     data, indexes = [], []
 
     for _id in trade_ids:
@@ -32,21 +33,27 @@ def new_trades(trade_ids):
         if len(record['orders']) > 1:
             c1 = record['orders'][0]['candle']
             c2 = record['orders'][1]['candle']
+            df = dfc.loc[record['pair'], strtofreq(c2['freq'])].tail(40)
             data.append([
                 c2['freq'],
                 'SELL',
                 pct_diff(c1['close'], c2['close']),
                 ss2['macd']['value'],
-                to_relative_str(now() - record['start_time'])
+                signals.rsi(df['close'], 14),
+                to_relative_str(now() - record['start_time']),
+                "-"
             ])
         # Buy trade
         else:
             c1 = record['orders'][0]['candle']
+            df = dfc.loc[record['pair'], strtofreq(c1['freq'])].tail(40)
             data.append([
                 c1['freq'],
                 'BUY',
                 0.0,
                 ss1['macd']['value'],
+                signals.rsi(df['close'], 14),
+                "-",
                 "-"
             ])
 
@@ -60,7 +67,9 @@ def new_trades(trade_ids):
         cols[1]: ' {}'.format,
         cols[2]: ' {:+.2f}%'.format,
         cols[3]: ' {:+.3f}'.format,
-        cols[4]: '{}'.format
+        cols[4]: '{:.2f}'.format,
+        cols[5]: '{}'.format,
+        cols[6]: '{}'.format
     }).split("\n")
     tradelog("{} trade(s) executed:".format(len(df)))
     [tradelog(line) for line in lines]
@@ -71,24 +80,23 @@ def positions(freqstr):
     """
     db = app.get_db()
     dfc = app.bot.dfc
-
-    cols = ["Freq", "ΔPrice", "Macd", "Time", "Strategy"]
+    cols = ["Freq", "ΔPrice", "Macd", "RSI", "Time", "Strategy"]
     data, indexes = [], []
-
     _trades = list(db.trades.find(
         {'status':'open', 'pair':{"$in":pairs}}))
 
     for record in _trades:
         c1 = record['orders'][0]['candle']
         c2 = candles.newest(record['pair'], freqstr)
-
         ss1 = record['snapshots'][0]
         ss2 = record['snapshots'][-1]
+        df = dfc.loc[record['pair'], strtofreq(freqstr)].tail(40)
 
         data.append([
             c1['freq'],
             pct_diff(c1['close'], c2['close']),
             ss2['macd']['value'],
+            signals.rsi(df['close'], 14),
             to_relative_str(now() - record['start_time']),
             record['strategy']
         ])
@@ -103,8 +111,9 @@ def positions(freqstr):
             cols[0]: ' {}'.format,
             cols[1]: ' {:+.2f}%'.format,
             cols[2]: '  {:+.3f}'.format,
-            cols[3]: '{}'.format,
-            cols[4]: ' {}'.format
+            cols[3]: '{:.2f}'.format,
+            cols[4]: '{}'.format,
+            cols[5]: ' {}'.format
         }).split("\n")
         tradelog("{} position(s):".format(len(df)))
         [tradelog(line) for line in lines]
