@@ -15,11 +15,13 @@ log = logging.getLogger('app')
 freqtostr = {
     60: "1m",
     300: "5m",
+    1800: "30m",
     3600: "1h",
     86400: "1d"
 }
 # Period in seconds to str
 pertostr = {
+    1800:"30m",
     3600:"60m",
     7200:"120m",
     10800: "180m",

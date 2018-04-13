@@ -4,25 +4,35 @@ currentdir = os.path.dirname(os.path.abspath(inspect.getfile(inspect.currentfram
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir)
 from dateparser import parse
+from datetime import datetime, timedelta
 from pprint import pprint
 import importlib
 import pandas as pd
 import numpy as np
 import app
 from app.common.utils import utc_datetime as now
+from docs.botconf import trade_pairs
 
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 app.set_db(["localhost", "45.79.176.125"][0])
 db = app.get_db()
-
 from app.bot import candles, macd, scanner, trade
 
+
+pair='WANBTC'
+data = [
+    ('30m','30T',8),
+    ('5m','5T',96),
+    ('1h','1H',8)
+]
+
+
 trade.init()
-#trade.update('5m')
+results=[]
+for i in range(0,len(data)):
+    results.append(macd.agg_describe(
+        pair, data[i][0], data[i][2], pdfreqstr=data[i][1]))
 
-#candles.update('BTCUSDT', '5m') #, start=start_str, force=True)
-#app.bot.dfc = candles.merge_new(pd.DataFrame(), ['ONTBTC'],
-#    span=None) #now()-parse("2 hours ago utc"))
-#df_macd = macd.generate(app.bot.dfc.loc['ONTBTC',60])
-
+for r in results:
+    print(r['summary'])

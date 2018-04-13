@@ -27,7 +27,7 @@ def update(n, idx_filter=None):
     products = client.get_products()
     df = pd.DataFrame(products['data'],
         columns=columns,
-        index = pd.Index([x['symbol'] for x in products['data']]) #, name='pair')
+        index = pd.Index([x['symbol'] for x in products['data']])
     )
 
     # Filter out inactive pairs
@@ -61,25 +61,25 @@ def update(n, idx_filter=None):
         'P',
         '∆(C-O)',
         '∆(H-L)',
-        'SD(∆P)',
-        'Σ(∆P+)',
-        'μ(∆P+)',
-        'Σ(∆P-)',
-        'μ(∆P-)',
+        #'SD(∆P)',
+        'Σ(MACD+)',
+        'μ(MACD+)',
+        'Σ(MACD-)',
+        'μ(MACD-)',
         'MACD(+/-)',
         'quoteVol'
     ]]
-    df = df.sort_values('∆(C-O)')
+    df = df.sort_values('μ(MACD+)')
 
     lines = df.tail(n).to_string(formatters={
         'P': '{:.8g}'.format,
-        'SD(∆P)': ' {:.2f}%'.format,
+        #'SD(∆P)': ' {:.2f}%'.format,
         '∆(C-O)': ' {:+.1f}%'.format,
         '∆(H-L)': ' {:+.1f}%'.format,
-        'Σ(∆P+)': ' {:.2f}%'.format,
-        'μ(∆P+)': ' {:.2f}%'.format,
-        'Σ(∆P-)': ' {:.2f}%'.format,
-        'μ(∆P-)': ' {:.2f}%'.format,
+        'Σ(MACD+)': ' {:.2f}%'.format,
+        'μ(MACD+)': ' {:.2f}%'.format,
+        'Σ(MACD-)': ' {:.2f}%'.format,
+        'μ(MACD-)': ' {:.2f}%'.format,
         'MACD(+/-)': '{:.2f}'.format,
         "quoteVol": '{:.0f}'.format
         #"buyRatio": '{:>10.1f}%'.format
@@ -98,29 +98,28 @@ def indicators(df, n):
     df_top = df.sort_values('close - open').tail(n)
     _df = pd.DataFrame(
         columns=[
-            'SD(∆P)',
-            'Σ(∆P+)',
-            'μ(∆P+)',
-            'Σ(∆P-)',
-            'μ(∆P-)',
+            #'SD(∆P)',
+            'Σ(MACD+)',
+            'μ(MACD+)',
+            'Σ(MACD-)',
+            'μ(MACD-)',
             'MACD(+/-)'
         ],
         index=df_top.index
     ).astype('float64').round(3)
 
-    # Query/load candles, calc indicators
     for pair, row in df_top.iterrows():
+        # Upade/load candle data
         candles.update([pair], freqstr, start=startstr, force=True)
-        app.bot.dfc = candles.merge_new(app.bot.dfc, [pair],
-            span=now()-parse(startstr))
-        df_macd = macd.generate(app.bot.dfc.loc[pair, freq])
-        scan = macd.agg_describe(pair, freqstr, 48, pdfreqstr='1H')
-        tail = app.bot.dfc.loc[pair, freq].tail(24)
-        sd = np.float64(tail['close'].pct_change().describe()['std'] * 100)
+        dfp = candles.merge_new(pd.DataFrame(), [pair], span=delta(days=7))
+        dfp = dfp.loc[pair,freq]
+
+        # Calc macd indicators
+        scan = macd.agg_describe(dfp, pair, freqstr, 48, pdfreqstr='1H')
         ppdiff = scan['stats']['POSITIVE']['price_diff']
         npdiff = scan['stats']['NEGATIVE']['price_diff']
         _df.loc[pair] = [
-            sd,
+            #sd,
             ppdiff['sum'],
             ppdiff['mean'],
             npdiff['sum'],

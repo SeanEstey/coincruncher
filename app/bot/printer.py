@@ -20,35 +20,31 @@ log = logging.getLogger('print')
 def new_trades(trade_ids):
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ['Freq', "Type", "ΔPrice", "Z-Score", "ΔZ-Score", "Macd", "Time"]
+    cols = ['Freq', "Type", "ΔPrice", "Macd", "Time"]
     data, indexes = [], []
 
     for _id in trade_ids:
         record = db.trades.find_one({"_id":_id})
-        freq_str = record['orders'][0]['candle']['freq']
         indexes.append(record['pair'])
-        candle = candles.newest(record['pair'], freq_str)
         ss1 = record['snapshots'][0]
         ss2 = record['snapshots'][-1]
 
         if len(record['orders']) > 1:
             c1 = record['orders'][0]['candle']
+            c2 = record['orders'][1]['candle']
             data.append([
-                candle['freq'],
+                c2['freq'],
                 'SELL',
-                pct_diff(c1['close'], candle['close']),
-                ss2['price']['z-score'],
-                ss2['price']['z-score'] - ss1['price']['z-score'],
+                pct_diff(c1['close'], c2['close']),
                 ss2['macd']['value'],
                 to_relative_str(now() - record['start_time'])
             ])
         # Buy trade
         else:
+            c1 = record['orders'][0]['candle']
             data.append([
-                candle['freq'],
+                c1['freq'],
                 'BUY',
-                0.0,
-                ss1['price']['z-score'],
                 0.0,
                 ss1['macd']['value'],
                 "-"
@@ -63,24 +59,20 @@ def new_trades(trade_ids):
         cols[0]: ' {}'.format,
         cols[1]: ' {}'.format,
         cols[2]: ' {:+.2f}%'.format,
-        cols[3]: ' {:+.2f}'.format,
-        cols[4]: ' {:+.2f}'.format,
-        cols[5]: ' {:+.3f}'.format,
-        cols[6]: '{}'.format
+        cols[3]: ' {:+.3f}'.format,
+        cols[4]: '{}'.format
     }).split("\n")
     tradelog("{} trade(s) executed:".format(len(df)))
     [tradelog(line) for line in lines]
 
 #------------------------------------------------------------------------------
-def positions(_type):
+def positions(freqstr):
     """Position summary.
-    @_type: 'open', 'closed'
-    @start: datetime.datetime for closed trades
     """
     db = app.get_db()
     dfc = app.bot.dfc
 
-    cols = ["Freq", "ΔPrice", " Z-Score", " ΔZ-Score", "Macd", "Time", "Strategy"]
+    cols = ["Freq", "ΔPrice", "Macd", "Time", "Strategy"]
     data, indexes = [], []
 
     _trades = list(db.trades.find(
@@ -88,15 +80,14 @@ def positions(_type):
 
     for record in _trades:
         c1 = record['orders'][0]['candle']
-        c2 = candles.newest(record['pair'], c1['freq'])
+        c2 = candles.newest(record['pair'], freqstr)
+
         ss1 = record['snapshots'][0]
         ss2 = record['snapshots'][-1]
 
         data.append([
             c1['freq'],
             pct_diff(c1['close'], c2['close']),
-            ss2['price']['z-score'],
-            ss2['price']['z-score'] - ss1['price']['z-score'],
             ss2['macd']['value'],
             to_relative_str(now() - record['start_time']),
             record['strategy']
@@ -111,11 +102,9 @@ def positions(_type):
         lines = df.to_string(formatters={
             cols[0]: ' {}'.format,
             cols[1]: ' {:+.2f}%'.format,
-            cols[2]: '  {:.2f}'.format,
-            cols[3]: '  {:+.2f}'.format,
-            cols[4]: '  {:+.3f}'.format,
-            cols[5]: '{}'.format,
-            cols[6]: ' {}'.format
+            cols[2]: '  {:+.3f}'.format,
+            cols[3]: '{}'.format,
+            cols[4]: ' {}'.format
         }).split("\n")
         tradelog("{} position(s):".format(len(df)))
         [tradelog(line) for line in lines]

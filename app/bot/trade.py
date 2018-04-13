@@ -86,7 +86,7 @@ def update(freqstr):
     tradelog('-'*80)
     printer.new_trades([n for n in _ids if n])
     tradelog('-'*80)
-    printer.positions('open')
+    printer.positions(freqstr)
     tradelog('-'*80)
     tradelog('-'*80)
     earnings()
@@ -138,7 +138,7 @@ def exits(freqstr):
         if all(n == True for n in filt):
             conditions += [ n(candle, ss, trade) for n in conf['exit']['conditions']]
 
-            if any(n == True for n in conditions):
+            if all(n == True for n in conditions):
                 print("SELL CONDITION(S) TRUE {} {}".format(candle['freq'], trade['pair']))
                 _ids.append(sell(trade, candle, ss))
             else:
@@ -329,15 +329,19 @@ def earnings():
     loss = [ n for n in loss if n['_id']['day'] == today]
     #today_by_asset = [ n for n in assets if n['_id']['day'] == day_of_yr]
 
-    for i in range(0, len(gain)):
-        tradelog("{:} today: {:} wins ({:+.2f}%), {:} losses ({:+.2f}%), {:+.2f}% total."\
+    for n in gain:
+        tradelog("{:} today: {:} wins ({:+.2f}%)."\
             .format(
-                gain[i]['_id']['strategy'],
-                gain[i]['count'],
-                gain[i]['total'],
-                loss[i]['count'],
-                loss[i]['total'],
-                gain[i]['total'] + loss[i]['total']
+                n['_id']['strategy'],
+                n['count'],
+                n['total']
+            ))
+    for n in loss:
+        tradelog("{:} today: {:} losses ({:+.2f}%)."\
+            .format(
+                n['_id']['strategy'],
+                n['count'],
+                n['total']
             ))
 
     #ratio = (n_win/len(closed))*100 if len(closed) >0 else 0

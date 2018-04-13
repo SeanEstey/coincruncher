@@ -71,7 +71,7 @@ def describe(candle, ema=None):
     """
     _ema = ema if ema else macd_ema
 
-    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq[candle['freq']]]#.copy()
     macd = generate(df, ema=_ema)
 
     # Isolate current oscilator phase
@@ -124,16 +124,21 @@ def describe(candle, ema=None):
     return {'phase':phase, 'trend':trend, 'details':details}
 
 #------------------------------------------------------------------------------
-def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
+def agg_describe(df, pair, freqstr, n_periods, pdfreqstr=None):
     """Describe aggregate macd positive/negative oscilator phases in timespan.
     """
     t1 = Timer()
     from app.common.utils import to_relative_str as relative
     freq = strtofreq[freqstr]
 
-    df_macd = generate(
-        app.bot.dfc.loc[pair, freq]
-    ).dropna().tail(n_periods).asfreq(pdfreqstr)
+    try:
+        #df = app.bot.dfc.loc[pair,freq].copy()
+        df_macd = generate(df)
+        df_macd = df_macd.asfreq(pdfreqstr).tail(n_periods) #.dropna()
+    except Exception as e:
+        from pprint import pprint
+        pprint(df_macd[df_macd.index.duplicated()])
+        return None
 
     phases=[]
     last_iloc = 0
@@ -170,6 +175,10 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
         if len(periods) == 0:
             periods = np.array([0])
 
+        amplitude = np.array([ n['mean_amplitude'] for n in grp ])
+        if len(amplitude) == 0:
+            amplitude = np.array([0])
+
         duration = np.array([ n['seconds'] for n in grp])
         if len(duration) == 0:
             duration = np.array([0])
@@ -186,12 +195,14 @@ def agg_describe(pair, freqstr, n_periods, pdfreqstr=None):
         summary += \
             "\t({}) phases: {}\n"\
             "\tPrice: {:+.2f}% (mean: {:+.2f}%)\n"\
+            "\tMean Amplitude: {:+.2f}\n"\
             "\tDuration: {:} (mean: {})\n"\
             .format(
                 '+' if sign == 'POSITIVE' else '-',
                 len(grp),
                 price_diff.sum(),
                 price_diff.mean() if len(price_diff) > 0 else 0,
+                amplitude.mean(),
                 #abs(area.sum()), abs(area.mean()),
                 #periods.sum(), periods.mean(),
                 relative(delta(seconds=int(duration.sum()))),
@@ -243,12 +254,18 @@ def _get_phase(df, start_iloc):
         'seconds': (_df.index.freq.nanos / 1000000000) * len(_df),
         'sign':sign,
         'area': _df['macd_diff'].sum(),
+        'mean_amplitude': _df['macd_diff'].mean(),
         'df':_df
     }
 
 #------------------------------------------------------------------------------
 def plot(pair, units, n_units, n_periods):
     """
+    # fig['layout']['xaxis1'].update(titlefont=dict(
+    #    family='Arial, sans-serif',
+    #    size=18,
+    #    color='grey'
+    #))
     """
     from dateparser import parse
     import plotly.offline as offline
@@ -302,12 +319,32 @@ def plot(pair, units, n_units, n_periods):
         yaxis3=dict(
             domain=[0, 0.2]
         )
-        #fig['layout']['xaxis1'].update(titlefont=dict(
-        #    family='Arial, sans-serif',
-        #    size=18,
-        #    color='grey'
-        #))
     )
+
+    annotations = [
+        dict(
+            x=2,
+            y=5,
+            xref='x',
+            yref='y',
+            text='dict Text',
+            showarrow=True,
+            arrowhead=7,
+            ax=0,
+            ay=-40
+        ),
+        dict(
+            x=4,
+            y=4,
+            xref='x',
+            yref='y',
+            text='dict Text 2',
+            showarrow=True,
+            arrowhead=7,
+            ax=0,
+            ay=-40
+        )
+    ]
 
     fig = go.Figure(data=data, layout=layout)
     return fig
