@@ -1,9 +1,10 @@
 import logging
+from dateparser import parse
 import pandas as pd
 import numpy as np
 from pymongo import UpdateOne, ReplaceOne
 from bson import ObjectId
-import bsonnumpy
+from bsonnumpy import sequence_to_ndarray
 from binance.client import Client
 import app
 from docs.conf import binance as _conf
@@ -14,84 +15,58 @@ from app.common.mongo import locked
 import app.bot
 log = logging.getLogger('candles')
 
-last_update = None
-dtype = np.dtype([
-    ('pair', 'S12'),
-    ('freq', 'S3'),
-    ('open_time', np.int64),
-    ('open', np.float64),
-    ('close', np.float64),
-    ('buy_vol', np.float64),
-    ('volume', np.float64),
-    ('buy_ratio', np.float64),
-    ('trades', np.int32)
-])
-
 #------------------------------------------------------------------------------
-def newest(pair, freqstr):
-    """Get most recently added candle to either dataframe or mongoDB.
-    """
-    dfc = app.bot.dfc
-    freq = strtofreq(freqstr)
-    series = dfc.loc[pair, freq].iloc[-1]
-    open_time = dfc.loc[(pair,freq)].index[-1]
-    idx = dict(zip(dfc.index.names, [pair, freqstr, open_time]))
-    return {**idx, **series}
-    """else:
-        log.debug("Doing DB read for candle.newest!")
-
-        db = app.get_db()
-        return list(db.candles.find({"pair":pair,"freq":freq})\
-            .sort("close_time",-1)\
-            .limit(1)
-        )[0]
-    """
-
-#------------------------------------------------------------------------------
-def merge_new(dfc, pairs, span=None):
+def load(pairs, freqstr=None, startstr=None, df_merge=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
-    global last_update
     t1 = Timer()
-    columns = ['open', 'close', 'trades', 'volume', 'buy_ratio']
-    exclude = ['_id','high','low','quote_vol','sell_vol', 'close_time']
+    columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_ratio']
+    exclude = ['_id', 'quote_vol','sell_vol', 'close_time']
     projection = dict(zip(exclude, [False]*len(exclude)))
     idx, data = [], []
     db = app.get_db()
+    query = {'pair':{'$in':pairs}}
 
-    if span is None and last_update:
-        # If no span, query/merge db records inserted since last update.
-        oid = ObjectId.from_datetime(last_update)
-        last_update = now()
-        _filter = {'_id':{'$gte':oid}}
-    else:
-        # Else query/merge all since timespan.
-        span = span if span else timedelta(days=7)
-        last_update = now()
-        _filter = {'pair':{'$in':pairs}, 'close_time':{'$gte':now()-span}}
+    if startstr:
+        query['open_time'] = {'$gte':parse(startstr)}
+    if freqstr:
+        query['freq'] = freqstr
 
-    batches = db.candles.find_raw_batches(_filter, projection)
+    batches = db.candles.find_raw_batches(query, projection)
 
     if batches.count() < 1:
-        return dfc
+        print("No DB matches found for query: {}".format(query))
+        return df_merge
 
+    # Bsonnumpy bulk load. Order of magnitude performance gain
+    # vs casting mongo cursor->list->dataframe
+    dtype = np.dtype([
+        ('pair', 'S12'),
+        ('freq', 'S3'),
+        ('open_time', np.int64),
+        ('open', np.float64),
+        ('close', np.float64),
+        ('high', np.float64),
+        ('low', np.float64),
+        ('buy_vol', np.float64),
+        ('volume', np.float64),
+        ('buy_ratio', np.float64),
+        ('trades', np.int32)
+    ])
     try:
-        ndarray = bsonnumpy.sequence_to_ndarray(
-            batches,
-            dtype,
-            db.candles.count()
-        )
+        ndarray = sequence_to_ndarray(batches, dtype, batches.count())
     except Exception as e:
         log.error(str(e))
         return dfc
-        #raise
 
     df = pd.DataFrame(ndarray)
+    # Fix bsonnumpy formatting
     df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
     df['freq'] = df['freq'].str.decode('utf-8')
     df['pair'] = df['pair'].str.decode('utf-8')
 
+    # TODO: find better way to do this
     df['freq'] = df['freq'].replace('1m',60)
     df['freq'] = df['freq'].replace('5m',300)
     df['freq'] = df['freq'].replace('30m',1800)
@@ -100,19 +75,18 @@ def merge_new(dfc, pairs, span=None):
 
     df = df.sort_values(by=['pair','freq','open_time'])
 
-    df2 = pd.DataFrame(df[columns].values,
+    df = pd.DataFrame(df[columns].values,
         index = pd.MultiIndex.from_arrays(
             [df['pair'], df['freq'], df['open_time']],
             names = ['pair','freq','open_time']),
         columns = columns
     ).sort_index()
 
-    df3 = pd.concat([dfc, df2]).drop_duplicates().sort_index()
+    if df_merge is not None:
+        df = pd.concat([df_merge, df]).drop_duplicates().sort_index()
 
-    log.debug("{:,} records loaded into numpy. [{:,.1f} ms]".format(
-        len(df3), t1))
-    #print("Done in %s ms" % t1)
-    return df3
+    log.debug("{:,} records bulk loaded. [{:,.1f} ms]".format(len(df), t1))
+    return df
 
 #------------------------------------------------------------------------------
 def update(pairs, freqstr, start=None, force=False):
@@ -242,3 +216,26 @@ def describe(candle):
         ss['price']['z-score'], ss['volume']['z-score'], candle['buy_ratio'],
         ss['price']['emaDiff']
     ))
+
+#------------------------------------------------------------------------------
+def to_dict(pair, freqstr):
+    """Get most recently added candle to either dataframe or mongoDB.
+    """
+    dfc = app.bot.dfc
+    freq = strtofreq(freqstr)
+
+    if (pair,freq) not in dfc.index:
+        raise Exception("({},{}) not in app.bot.dfc.index!".format(pair,freq))
+
+    series = dfc.loc[pair, freq].iloc[-1]
+    open_time = dfc.loc[(pair,freq)].index[-1]
+    idx = dict(zip(dfc.index.names, [pair, freqstr, open_time]))
+    return {**idx, **series}
+
+    """log.debug("Doing DB read for candle.newest!")
+    db = app.get_db()
+    return list(db.candles.find({"pair":pair,"freq":freq})\
+        .sort("close_time",-1)\
+        .limit(1)
+    )[0]
+    """

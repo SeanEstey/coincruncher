@@ -10,8 +10,8 @@ max_positions = 10
 trade_pairs = [
     #'ADABTC',
     #'AIONBTC',
-    #'BNBBTC',
-    'BTCUSDT',
+    'BNBBTC',
+    #'BTCUSDT',
     #'DGDBTC',
     #'DNTBTC',
     #'ELFBTC',
@@ -21,19 +21,19 @@ trade_pairs = [
     #'ENJBTC',
     #'ICXBTC',
     #'HSRBTC',
-    #'LRCBTC',
-    'OMGBTC',
+    'LRCBTC',
+    #'OMGBTC',
     #'POWRBTC',
     #'ONTBTC',
     #'OSTBTC',
     #'SALTBTC',
     #'STEEMBTC',
-    #'SUBBTC',
+    'SUBBTC',
     #'XVGBTC',
     #'WABIBTC',
     #'WANBTC',
     #'WTCBTC',
-    #'ZILBTC'
+    'ZILBTC'
 ]
 
 ### Trade Algorithms ###########################################################
@@ -100,7 +100,7 @@ strategies = [
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['value'] < 0,
+                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
             ]
         }
@@ -164,7 +164,7 @@ strategies = [
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['value'] < 0,
+                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
             ]
         }

@@ -32,13 +32,8 @@ def init():
     Performance: ~3,000ms/100k records
     """
     t1 = Timer()
-
-    # Load candle data from DB->dataframe
-    log.info('Preloading historic candle data...')
-    span = delta(days=7)
-    app.bot.dfc = candles.merge_new(pd.DataFrame(), pairs, span=span)
-    log.info('{:,} records loaded in {:,.1f}s.'.format(
-        len(app.bot.dfc), t1.elapsed(unit='s')))
+    print('Loading candles...')
+    app.bot.dfc = candles.load(pairs)
 
     # Lookup/store Binance asset metadata for active trading pairs.
     client = Client('','')
@@ -66,13 +61,16 @@ def update(freqstr):
     t1 = Timer()
     db = get_db()
 
-    # Update candles updated by websocket
+    # Merge new candle data
     tradelog('-'*80)
-    app.bot.dfc = candles.merge_new(app.bot.dfc, pairs, span=None)
+    app.bot.dfc = candles.load(pairs,
+        freqstr=freqstr,
+        startstr="{} seconds ago utc".format(freq),
+        df_merge=app.bot.dfc)
 
     snapshots = {}
     for pair in pairs:
-        candle = candles.newest(pair, freqstr)
+        candle = candles.to_dict(pair, freqstr)
         snapshots[pair] = snapshot(candle)
 
     tradelog('*'*80)
@@ -98,7 +96,7 @@ def entries(freqstr):
     db = get_db()
     _ids = []
     for pair in pairs:
-        c = candles.newest(pair, freqstr)
+        c = candles.to_dict(pair, freqstr)
         ss = snapshots[pair]
         for strat in strategies:
             if db.trades.find_one(
@@ -121,7 +119,7 @@ def exits(freqstr):
     db = get_db()
     _ids = []
     for trade in db.trades.find({'status':'open'}): #'freq':freqstr}):
-        candle = candles.newest(trade['pair'], freqstr)
+        candle = candles.to_dict(trade['pair'], freqstr)
         conf = strategies[[n['name'] for n in strategies].index(trade['strategy'])]
         ss = snapshots[trade['pair']]
 

@@ -87,7 +87,7 @@ def positions(freqstr):
 
     for record in _trades:
         c1 = record['orders'][0]['candle']
-        c2 = candles.newest(record['pair'], freqstr)
+        c2 = candles.to_dict(record['pair'], freqstr)
         ss1 = record['snapshots'][0]
         ss2 = record['snapshots'][-1]
         df = dfc.loc[record['pair'], strtofreq(freqstr)].tail(40)

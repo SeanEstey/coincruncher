@@ -19,6 +19,62 @@ log = logging.getLogger('scanner')
 def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
+def new_scanner():
+    trade_pairs = [
+        'ADABTC',
+        'AIONBTC',
+        'BNBBTC',
+        'BTCUSDT',
+        'DGDBTC',
+        'DNTBTC',
+        'ELFBTC',
+        'ETHUSDT',
+        'FUNBTC',
+        'EOSBTC',
+        'ENJBTC',
+        'ICXBTC',
+        'HSRBTC',
+        'LRCBTC',
+        'OMGBTC',
+        'POWRBTC',
+        'ONTBTC',
+        'OSTBTC',
+        'SALTBTC',
+        'STEEMBTC',
+        'SUBBTC',
+        'XVGBTC',
+        'WABIBTC',
+        'WANBTC',
+        'WTCBTC',
+        'ZILBTC'
+    ]
+    freqstr, startstr, periods = '30m', '72 hours ago utc', 144
+
+    for pair in trade_pairs:
+        candles.update([pair], freqstr, start=startstr, force=True)
+        df = candles.load([pair], freqstr=freqstr, startstr=startstr)
+        df = df.loc[pair, strtofreq(freqstr)]
+        dfh, phases = macd.histo_phases(df, pair, freqstr, periods)
+
+        scanlog("")
+        scanlog("{} MACD Histogram Analysis".format(pair))
+        tot_gains = dfh[dfh['mean_amplitude'] > 0]['pct_priceY'].mean()
+        capt_gains = dfh[dfh['mean_amplitude'] > 0]['pct_priceX'].mean()
+        scanlog("+Price/+Histo: {:+.2f}%, Total Captured: {:+.2f}%".format(
+            tot_gains, capt_gains))
+
+        lines = dfh.to_string(formatters={
+            'lbl':             '{:}'.format,
+            'histo_bars':      '{:}'.format,
+            'mean_amplitude':  '{:+.2f}'.format,
+            'pct_priceY':      ' {:+.2f}%'.format,
+            'pct_priceX':      ' {:+.2f}%'.format,
+            'pct_priceYX':     ' {:+.2f}%'.format,
+            'correlation':     ' {:+.2f}'.format,
+        }).split("\n")
+        [ scanlog(line) for line in lines]
+
+#------------------------------------------------------------------------------
 def scan(freqstr, periods, n_results, min_vol, idx_filter=None, quiet=True):
     query_cols = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney']
     np_cols = ['open', 'high', 'low', 'close', 'tradedMoney']
@@ -112,7 +168,7 @@ def indicators(idx, freqstr, periods, quiet=True):
         for pair, row in df.iterrows():
             # Query/load candle data
             candles.update([pair], freqstr, start=startstr, force=True)
-            dfp = candles.merge_new(pd.DataFrame(), [pair], span=delta(days=7))
+            dfp = candles.load([pair], freqstr=freqstr, startstr=startstr)
             dfp = dfp.loc[pair,freq]
 
             # Run MACD histogram analysis
