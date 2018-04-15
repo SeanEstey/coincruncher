@@ -1,6 +1,7 @@
 # app.bot.scanner
 from pprint import pprint
 import logging
+from datetime import datetime
 import math
 import pandas as pd
 import numpy as np
@@ -17,6 +18,46 @@ from . import candles, macd, signals
 log = logging.getLogger('scanner')
 
 def scanlog(msg): log.log(98, msg)
+
+#------------------------------------------------------------------------------
+def binance_24h_ticker_stats(fltr=None):
+    from_ts = datetime.fromtimestamp
+
+    client = Client("","")
+    tickers = client.get_ticker()
+    df = pd.DataFrame(tickers)
+    df.index = df['symbol']
+
+    # Filter cols
+    df = df[['openTime','closeTime','lastPrice','priceChange',
+        'priceChangePercent', 'quoteVolume','volume','weightedAvgPrice']]
+    # Datatype formatting
+    df = df.astype('float64')
+    df['openTime'] = df['openTime'].apply(lambda x: from_ts(int(x/1000)))
+    df['closeTime'] = df['closeTime'].apply(lambda x: from_ts(int(x/1000)))
+    df = df.sort_index()
+    df = df.rename(columns={
+        'priceChangePercent':'pctPriceChange',
+        'quoteVolume':'quoteVol'
+    })
+    # Filter rows
+    df = df[df.index.str.contains(fltr)]
+
+    # Calc volume for both lhs/rhs symbol pairs.
+    _df = df.copy()
+    for idx, row in _df[_df.index.str.startswith(fltr)].iterrows():
+        tmp = row['quoteVol']
+        _df.ix[idx,'quoteVol'] = row['volume']
+        _df.ix[idx,'volume'] = tmp
+    wt_price_change = \
+        (_df['pctPriceChange'] * _df['quoteVol']).sum() / _df['quoteVol'].sum()
+
+    print("{} Stats: {} pairs, {:+.2f}% weighted price change, "\
+        "{:,.1f} {} traded in last 24 hours."\
+        .format(fltr, len(df), wt_price_change, _df['quoteVol'].sum(),
+        fltr))
+
+    return df.sort_index()
 
 #------------------------------------------------------------------------------
 def new_scanner():
@@ -48,30 +89,36 @@ def new_scanner():
         'WTCBTC',
         'ZILBTC'
     ]
-    freqstr, startstr, periods = '30m', '72 hours ago utc', 144
+    #freqstr, startstr, periods = '30m', '72 hours ago utc', 100
+    #freqstr, startstr, periods = '1h', '72 hours ago utc', 72
+    freqstr, startstr, periods = '5m', '36 hours ago utc', 350
 
     for pair in trade_pairs:
         candles.update([pair], freqstr, start=startstr, force=True)
         df = candles.load([pair], freqstr=freqstr, startstr=startstr)
-        df = df.loc[pair, strtofreq(freqstr)]
+        df = df.loc[pair, strtofreq(freqstr)].reset_index()
+        df.index = df['open_time']
         dfh, phases = macd.histo_phases(df, pair, freqstr, periods)
+        dfh = dfh[dfh['amp_mean'] > 0]
 
         scanlog("")
-        scanlog("{} MACD Histogram Analysis".format(pair))
-        tot_gains = dfh[dfh['mean_amplitude'] > 0]['pct_priceY'].mean()
-        capt_gains = dfh[dfh['mean_amplitude'] > 0]['pct_priceX'].mean()
-        scanlog("+Price/+Histo: {:+.2f}%, Total Captured: {:+.2f}%".format(
-            tot_gains, capt_gains))
-
-        lines = dfh.to_string(formatters={
-            'lbl':             '{:}'.format,
-            'histo_bars':      '{:}'.format,
-            'mean_amplitude':  '{:+.2f}'.format,
-            'pct_priceY':      ' {:+.2f}%'.format,
-            'pct_priceX':      ' {:+.2f}%'.format,
-            'pct_priceYX':     ' {:+.2f}%'.format,
-            'correlation':     ' {:+.2f}'.format,
-        }).split("\n")
+        scanlog("{} MACD {} Histogram Analysis ({} Periods)".format(pair, freqstr, periods))
+        tot_gains = dfh[dfh['amp_mean'] > 0]['pricey'].mean()
+        capt_gains = dfh[dfh['amp_mean'] > 0]['pricex'].mean()
+        scanlog("+Price/Histo: {:+.2f}%".format(tot_gains))
+        scanlog("Captured: {:+.2f}%".format(capt_gains))
+        lines = dfh.to_string(
+            columns=['bars','amp_mean','amp_max','pricey','pricex','captured','corr'],
+            formatters={
+                'bars':     ' {:} '.format,
+                'amp_mean': ' {:+.2f}'.format,
+                'amp_max':  ' {:+.2f}'.format,
+                'pricey':   '  {:+.2f}%'.format,
+                'pricex':   '  {:+.2f}%'.format,
+                'captured': '  {:.2f}'.format,
+                'corr':     '  {:+.2f}'.format,
+            }
+        ).split("\n")
         [ scanlog(line) for line in lines]
 
 #------------------------------------------------------------------------------

@@ -16,31 +16,28 @@ import app.bot
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
-def load(pairs, freqstr=None, startstr=None, df_merge=None):
+def load(pairs, freqstr=None, startstr=None, dfm=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
     t1 = Timer()
     columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_ratio']
     exclude = ['_id', 'quote_vol','sell_vol', 'close_time']
-    projection = dict(zip(exclude, [False]*len(exclude)))
+    proj = dict(zip(exclude, [False]*len(exclude)))
     idx, data = [], []
     db = app.get_db()
     query = {'pair':{'$in':pairs}}
-
     if startstr:
         query['open_time'] = {'$gte':parse(startstr)}
     if freqstr:
         query['freq'] = freqstr
 
-    batches = db.candles.find_raw_batches(query, projection)
-
+    # Bulk load mongodb records into predefined, fixed-size numpy array.
+    # 10x faster than manually casting mongo cursor into python list.
+    batches = db.candles.find_raw_batches(query, proj)
     if batches.count() < 1:
         print("No DB matches found for query: {}".format(query))
-        return df_merge
-
-    # Bsonnumpy bulk load. Order of magnitude performance gain
-    # vs casting mongo cursor->list->dataframe
+        return dfm
     dtype = np.dtype([
         ('pair', 'S12'),
         ('freq', 'S3'),
@@ -60,33 +57,30 @@ def load(pairs, freqstr=None, startstr=None, df_merge=None):
         log.error(str(e))
         return dfc
 
+    # Build multi-index dataframe from ndarray
     df = pd.DataFrame(ndarray)
-    # Fix bsonnumpy formatting
     df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
     df['freq'] = df['freq'].str.decode('utf-8')
     df['pair'] = df['pair'].str.decode('utf-8')
-
-    # TODO: find better way to do this
-    df['freq'] = df['freq'].replace('1m',60)
-    df['freq'] = df['freq'].replace('5m',300)
-    df['freq'] = df['freq'].replace('30m',1800)
-    df['freq'] = df['freq'].replace('1h',3600)
-    df['freq'] = df['freq'].replace('1d',86400)
-
-    df = df.sort_values(by=['pair','freq','open_time'])
-
-    df = pd.DataFrame(df[columns].values,
+    # Convert freqstr->freq to enable index sorting
+    [df['freq'].replace(n, strtofreq(n), inplace=True) \
+        for n in df['freq'].drop_duplicates()]
+    df.sort_values(by=['pair','freq','open_time'], inplace=True)
+    dfc = pd.DataFrame(df[columns].values,
         index = pd.MultiIndex.from_arrays(
             [df['pair'], df['freq'], df['open_time']],
             names = ['pair','freq','open_time']),
         columns = columns
     ).sort_index()
 
-    if df_merge is not None:
-        df = pd.concat([df_merge, df]).drop_duplicates().sort_index()
-
-    log.debug("{:,} records bulk loaded. [{:,.1f} ms]".format(len(df), t1))
-    return df
+    # Merge if dataframe passed in
+    n_bulk, n_merged = len(dfc), 0
+    if dfm is not None:
+        dfc = pd.concat([dfm, dfc]).drop_duplicates().sort_index()
+        n_merged = len(dfc) - n_bulk
+    log.debug("{:,} docs loaded, {:,} merged in {:,.1f} ms.".format(
+        n_bulk, n_merged, t1))
+    return dfc
 
 #------------------------------------------------------------------------------
 def update(pairs, freqstr, start=None, force=False):

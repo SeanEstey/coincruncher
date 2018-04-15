@@ -5,14 +5,16 @@ import numpy as np
 from pprint import pformat, pprint
 from decimal import Decimal
 from datetime import timedelta, datetime
-from pprint import pformat
-from app import get_db, forex, markets, signals, tickers
-from app.analyze import price_df
-from app.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
-from app.screen import c, midx, print_table, pretty, pnlcolor, coeff_color
-from app.timer import Timer
-from docs.config import CURRENCY
-from docs.data import COINMARKETCAP as CMC
+from app import get_db
+from app.common import forex
+from app.common.timer import Timer
+from app.common.utils import utc_dtdate, to_relative_str, to_int, to_dt, utc_datetime
+from app.cmc import analyze, tickers
+from .screen import c, midx, print_table, pretty, pnlcolor, coeff_color
+
+#from docs.config import CURRENCY
+CURRENCY = 'CAD'
+from docs.conf import coinmarketcap as CMC
 log = logging.getLogger('views')
 
 #-----------------------------------------------------------------------------

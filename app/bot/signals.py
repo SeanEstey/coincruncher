@@ -14,9 +14,9 @@ def rsi(df, span):
     """RSI indicator using EMA.
     @df: pandas time-series w/ close price as column.
     """
-    diff = df.diff()
-    gains = diff[diff > 0].ewm(span=span).mean()
-    losses = diff[diff < 0].ewm(span=span).mean()
+    diff = df.diff().ewm(span=span).mean()
+    gains = diff[diff > 0] #.ewm(span=span).mean()
+    losses = diff[diff < 0]  #.ewm(span=span).mean()
     rs = abs(gains.mean() / losses.mean())
     rsi = 100 - (100 / (1.0 + rs))
     return np.float64(rsi).round(2)
@@ -85,9 +85,9 @@ def z_score(candle, periods):
     return pd.Series(data, index=cols).astype('float64').round(8)
 
 #------------------------------------------------------------------------------
-def weighted_avg(df, col, weights):
+def weighted_avg(values, weights):
     try:
-        return (df[col] * weights).sum() / sum(weights)
+        return (values * weights).sum() / weights.sum()
     except Exception as e:
         log.error("Div/0 error. Returning unweighted mean.")
         return df[col].mean()
@@ -101,4 +101,40 @@ def vwap():
     """
     pass
 
+#-------------------------------------------------------------------------------
+def support_resistance(df):
+    """
+    Algorithm
 
+    Break timeseries into segments of size N (Say, N = 5)
+    Identify minimum values of each segment, you will have an array of minimum
+    values from all segments = :arrayOfMin
+    Find minimum of (:arrayOfMin) = :minValue
+    See if any of the remaining values fall within range (X% of :minValue)
+    (Say, X = 1.3%)
+    Make a separate array (:supportArr)
+    add values within range & remove these values from :arrayOfMin
+    also add :minValue from step 3
+    Calculating support (or resistance)
+
+    Take a mean of this array = support_level
+    If support is tested many times, then it is considered strong.
+    strength_of_support = supportArr.length
+    level_type (SUPPORT|RESISTANCE) = Now, if current price is below support
+    then support changes role and becomes resistance.
+    Repeat steps 3 to 7 until :arrayOfMin is empty
+
+    You will have all support/resistance values with a strength. Now smoothen
+    these values, if any support levels are too close then eliminate one of
+    them. hese support/resistance were calculated considering support levels
+    search. You need perform steps 2 to 9 considering resistance levels search.
+
+    Notes:
+    Adjust the values of N & X to get more accurate results.
+    Example, for less volatile stocks or equity indexes use (N = 10, X = 1.2%)
+    For high volatile stocks use (N = 22, X = 1.5%)
+    For resistance, the procedure is exactly opposite (use maximum function
+    instead of minimum). This algorithm was purposely kept simple to avoid
+    complexity, it can be improved to give better results.
+    """
+    pass

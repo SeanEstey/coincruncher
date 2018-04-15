@@ -6,8 +6,8 @@ import pandas as pd
 import numpy as np
 from scipy import stats
 from app import get_db
-from app.timer import Timer
-from app.utils import parse_period, utc_dtdate
+from app.common.timer import Timer
+from app.common.utils import parse_period, utc_dtdate
 log = logging.getLogger('analyze')
 
 _1DAY = timedelta(days=1)

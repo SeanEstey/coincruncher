@@ -19,6 +19,7 @@ def siglog(msg): log.log(100, msg)
 
 # GLOBALS
 log = logging.getLogger('trade')
+logwidth = 60
 n_cycles = 0
 start = now()
 freq = None
@@ -62,32 +63,32 @@ def update(freqstr):
     db = get_db()
 
     # Merge new candle data
-    tradelog('-'*80)
+    tradelog('-'*logwidth)
     app.bot.dfc = candles.load(pairs,
         freqstr=freqstr,
         startstr="{} seconds ago utc".format(freq),
-        df_merge=app.bot.dfc)
+        dfm=app.bot.dfc)
 
     snapshots = {}
     for pair in pairs:
         candle = candles.to_dict(pair, freqstr)
         snapshots[pair] = snapshot(candle)
 
-    tradelog('*'*80)
+    tradelog('*'*logwidth)
     duration = to_relative_str(now() - start)
     hdr = "Cycle #{}, Period {} {:>%s}" % (61 - len(str(n_cycles)))
     tradelog(hdr.format(n_cycles, freq_str, duration))
-    tradelog('*'*80)
+    tradelog('*'*logwidth)
 
     _ids += exits(freqstr)
     _ids += entries(freqstr)
 
-    tradelog('-'*80)
+    tradelog('-'*logwidth)
     printer.new_trades([n for n in _ids if n])
-    tradelog('-'*80)
+    tradelog('-'*logwidth)
     printer.positions(freqstr)
-    tradelog('-'*80)
-    tradelog('-'*80)
+    tradelog('-'*logwidth)
+    tradelog('-'*logwidth)
     earnings()
     n_cycles +=1
 
@@ -252,11 +253,21 @@ def snapshot(candle):
     ask = np.float64(ob['askPrice'])
     bid = np.float64(ob['bidPrice'])
 
-    macd_desc = macd.describe(candle, ema=macd_ema)
-    phase = macd_desc['phase']
+    dfh, phases = macd.histo_phases(app.bot.dfc,
+        candle['pair'], candle['freq'], 100)
+    phase = phases[-1]
+
+    #macd_desc = macd.describe(candle, ema=macd_ema)
+    #phase = macd_desc['phase']
     # Convert datetime index to str for mongodb storage.
     phase.index = [ str(n)[:-10] for n in phase.index.values ]
     last = phase.iloc[-1]
+
+
+
+
+
+
 
     print('{} {} {}'.format(
         candle['pair'], candle['freq'], macd_desc['details']))
@@ -283,7 +294,7 @@ def snapshot(candle):
         'macd': odict({
             'value': last.round(3),
             'trend': macd_desc['trend'],
-            'phase': phase.round(3).to_dict(odict),
+            'phases': phase.round(3).to_dict(odict),
             'desc': phase.describe().round(3).to_dict()
         }),
         'orderBook':ob

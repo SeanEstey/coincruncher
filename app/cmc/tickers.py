@@ -7,7 +7,7 @@ from pymongo import ReplaceOne
 from app import get_db
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate, to_int, parse_period, to_dt
-from docs.data import COINMARKETCAP
+from docs.conf import coinmarketcap
 
 log = logging.getLogger('cmc.tickers')
 #logging.getLogger("requests").setLevel(logging.ERROR)
@@ -57,7 +57,7 @@ def query_api_tick(start=0, limit=None):
     for ticker in tickerdata:
         store={"date":updated}
 
-        for f in COINMARKETCAP['API']['TICKERS']:
+        for f in coinmarketcap['api']['tickers']:
             try:
                 val = ticker[f["from"]]
                 store[f["to"]] = f["type"](val) if val else None
@@ -89,7 +89,7 @@ def query_api_mkt():
     print(r.status_code)
 
     store = {}
-    for m in COINMARKETCAP['API']['MARKETS']:
+    for m in coinmarketcap['api']['markets']:
         store[m["to"]] = m["type"]( data[m["from"]] )
 
     get_db().cmc_mkt.replace_one(

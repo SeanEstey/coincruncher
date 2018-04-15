@@ -25,13 +25,16 @@ def generate(df, ema=None, normalize=True):
     df = df.copy()
     _ema = ema if ema else macd_ema
 
-    fast = df['close'].ewm(span=_ema[0], adjust=True, ignore_na=False).mean()
+    fast = df['close'].ewm(span=_ema[0], adjust=True, ignore_na=False, min_periods=_ema[1]
+        ).mean()
     fast.name = 'fast'
-    slow = df['close'].ewm(span=_ema[1], adjust=True, ignore_na=False).mean()
+    slow = df['close'].ewm(span=_ema[1], adjust=True, ignore_na=False, min_periods=_ema[1]
+        ).mean()
     slow.name='slow'
 
     macd = pd.Series(fast - slow, name='macd')
-    signal = macd.ewm(span=_ema[2], adjust=True, ignore_na=False).mean()
+    signal = macd.ewm(span=_ema[2], adjust=True, ignore_na=False, min_periods=_ema[1]
+        ).mean()
     signal.name='signal'
 
     df = df.join(fast)
@@ -53,28 +56,21 @@ def generate(df, ema=None, normalize=True):
     return df
 
 #------------------------------------------------------------------------------
-def agg_histo_phases(pairs, freqstr, startstr, periods):
-
-    df = pd.DataFrame(df[columns].values,
-        index = pd.MultiIndex.from_arrays(
-            [df['pair'], df['freq'], df['open_time']],
-            names = ['pair','freq','open_time']),
-        columns = columns
-    ).sort_index()
-
-#------------------------------------------------------------------------------
 def histo_phases(df, pair, freqstr, periods):
     """Groups and analyzes the MACD histogram phases within given timespan.
     Determines how closely the histogram bars track with price.
     """
     DF = pd.DataFrame
     freq = strtofreq(freqstr)
-    dfmacd = generate(df.copy()).tail(periods)['macd_diff']
+    _df = df.copy().reset_index()
+    _df.index = _df['open_time']
+    dfmacd = generate(_df.tail(periods))['macd_diff']
     np_arr, descs, phases = [],[],[]
     idx = 0
 
     while idx < len(dfmacd):
-        iloc, row, phase, desc = next_phase(dfmacd, freq, idx).values()
+        iloc, row, phase, desc = next_phase(dfmacd, freq, idx) ##.values()
+        dfmacd = dfmacd.drop_duplicates()
         if row is None:
             idx+=1
             continue
@@ -84,12 +80,16 @@ def histo_phases(df, pair, freqstr, periods):
             phases.append(phase)
             idx = iloc[1] + 1
 
-    dfh = DF(np_arr, columns=['start', 'end', 'histo_bars', 'phase', 'mean_amplitude'])
+    dfh = DF(np_arr, columns=['start', 'end', 'bars', 'phase', 'amp_mean', 'amp_max'])
 
     # Gen labels and calc % price changes
     lbls, pxy_corr, pct_py, pct_px = [],[],[],[]
+    j=0
     for i in range(0, len(dfh)):
-        lbls.append("{} ({})".format(abc[i].upper(), dfh.iloc[i]['phase']))
+        if j == len(abc):
+            j=0
+        lbls.append("{} ({})".format(abc[j].upper(), dfh.iloc[i]['phase']))
+        j+=1
 
     # Determine correlation between histogram bars and price movement
     # Find overall histogram=>candle close correlation
@@ -105,48 +105,53 @@ def histo_phases(df, pair, freqstr, periods):
             pxy_corr.append(np.nan)
 
     dfh['lbl'] = lbls
-    dfh['  duration'] = dfh['end'] - dfh['start']
-    dfh['pct_priceY'] = pct_py
-    dfh['pct_priceX'] = pct_px
-    dfh['pct_priceYX'] = abs(dfh['pct_priceX'] / dfh['pct_priceY'])
-    dfh['correlation'] = pxy_corr
+    dfh['duration'] = dfh['end'] - dfh['start']
+    dfh['pricey'] = pct_py
+    dfh['pricex'] = pct_px
+    dfh['captured'] = abs(dfh['pricex'] / dfh['pricey'])
+    dfh['corr'] = pxy_corr
 
     # Append cols/clean up formatting
     dfh.index = dfh['start'].dt.strftime("%b-%d %H:%M")
-    dfh = dfh[['lbl', 'histo_bars', '  duration', 'mean_amplitude',
-        'pct_priceY', 'pct_priceX', 'pct_priceYX', 'correlation']].round(2)
+    dfh = dfh[['lbl', 'bars', 'duration', 'amp_mean', 'amp_max',
+        'pricey', 'pricex', 'captured', 'corr']].round(2)
     return (dfh, phases)
 
 #------------------------------------------------------------------------------
 def next_phase(dfmacd, freq, start_idx):
     diff = dfmacd.iloc[start_idx]
-    if diff == np.nan or diff == 0:
-        return dict(zip(['iloc','row','phase','desc'], [None]*4))
-    elif diff > 0:
-        signs = ('positive', '+')
-        skip = dfmacd.iloc[start_idx:][dfmacd < 0].head(1).index
-    elif diff < 0:
-        signs = ('negative', '-')
-        skip = dfmacd.iloc[start_idx:][dfmacd > 0].head(1).index
+
+    try:
+        if diff > 0:
+            signs = ('positive', '+')
+            skip = dfmacd.iloc[start_idx:][dfmacd < 0].head(1).index
+        elif diff < 0:
+            signs = ('negative', '-')
+            skip = dfmacd.iloc[start_idx:][dfmacd > 0].head(1).index
+        else:
+            return (None,None,None,None)
+    except Exception as e:
+        log.debug("Duplicate indices!")
+        log.debug(dfmacd[dfmacd.index.duplicated()])
+        return (None,None,None,None)
 
     end_idx = len(dfmacd)-1 if skip.empty else dfmacd.index.get_loc(skip[0])-1
     n_bars = end_idx - start_idx + 1
-    phase = dfmacd.iloc[start_idx:end_idx+1].copy()
+    phase = dfmacd.iloc[start_idx:end_idx+1].drop_duplicates() #.copy()
 
     dt1 = to_local(phase.head(1).index[0].to_pydatetime().replace(tzinfo=pytz.utc))
     dt2 = to_local(phase.tail(1).index[0].to_pydatetime().replace(tzinfo=pytz.utc))
 
-    return {
-        'iloc': (start_idx, end_idx),
-        'row': np.array([
-            dt1, dt2, n_bars, signs[1], phase.mean()
+    return (
+        (start_idx, end_idx),
+        np.array([
+            dt1, dt2, n_bars, signs[1], phase.mean(), phase.max()
         ]),
-        'phase': phase,
-        'desc':\
-            '{0:%b %d}-{1:%d} @ {0:%H:%m}-{1:%H:%m}: '\
-            '{2:} phase, {3:} bars x {4:.2f} amp.'\
-            .format(dt1, dt2, signs[1], n_bars, abs(phase.mean()))
-    }
+        phase,
+        '{0:%b %d}-{1:%d} @ {0:%H:%m}-{1:%H:%m}: '\
+        '{2:} phase, {3:} bars x {4:.2f} amp.'\
+        .format(dt1, dt2, signs[1], n_bars, abs(phase.mean()))
+    )
 
 #------------------------------------------------------------------------------
 def plot(pair, freqstr, periods):
@@ -350,3 +355,13 @@ def describe(candle, ema=None):
                     float(desc['mean']),
                     float(last))
     return {'phase':phase, 'trend':trend, 'details':details}
+
+#------------------------------------------------------------------------------
+def agg_histo_phases(pairs, freqstr, startstr, periods):
+    df = pd.DataFrame(df[columns].values,
+        index = pd.MultiIndex.from_arrays(
+            [df['pair'], df['freq'], df['open_time']],
+            names = ['pair','freq','open_time']),
+        columns = columns
+    ).sort_index()
+

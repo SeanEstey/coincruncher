@@ -10,6 +10,7 @@ from pprint import pprint
 import importlib
 import pandas as pd
 import numpy as np
+from binance.client import Client
 from docs.botconf import trade_pairs
 import app
 from app.common.utils import utc_datetime as now
@@ -68,3 +69,6 @@ def load(pair, freqstr, startstr):
 
 df = load('ZILBTC','30m','72 hours ago utc')
 dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
+
+client = Client("","")
+info = client.get_exchange_info()

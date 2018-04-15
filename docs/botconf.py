@@ -9,23 +9,23 @@ max_positions = 10
 # Trade pairs for Binance WSS client to subcribe
 trade_pairs = [
     #'ADABTC',
-    #'AIONBTC',
+    'AIONBTC',
     'BNBBTC',
     #'BTCUSDT',
     #'DGDBTC',
     #'DNTBTC',
     #'ELFBTC',
     #'ETHUSDT',
-    #'FUNBTC',
     #'EOSBTC',
     #'ENJBTC',
+    'FUNBTC',
     #'ICXBTC',
     #'HSRBTC',
     'LRCBTC',
     #'OMGBTC',
     #'POWRBTC',
     #'ONTBTC',
-    #'OSTBTC',
+    'OSTBTC',
     #'SALTBTC',
     #'STEEMBTC',
     'SUBBTC',
@@ -93,13 +93,14 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss: ss['macd']['value'] > 0,
-                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['phases']['data'][-1]['amp_mean'] > 0,
+                lambda c,ss: ss['macd']['phases']['data'][-1]['bars'] < 5
             ]
         },
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
             "conditions": [
+                lambda c,ss: ss['macd']['phases'][-1]['amp_mean'] > 0,
                 lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
             ]
