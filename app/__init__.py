@@ -125,7 +125,7 @@ def file_handler(level, path, filters=None):
             handler.addFilter(TradeFilter())
         elif _filter==SCAN:
             short = WrappedFixedIndentingLog(
-                fmt = colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
+                fmt = colors.BLUE+'[%(asctime)-3s, scan]: '+colors.ENDC+'%(message)s',
                 datefmt = '%H:%M:%S',
                 width = 300
             )

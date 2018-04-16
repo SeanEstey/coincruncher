@@ -7,61 +7,36 @@ from binance.client import Client
 import app, app.bot
 from app.common.utils import to_local
 from app.common.timeutils import strtofreq
-from . import candles, macd
+from . import candles, macd, tickers
 log = logging.getLogger('scanner')
-
 def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
 def new_scanner():
-    trade_pairs = [
-        'ADABTC',
-        'AIONBTC',
-        'BNBBTC',
-        'BTCUSDT',
-        'DGDBTC',
-        'DNTBTC',
-        'ELFBTC',
-        'ETHUSDT',
-        'FUNBTC',
-        'EOSBTC',
-        'ENJBTC',
-        'ICXBTC',
-        'HSRBTC',
-        'LRCBTC',
-        'OMGBTC',
-        'POWRBTC',
-        'ONTBTC',
-        'OSTBTC',
-        'SALTBTC',
-        'STEEMBTC',
-        'SUBBTC',
-        'XVGBTC',
-        'WABIBTC',
-        'WANBTC',
-        'WTCBTC',
-        'ZILBTC'
-    ]
     freqstr, startstr, periods = '30m', '72 hours ago utc', 100
     #freqstr, startstr, periods = '1h', '72 hours ago utc', 72
     #freqstr, startstr, periods = '5m', '36 hours ago utc', 350
 
-    for pair in trade_pairs:
+    df = tickers.binance_24h().sort_values('pctPriceChange')
+    pairs = df[df['pctPriceChange'] > 5].index.tolist()
+
+    for pair in pairs:
         candles.update([pair], freqstr, start=startstr, force=True)
         df = candles.load([pair], freqstr=freqstr, startstr=startstr)
         df = df.loc[pair, strtofreq(freqstr)]
         dfh, phases = macd.histo_phases(df, pair, freqstr, periods)
+
+        # Don't trade bullshit.
+        last = dfh.iloc[-1]
+        if last['amp_mean'] < 0 or last['pricey'] < 0 or last['pricex'] < 0:
+            continue
+
+        dfh = dfh.tail(5)
         idx = dfh.index.to_pydatetime()
         dfh.index = [ to_local(n.replace(tzinfo=pytz.utc)).strftime("%b-%d %H:%M") for n in idx]
-        #dfh.index = dfh['start'].dt.strftime("%b-%d %H:%M")
-        #dfh = dfh[dfh['amp_mean'] > 0]
 
         scanlog("")
-        scanlog("{} MACD {} Histogram Analysis ({} Periods)".format(pair, freqstr, periods))
-        tot_gains = dfh[dfh['amp_mean'] > 0]['pricey'].mean()
-        capt_gains = dfh[dfh['amp_mean'] > 0]['pricex'].mean()
-        scanlog("+Price/Histo: {:+.2f}%".format(tot_gains))
-        scanlog("Captured: {:+.2f}%".format(capt_gains))
+        scanlog("{} MACD {} Oscilator Phases ({} Periods)".format(pair, freqstr, periods))
         lines = dfh.to_string(
             columns=['bars','amp_mean','amp_max','pricey','pricex','captured','corr'],
             formatters={

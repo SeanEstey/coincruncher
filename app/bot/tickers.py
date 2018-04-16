@@ -8,6 +8,8 @@ from pprint import pprint
 from binance.client import Client
 import app, app.bot
 from app.common.utils import utc_datetime as now
+log = logging.getLogger('tickers')
+def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
 def aggregate_mkt(freqstr=None):
@@ -29,6 +31,11 @@ def aggregate_mkt(freqstr=None):
 
     # Find price change of given frequency by finding difference
     # between both 24h_wt_price_changes
+    formatters={
+        '24h_wt_price_change': '{:+.2f}%'.format,
+        '24h_agg_volume': '{:,.0f}'.format
+    }
+
     if freqstr:
         last = list(db.tickers.find(
             {'freq':freqstr},
@@ -41,11 +48,12 @@ def aggregate_mkt(freqstr=None):
             _df = pd.DataFrame(last[0]).T
             k = '{}_wt_price_change'.format(freqstr)
             df_agg[k] = df_agg['24h_wt_price_change'] - _df['24h_wt_price_change']
+            formatters[k] = '{:+.2f}%'.format
 
-    print(df_agg.to_string(formatters={
-        '24h_wt_price_change': '{:+.2f}%'.format,
-        '24h_agg_volume': '{:,.0f}'.format
-    }))
+    scanlog("")
+    scanlog("Aggregate Markets")
+    lines = df_agg.to_string(formatters=formatters).split("\n")
+    [ scanlog(line) for line in lines]
 
     return df_agg
 

@@ -47,7 +47,6 @@ def init():
     # TODO: Determine all freqs required in trading algo's, return
     # list to daemon to setup timers for each.
     print('{} active trading strategies.'.format(len(strategies)))
-
     print('Initialized in {} ms. Ready to trade.'.format(t1.elapsed()))
 
 #------------------------------------------------------------------------------
@@ -77,7 +76,7 @@ def update(freqstr):
 
     tradelog('*'*logwidth)
     duration = to_relative_str(now() - start)
-    hdr = "Cycle #{}, Period {} {:>%s}" % (61 - len(str(n_cycles)))
+    hdr = "Cycle #{}, Period {} {:>%s}" % (41 - len(str(n_cycles)))
     tradelog(hdr.format(n_cycles, freq_str, duration))
     tradelog('*'*logwidth)
 

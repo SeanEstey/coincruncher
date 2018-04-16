@@ -30,14 +30,10 @@ def _scanner():
     scan_tmr = Timer(name='scanner', expire='every 30 clock min utc')
     n = 3
     scanner.new_scanner()
-    #scanner.scan("30m", 8, n, 1000, idx_filter='BTC', quiet=True)
-    #scanner.scan("1h", 4, n, 1000, idx_filter='BTC', quiet=True)
 
     while True:
         if scan_tmr.remain() == 0:
             scanner.new_scanner()
-            #scanner.scan("30m", 8, n, 1000, idx_filter='BTC', quiet=True)
-            #scanner.scan("1h", 4, n, 1000, idx_filter='BTC', quiet=True)
             scan_tmr.reset()
 
         time.sleep(300)
