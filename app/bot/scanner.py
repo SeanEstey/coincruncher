@@ -17,11 +17,19 @@ def new_scanner():
     #freqstr, startstr, periods = '1h', '72 hours ago utc', 72
     #freqstr, startstr, periods = '5m', '36 hours ago utc', 350
 
-    df = tickers.binance_24h().sort_values('pctPriceChange')
+    try:
+        df = tickers.binance_24h().sort_values('pctPriceChange')
+    except Exception as e:
+        return print("Binance client error. {}".format(str(e)))
+
     pairs = df[df['pctPriceChange'] > 5].index.tolist()
 
     for pair in pairs:
-        candles.update([pair], freqstr, start=startstr, force=True)
+        try:
+            candles.update([pair], freqstr, start=startstr, force=True)
+        except Exception as e:
+            return print("Binance client error. {}".format(str(e)))
+
         df = candles.load([pair], freqstr=freqstr, startstr=startstr)
         df = df.loc[pair, strtofreq(freqstr)]
         dfh, phases = macd.histo_phases(df, pair, freqstr, periods)

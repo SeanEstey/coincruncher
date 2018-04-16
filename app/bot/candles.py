@@ -62,9 +62,11 @@ def load(pairs, freqstr=None, startstr=None, dfm=None):
     df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
     df['freq'] = df['freq'].str.decode('utf-8')
     df['pair'] = df['pair'].str.decode('utf-8')
+    df['partial'] = False
     # Convert freqstr->freq to enable index sorting
     [df['freq'].replace(n, strtofreq(n), inplace=True) \
         for n in df['freq'].drop_duplicates()]
+
     df.sort_values(by=['pair','freq','open_time'], inplace=True)
     dfc = pd.DataFrame(df[columns].values,
         index = pd.MultiIndex.from_arrays(
@@ -110,7 +112,7 @@ def update(pairs, freqstr, start=None, force=False):
                 None
             ]
             d = dict(zip(_conf['kline_fields'], x))
-            d.update({'pair': pair, 'freq': freqstr})
+            d.update({'pair': pair, 'freq': freqstr, 'partial':False})
             if d['volume'] > 0:
                 d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
             else:
@@ -199,6 +201,27 @@ def query_api(pair, freqstr, start=None, end=None, force=False):
     return results
 
 #------------------------------------------------------------------------------
+def to_dict(pair, freqstr, partial=False):
+    """Get most recently added candle to either dataframe or mongoDB.
+    """
+    freq = strtofreq(freqstr)
+
+    if (pair,freq) not in app.bot.dfc:
+        raise Exception("({},{}) not in app.bot.dfc.index!".format(pair,freq))
+
+    df = dfc.loc[pair, freq]
+    df = df[df['partial'] == partial].tail(1)
+
+    if len(df) < 1:
+        raise Exception("{},{},{} candle not found in app.bot.dfc".format(
+            pair, freq, partial))
+
+    return {
+        **{'open_time':df.index.to_pydatetime()[0]},
+        **df.to_dict('record')
+    }
+
+#------------------------------------------------------------------------------
 def describe(candle):
     from app.bot.trade import snapshot
     ss = snapshot(candle)
@@ -210,26 +233,3 @@ def describe(candle):
         ss['price']['z-score'], ss['volume']['z-score'], candle['buy_ratio'],
         ss['price']['emaDiff']
     ))
-
-#------------------------------------------------------------------------------
-def to_dict(pair, freqstr):
-    """Get most recently added candle to either dataframe or mongoDB.
-    """
-    dfc = app.bot.dfc
-    freq = strtofreq(freqstr)
-
-    if (pair,freq) not in dfc.index:
-        raise Exception("({},{}) not in app.bot.dfc.index!".format(pair,freq))
-
-    series = dfc.loc[pair, freq].iloc[-1]
-    open_time = dfc.loc[(pair,freq)].index[-1]
-    idx = dict(zip(dfc.index.names, [pair, freqstr, open_time]))
-    return {**idx, **series}
-
-    """log.debug("Doing DB read for candle.newest!")
-    db = app.get_db()
-    return list(db.candles.find({"pair":pair,"freq":freq})\
-        .sort("close_time",-1)\
-        .limit(1)
-    )[0]
-    """

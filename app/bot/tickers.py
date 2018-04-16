@@ -13,7 +13,15 @@ def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
 def aggregate_mkt(freqstr=None):
-    df = binance_24h()
+    formatters={
+        '24h_wt_price_change': '{:+.2f}%'.format,
+        '24h_agg_volume': '{:,.0f}'.format
+    }
+    try:
+        df = binance_24h()
+    except Exception as e:
+        return print("Binance client error. {}".format(str(e)))
+
     vol = df.groupby('quoteAsset').apply(lambda x: x['quoteVol'].sum())
     vol.name = 'volume'
     dfV = pd.DataFrame(vol)
@@ -27,16 +35,10 @@ def aggregate_mkt(freqstr=None):
     df_agg = df_agg[['pairs', '24h_wt_price_change', '24h_agg_volume']]
     df_agg = df_agg.round(2).sort_values('24h_agg_volume')
 
-    db = app.get_db()
-
     # Find price change of given frequency by finding difference
     # between both 24h_wt_price_changes
-    formatters={
-        '24h_wt_price_change': '{:+.2f}%'.format,
-        '24h_agg_volume': '{:,.0f}'.format
-    }
-
     if freqstr:
+        db = app.get_db()
         last = list(db.tickers.find(
             {'freq':freqstr},
             {'_id':0,'freq':0,'ex':0,'time':0}).sort('time',-1))
@@ -54,7 +56,6 @@ def aggregate_mkt(freqstr=None):
     scanlog("Aggregate Markets")
     lines = df_agg.to_string(formatters=formatters).split("\n")
     [ scanlog(line) for line in lines]
-
     return df_agg
 
 #------------------------------------------------------------------------------
@@ -87,8 +88,12 @@ def summarize(df, symbol):
 def binance_24h():
     from_ts = datetime.fromtimestamp
 
-    client = Client("","")
-    tickers = client.get_ticker()
+    try:
+        client = Client("","")
+        tickers = client.get_ticker()
+    except Exception as e:
+        raise
+
     df = pd.DataFrame(tickers)
     df.index = df['symbol']
     # Filter cols

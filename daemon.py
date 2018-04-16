@@ -15,13 +15,11 @@ def _data(now=False):
     cmc = Timer(name='cmc', expire='every 5 clock min utc')
     #if now == True:
     #    #tickers.update(limit=500)
-
     while True:
         if cmc.remain() == 0:
             #tickers.update(limit=500)
             print('Updated CMC tickers')
             cmc.reset()
-
         print("cmc: {:} sec remain".format(cmc.remain(unit='s')))
         time.sleep(cmc.remain()/1000)
 
@@ -30,23 +28,19 @@ def _scanner():
     scan_tmr = Timer(name='scanner', expire='every 30 clock min utc')
     n = 3
     scanner.new_scanner()
-
     while True:
         if scan_tmr.remain() == 0:
             scanner.new_scanner()
             scan_tmr.reset()
-
         time.sleep(300)
 
 #---------------------------------------------------------------------------
 def _daily():
     timer_1d = Timer(name='daily', expire=utc_dtdate()+timedelta(days=1))
-
     while True:
         if timer_1d.remain() == 0:
             app.eod_tasks()
             timer_1d.set_expiry(utc_dtdate() + timedelta(days=1))
-
         print("daily: {:} sec remain".format(timer_1d.remain(unit='s')))
         time.sleep(timer_1d.remain()/1000)
 
@@ -56,7 +50,6 @@ def _trading():
     """
     print('Preloading historic data....')
     trade.init()
-
     timer_5m = Timer(name='trade_5m', expire='every 5 clock min utc')
     timer_30m = Timer(name='trade_30m', expire='every 30 clock min utc')
     timer_1h = Timer(name='trade_1h', expire='every 60 clock min utc')
@@ -67,24 +60,20 @@ def _trading():
             time.sleep(10)
             trade.update('1h')
             timer_1h.reset()
-
         if timer_30m.remain() == 0:
             tickers.aggregate_mkt(freqstr='30m')
             time.sleep(10)
             trade.update('30m')
             timer_30m.reset()
-
         if timer_5m.remain() == 0:
             tickers.aggregate_mkt(freqstr='5m')
             time.sleep(10)
             trade.update('5m')
             timer_5m.reset()
-
         #if timer_1m.remain() == 0:
         #    time.sleep(8)
         #    trade.update('1m')
         #    timer_1m.reset()
-
         time.sleep(5)
 
 #---------------------------------------------------------------------------

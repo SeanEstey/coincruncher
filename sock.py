@@ -34,8 +34,9 @@ def receive_kline(msg):
         print('not a kline')
         return
     # unclosed candle
-    elif msg['k']['x'] != True:
-        return
+    #elif msg['k']['x'] != True:
+    #    print(msg['k'])
+    #    return
     else:
         c = msg['k']
 
@@ -79,7 +80,8 @@ def receive_kline(msg):
             colors.ENDC
         ))
 
-    db.candles.insert_one(doc)
+    if msg['k']['x'] == True:
+        db.candles.insert_one(doc)
 
 #---------------------------------------------------------------------------
 def detect_pair_change():
