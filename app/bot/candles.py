@@ -55,7 +55,7 @@ def load(pairs, freqstr=None, startstr=None, dfm=None):
         ndarray = sequence_to_ndarray(batches, dtype, batches.count())
     except Exception as e:
         log.error(str(e))
-        return dfc
+        return dfm
 
     # Build multi-index dataframe from ndarray
     df = pd.DataFrame(ndarray)

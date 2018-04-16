@@ -5,8 +5,7 @@ import app
 from app import GracefulKiller
 from app.common.timer import Timer
 from app.common.utils import utc_dtdate
-from app.bot import candles, trade, scanner
-from app.cmc import tickers
+from app.bot import candles, trade, scanner, tickers
 from docs.botconf import trade_pairs as pairs
 
 log = logging.getLogger('daemon')
@@ -14,12 +13,12 @@ log = logging.getLogger('daemon')
 #---------------------------------------------------------------------------
 def _data(now=False):
     cmc = Timer(name='cmc', expire='every 5 clock min utc')
-    if now == True:
-        tickers.update(limit=500)
+    #if now == True:
+    #    #tickers.update(limit=500)
 
     while True:
         if cmc.remain() == 0:
-            tickers.update(limit=500)
+            #tickers.update(limit=500)
             print('Updated CMC tickers')
             cmc.reset()
 
@@ -68,16 +67,19 @@ def _trading():
 
     while True:
         if timer_1h.remain() == 0:
+            tickers.aggregate_mkt(freqstr='1h')
             time.sleep(10)
             trade.update('1h')
             timer_1h.reset()
 
         if timer_30m.remain() == 0:
+            tickers.aggregate_mkt(freqstr='30m')
             time.sleep(10)
             trade.update('30m')
             timer_30m.reset()
 
         if timer_5m.remain() == 0:
+            tickers.aggregate_mkt(freqstr='5m')
             time.sleep(10)
             trade.update('5m')
             timer_5m.reset()
@@ -130,8 +132,8 @@ if __name__ == '__main__':
 
     # Create threads
     try:
-        th1 = threading.Thread(
-            name='data', target=_data, kwargs=th1_kwargs)
+        #th1 = threading.Thread(
+        #    name='data', target=_data, kwargs=th1_kwargs)
         th2 = threading.Thread(
             name='daily', target=_daily)
         th3 = threading.Thread(
@@ -143,8 +145,8 @@ if __name__ == '__main__':
         print(str(e))
         sys.exit()
 
-    th1.setDaemon(True)
-    th1.start()
+    #th1.setDaemon(True)
+    #th1.start()
 
     th2.setDaemon(True)
     th2.start()

@@ -1,63 +1,16 @@
 # app.bot.scanner
-from pprint import pprint
 import logging
-from datetime import datetime
-import math
+import pytz
 import pandas as pd
 import numpy as np
-from datetime import timedelta as delta
-from dateparser import parse
 from binance.client import Client
-import app
-from app.common.timer import Timer
-from app.common.utils import utc_datetime as now, to_relative_str, datestr_to_dt
-import app.bot
-from app.bot import pct_diff
+import app, app.bot
+from app.common.utils import to_local
 from app.common.timeutils import strtofreq
-from . import candles, macd, signals
+from . import candles, macd
 log = logging.getLogger('scanner')
 
 def scanlog(msg): log.log(98, msg)
-
-#------------------------------------------------------------------------------
-def binance_24h_ticker_stats(fltr=None):
-    from_ts = datetime.fromtimestamp
-
-    client = Client("","")
-    tickers = client.get_ticker()
-    df = pd.DataFrame(tickers)
-    df.index = df['symbol']
-
-    # Filter cols
-    df = df[['openTime','closeTime','lastPrice','priceChange',
-        'priceChangePercent', 'quoteVolume','volume','weightedAvgPrice']]
-    # Datatype formatting
-    df = df.astype('float64')
-    df['openTime'] = df['openTime'].apply(lambda x: from_ts(int(x/1000)))
-    df['closeTime'] = df['closeTime'].apply(lambda x: from_ts(int(x/1000)))
-    df = df.sort_index()
-    df = df.rename(columns={
-        'priceChangePercent':'pctPriceChange',
-        'quoteVolume':'quoteVol'
-    })
-    # Filter rows
-    df = df[df.index.str.contains(fltr)]
-
-    # Calc volume for both lhs/rhs symbol pairs.
-    _df = df.copy()
-    for idx, row in _df[_df.index.str.startswith(fltr)].iterrows():
-        tmp = row['quoteVol']
-        _df.ix[idx,'quoteVol'] = row['volume']
-        _df.ix[idx,'volume'] = tmp
-    wt_price_change = \
-        (_df['pctPriceChange'] * _df['quoteVol']).sum() / _df['quoteVol'].sum()
-
-    print("{} Stats: {} pairs, {:+.2f}% weighted price change, "\
-        "{:,.1f} {} traded in last 24 hours."\
-        .format(fltr, len(df), wt_price_change, _df['quoteVol'].sum(),
-        fltr))
-
-    return df.sort_index()
 
 #------------------------------------------------------------------------------
 def new_scanner():
@@ -89,17 +42,19 @@ def new_scanner():
         'WTCBTC',
         'ZILBTC'
     ]
-    #freqstr, startstr, periods = '30m', '72 hours ago utc', 100
+    freqstr, startstr, periods = '30m', '72 hours ago utc', 100
     #freqstr, startstr, periods = '1h', '72 hours ago utc', 72
-    freqstr, startstr, periods = '5m', '36 hours ago utc', 350
+    #freqstr, startstr, periods = '5m', '36 hours ago utc', 350
 
     for pair in trade_pairs:
         candles.update([pair], freqstr, start=startstr, force=True)
         df = candles.load([pair], freqstr=freqstr, startstr=startstr)
-        df = df.loc[pair, strtofreq(freqstr)].reset_index()
-        df.index = df['open_time']
+        df = df.loc[pair, strtofreq(freqstr)]
         dfh, phases = macd.histo_phases(df, pair, freqstr, periods)
-        dfh = dfh[dfh['amp_mean'] > 0]
+        idx = dfh.index.to_pydatetime()
+        dfh.index = [ to_local(n.replace(tzinfo=pytz.utc)).strftime("%b-%d %H:%M") for n in idx]
+        #dfh.index = dfh['start'].dt.strftime("%b-%d %H:%M")
+        #dfh = dfh[dfh['amp_mean'] > 0]
 
         scanlog("")
         scanlog("{} MACD {} Histogram Analysis ({} Periods)".format(pair, freqstr, periods))
@@ -202,7 +157,6 @@ def indicators(idx, freqstr, periods, quiet=True):
 
     n = int(freqstr[:-1])
     startstr = "{} {} ago utc".format(n * periods + 25, strunit)
-    pprint("startstr={}".format(startstr))
     freq = strtofreq(freqstr)
     results=[]
 

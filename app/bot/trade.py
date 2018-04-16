@@ -1,4 +1,5 @@
 import logging
+import pytz
 import numpy as np
 import pandas as pd
 from pymongo import ReplaceOne
@@ -9,7 +10,7 @@ from docs.conf import binance as _binance, macd_ema
 from docs.botconf import trade_pairs as pairs, strategies
 from app import get_db
 from app.common.timeutils import strtofreq
-from app.common.utils import utc_datetime as now, to_relative_str
+from app.common.utils import to_local, utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bot
 from app.bot import pct_diff, candles, macd, printer, signals
@@ -66,7 +67,7 @@ def update(freqstr):
     tradelog('-'*logwidth)
     app.bot.dfc = candles.load(pairs,
         freqstr=freqstr,
-        startstr="{} seconds ago utc".format(freq),
+        startstr="{} seconds ago utc".format(freq*3),
         dfm=app.bot.dfc)
 
     snapshots = {}
@@ -248,54 +249,41 @@ def snapshot(candle):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
     global client
-    #z = signals.z_score(candle, 25).to_dict()
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
     ask = np.float64(ob['askPrice'])
     bid = np.float64(ob['bidPrice'])
 
-    dfh, phases = macd.histo_phases(app.bot.dfc,
-        candle['pair'], candle['freq'], 100)
-    phase = phases[-1]
-
-    #macd_desc = macd.describe(candle, ema=macd_ema)
-    #phase = macd_desc['phase']
-    # Convert datetime index to str for mongodb storage.
-    phase.index = [ str(n)[:-10] for n in phase.index.values ]
-    last = phase.iloc[-1]
-
-
-
-
-
-
-
-    print('{} {} {}'.format(
-        candle['pair'], candle['freq'], macd_desc['details']))
+    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])]
+    dfh, phases = macd.histo_phases(df, candle['pair'], candle['freq'], 100)
+    dfh['start'] = dfh.index
+    dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
+    current = phases[-1].round(3)
+    idx = current.index.to_pydatetime()
+    current.index = [str(to_local(n.replace(tzinfo=pytz.utc)))[:-10] for n in idx]
+    ema_span = len(current)/3 if len(current) >= 3 else len(current)
 
     return odict({
         'time': now(),
-        'details': macd_desc['details'],
+        #'details': macd_desc['details'],
         'price': odict({
             'close': candle['close'],
-            #'z-score': round(z['close'], 2),
             'ask': ask,
             'bid': bid,
             'pct_spread': round(pct_diff(bid, ask),3),
             'pct_slippage': round(pct_diff(candle['close'], ask),3)
         }),
         'volume': odict({
-            'value': candle['volume'],
-            #'z-score': round(z['volume'],2),
+            'value': candle['volume']
         }),
         'buyRatio': odict({
-            'value': round(candle['buy_ratio'],2),
-            #'z-score': round(z['buy_ratio'], 2),
+            'value': round(candle['buy_ratio'],2)
         }),
         'macd': odict({
-            'value': last.round(3),
-            'trend': macd_desc['trend'],
-            'phases': phase.round(3).to_dict(odict),
-            'desc': phase.describe().round(3).to_dict()
+            'histo': [{k:v} for k,v in current.to_dict().items()],
+            'values': current.values.tolist(),
+            'trend': current.diff().ewm(span=ema_span).mean().iloc[-1],
+            'desc': current.describe().round(3).to_dict(),
+            'history': dfh.to_dict('record')
         }),
         'orderBook':ob
     })
@@ -304,7 +292,6 @@ def snapshot(candle):
 def earnings():
     """Performance summary of trades, grouped by day/strategy.
     """
-    from pprint import pprint
     db = get_db()
 
     gain = list(db.trades.aggregate([

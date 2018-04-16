@@ -8,9 +8,9 @@ max_positions = 10
 
 # Trade pairs for Binance WSS client to subcribe
 trade_pairs = [
-    #'ADABTC',
-    'AIONBTC',
-    'BNBBTC',
+    'ADABTC',
+    #'AIONBTC',
+    #'BNBBTC',
     #'BTCUSDT',
     #'DGDBTC',
     #'DNTBTC',
@@ -18,11 +18,11 @@ trade_pairs = [
     #'ETHUSDT',
     #'EOSBTC',
     #'ENJBTC',
-    'FUNBTC',
-    #'ICXBTC',
+    #'FUNBTC',
+    'ICXBTC',
     #'HSRBTC',
-    'LRCBTC',
-    #'OMGBTC',
+    #'LRCBTC',
+    'OMGBTC',
     #'POWRBTC',
     #'ONTBTC',
     'OSTBTC',
@@ -30,10 +30,10 @@ trade_pairs = [
     #'STEEMBTC',
     'SUBBTC',
     #'XVGBTC',
-    #'WABIBTC',
+    'WABIBTC',
     #'WANBTC',
-    #'WTCBTC',
-    'ZILBTC'
+    'WTCBTC',
+    #'ZILBTC'
 ]
 
 ### Trade Algorithms ###########################################################
@@ -49,17 +49,17 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss: ss['macd']['value'] < 0,
-                lambda c,ss: ss['macd']['value'] > ss['macd']['desc']['min'],
-                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['values'][-1] < 0,
+                lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
+                lambda c,ss: ss['macd']['trend'] > 0
             ]
         },
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['value'] > 0,
-                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+               lambda c,ss,doc: ss['macd']['values'][-1] > 0,
+               lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+               lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
     },
@@ -71,17 +71,17 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss: ss['macd']['value'] < 0,
-                lambda c,ss: ss['macd']['value'] > ss['macd']['desc']['min'],
-                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['values'][-1] < 0,
+                lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
+                lambda c,ss: ss['macd']['trend'] > 0
             ]
         },
         "exit": {
            "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
            "conditions": [
-               lambda c,ss,doc: ss['macd']['value'] > 0,
-               lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['mean'],
-               lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+               lambda c,ss,doc: ss['macd']['values'][-1] > 0,
+               lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['mean'],
+               lambda c,ss,doc: ss['macd']['trend'] < 0
            ]
         }
     },
@@ -93,16 +93,17 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss: ss['macd']['phases']['data'][-1]['amp_mean'] > 0,
-                lambda c,ss: ss['macd']['phases']['data'][-1]['bars'] < 5
+                lambda c,ss: ss['macd']['values'][-1] > 0,
+                lambda c,ss: ss['macd']['trend'] > 0,
+                lambda c,ss: ss['macd']['history'][-1]['bars'] < 5
             ]
         },
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
             "conditions": [
-                lambda c,ss: ss['macd']['phases'][-1]['amp_mean'] > 0,
-                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+                lambda c,ss,doc: ss['macd']['values'][-1] > 0,
+                lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+                lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
     },
@@ -114,17 +115,17 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['1h']],
             "conditions": [
-                lambda c,ss: ss['macd']['value'] < 0,
-                lambda c,ss: ss['macd']['value'] > ss['macd']['desc']['min'],
-                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['values'][-1] < 0,
+                lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
+                lambda c,ss: ss['macd']['trend'] > 0
             ]
         },
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['value'] > 0,
-                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+                lambda c,ss,doc: ss['macd']['values'][-1] > 0,
+                lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+                lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
     },
@@ -136,17 +137,17 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['1h']],
             "conditions": [
-                lambda c,ss: ss['macd']['value'] < 0,
-                lambda c,ss: ss['macd']['value'] > ss['macd']['desc']['min'],
-                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['values'][-1] < 0,
+                lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
+                lambda c,ss: ss['macd']['trend'] > 0
             ]
         },
         "exit": {
            "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
            "conditions": [
-               lambda c,ss,doc: ss['macd']['value'] > 0,
-               lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['mean'],
-               lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+               lambda c,ss,doc: ss['macd']['values'][-1] > 0,
+               lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['mean'],
+               lambda c,ss,doc: ss['macd']['trend'] < 0
            ]
         }
     },
@@ -158,15 +159,16 @@ strategies = [
         "entry": {
             "filters": [lambda c, ss: c['freq'] in ['1h']],
             "conditions": [
-                lambda c,ss: ss['macd']['value'] > 0,
-                lambda c,ss: ss['macd']['trend'] == 'UPWARD'
+                lambda c,ss: ss['macd']['values'][-1] > 0,
+                lambda c,ss: ss['macd']['trend'] > 0,
+                lambda c,ss: ss['macd']['history'][-1]['bars'] < 5
             ]
         },
         "exit": {
             "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['value'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] == 'DOWNWARD'
+                lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+                lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
     }

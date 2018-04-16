@@ -15,7 +15,7 @@ from docs.botconf import trade_pairs
 import app
 from app.common.utils import utc_datetime as now
 from app.common.timeutils import freqtostr, strtofreq
-from app.bot import candles, macd, scanner, trade
+from app.bot import candles, macd, scanner, trade, tickers
 
 trade_pairs = [
     'ADABTC',
@@ -67,8 +67,7 @@ def load(pair, freqstr, startstr):
     return df.loc[pair,strtofreq(freqstr)]
 
 
-df = load('ZILBTC','30m','72 hours ago utc')
-dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
+#df = load('ZILBTC','30m','72 hours ago utc')
+#dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
 
-client = Client("","")
-info = client.get_exchange_info()
+#client = Client("","")

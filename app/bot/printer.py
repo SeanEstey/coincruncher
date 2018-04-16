@@ -38,7 +38,7 @@ def new_trades(trade_ids):
                 c2['freq'],
                 'SELL',
                 pct_diff(c1['close'], c2['close']),
-                ss2['macd']['value'],
+                ss2['macd']['values'][-1],
                 signals.rsi(df['close'], 14),
                 to_relative_str(now() - record['start_time']),
                 "-"
@@ -51,7 +51,7 @@ def new_trades(trade_ids):
                 c1['freq'],
                 'BUY',
                 0.0,
-                ss1['macd']['value'],
+                ss1['macd']['values'][-1],
                 signals.rsi(df['close'], 14),
                 "-",
                 "-"
@@ -95,7 +95,7 @@ def positions(freqstr):
         data.append([
             c1['freq'],
             pct_diff(c1['close'], c2['close']),
-            ss2['macd']['value'],
+            ss2['macd']['values'][-1],
             signals.rsi(df['close'], 14),
             to_relative_str(now() - record['start_time']),
             record['strategy']

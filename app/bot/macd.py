@@ -37,10 +37,10 @@ def generate(df, ema=None, normalize=True):
         ).mean()
     signal.name='signal'
 
-    df = df.join(fast)
-    df = df.join(slow)
-    df = df.join(macd)
-    df = df.join(signal)
+    df = df.join(pd.DataFrame(fast))
+    df = df.join(pd.DataFrame(slow))
+    df = df.join(pd.DataFrame(macd))
+    df = df.join(pd.DataFrame(signal))
 
     # Probably a more efficient way to do this transformation.
     histo = pd.Series(macd - signal, name='macd_diff')
@@ -52,7 +52,7 @@ def generate(df, ema=None, normalize=True):
             ((neg-neg.min()) / (neg.max()-neg.min()))*-1)
         df = df.join(norm_histo)
     else:
-        df = df.join(histo)
+        df = df.join(pd.DataFrame(histo))
     return df
 
 #------------------------------------------------------------------------------
@@ -62,9 +62,7 @@ def histo_phases(df, pair, freqstr, periods):
     """
     DF = pd.DataFrame
     freq = strtofreq(freqstr)
-    _df = df.copy().reset_index()
-    _df.index = _df['open_time']
-    dfmacd = generate(_df.tail(periods))['macd_diff']
+    dfmacd = generate(df).tail(periods)['macd_diff']
     np_arr, descs, phases = [],[],[]
     idx = 0
 
@@ -112,7 +110,8 @@ def histo_phases(df, pair, freqstr, periods):
     dfh['corr'] = pxy_corr
 
     # Append cols/clean up formatting
-    dfh.index = dfh['start'].dt.strftime("%b-%d %H:%M")
+    dfh.index = dfh['start'] #.dt.strftime("%b-%d %H:%M")
+    dfh = dfh.sort_index()
     dfh = dfh[['lbl', 'bars', 'duration', 'amp_mean', 'amp_max',
         'pricey', 'pricex', 'captured', 'corr']].round(2)
     return (dfh, phases)
@@ -139,8 +138,10 @@ def next_phase(dfmacd, freq, start_idx):
     n_bars = end_idx - start_idx + 1
     phase = dfmacd.iloc[start_idx:end_idx+1].drop_duplicates() #.copy()
 
-    dt1 = to_local(phase.head(1).index[0].to_pydatetime().replace(tzinfo=pytz.utc))
-    dt2 = to_local(phase.tail(1).index[0].to_pydatetime().replace(tzinfo=pytz.utc))
+    dt1 = phase.head(1).index[0].to_pydatetime()
+    local_dt1 = to_local(dt1.replace(tzinfo=pytz.utc))
+    dt2 = phase.tail(1).index[0].to_pydatetime()
+    local_dt2 = to_local(dt2.replace(tzinfo=pytz.utc))
 
     return (
         (start_idx, end_idx),
@@ -150,7 +151,7 @@ def next_phase(dfmacd, freq, start_idx):
         phase,
         '{0:%b %d}-{1:%d} @ {0:%H:%m}-{1:%H:%m}: '\
         '{2:} phase, {3:} bars x {4:.2f} amp.'\
-        .format(dt1, dt2, signs[1], n_bars, abs(phase.mean()))
+        .format(local_dt1, local_dt2, signs[1], n_bars, abs(phase.mean()))
     )
 
 #------------------------------------------------------------------------------
@@ -185,8 +186,6 @@ def plot(pair, freqstr, periods):
     # Macd analysis
     dfmacd = generate(df)
     aggdesc = agg_describe(df, pair, freqstr, periods)
-
-    print("startstr={}".format(startstr))
 
     aggdesc['summary'] = aggdesc['summary'].replace("\n", "<br>")
 
@@ -305,7 +304,7 @@ def describe(candle, ema=None):
     """Describe current histo phase.
     """
     _ema = ema if ema else macd_ema
-    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])]
+    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])].copy()
     macd = generate(df, ema=_ema)
 
     # Isolate current histo phase
