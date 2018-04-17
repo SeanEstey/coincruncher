@@ -111,7 +111,7 @@ def file_handler(level, path, filters=None):
             handler.addFilter(CriticalFilter())
         elif _filter==SIGNAL:
             short = WrappedFixedIndentingLog(
-                colors.BLUE+'[%(asctime)-3s, signal]: '+colors.ENDC+'%(message)s',
+                colors.BLUE+'%(asctime)-3s, signal '+colors.ENDC+'%(message)s',
                 datefmt = '%H:%M:%S',
                 width = 200
             )
@@ -119,14 +119,14 @@ def file_handler(level, path, filters=None):
             handler.addFilter(SignalFilter())
         elif _filter==TRADE:
             short = WrappedFixedIndentingLog(
-                colors.BLUE+'[%(asctime)-3s, trade]: '+colors.ENDC+'%(message)s',
-                '%H:%M:%S')
+                colors.BLUE+'%(asctime)-3s trade '+colors.ENDC+'%(message)s',
+                '%H:%M')
             handler.setFormatter(short)
             handler.addFilter(TradeFilter())
         elif _filter==SCAN:
             short = WrappedFixedIndentingLog(
-                fmt = colors.BLUE+'[%(asctime)-3s, scan]: '+colors.ENDC+'%(message)s',
-                datefmt = '%H:%M:%S',
+                fmt = colors.BLUE+'%(asctime)-3s scan '+colors.ENDC+'%(message)s',
+                datefmt = '%H:%M',
                 width = 300
             )
             handler.setFormatter(short)

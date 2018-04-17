@@ -5,7 +5,6 @@ import dateparser
 from datetime import datetime
 import pytz
 import pandas as pd
-from docs.botconf import trade_pairs as pairs
 import app, app.bot
 from app.bot import pct_diff
 from app.common.utils import colors, to_relative_str, utc_datetime as now
@@ -21,7 +20,7 @@ log = logging.getLogger('print')
 def new_trades(trade_ids):
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ['Freq', "Type", "ΔPrice", "Macd", "RSI", "Time", "Reason"]
+    cols = ['freq', "type", "Δprice", "macd", "rsi", "time", "reason"]
     data, indexes = [], []
 
     for _id in trade_ids:
@@ -67,7 +66,7 @@ def new_trades(trade_ids):
         cols[1]: ' {}'.format,
         cols[2]: ' {:+.2f}%'.format,
         cols[3]: ' {:+.3f}'.format,
-        cols[4]: '{:.2f}'.format,
+        cols[4]: '{:.0f}'.format,
         cols[5]: '{}'.format,
         cols[6]: '{}'.format
     }).split("\n")
@@ -80,7 +79,7 @@ def positions(freqstr):
     """
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ["Freq", "ΔPrice", "Macd", "RSI", "Time", "Strategy"]
+    cols = ["freq", "Δprice", "macd", "rsi", "time", "strat"]
     data, indexes = [], []
     _trades = list(db.trades.find(
         {'status':'open', 'pair':{"$in":pairs}}))
@@ -111,7 +110,7 @@ def positions(freqstr):
             cols[0]: ' {}'.format,
             cols[1]: ' {:+.2f}%'.format,
             cols[2]: '  {:+.3f}'.format,
-            cols[3]: '{:.2f}'.format,
+            cols[3]: '{:.0f}'.format,
             cols[4]: '{}'.format,
             cols[5]: ' {}'.format
         }).split("\n")

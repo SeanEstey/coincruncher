@@ -2,12 +2,12 @@ import logging
 import pytz
 import numpy as np
 import pandas as pd
-from pymongo import ReplaceOne
+from pymongo import ReplaceOne, UpdateOne
 from collections import OrderedDict as odict
 from binance.client import Client
 from datetime import timedelta as delta, datetime
 from docs.conf import binance as _binance, macd_ema
-from docs.botconf import trade_pairs as pairs, strategies
+from docs.botconf import strategies
 from app import get_db
 from app.common.timeutils import strtofreq
 from app.common.utils import to_local, utc_datetime as now, to_relative_str
@@ -20,7 +20,7 @@ def siglog(msg): log.log(100, msg)
 
 # GLOBALS
 log = logging.getLogger('trade')
-logwidth = 60
+logwidth = 50
 n_cycles = 0
 start = now()
 freq = None
@@ -29,25 +29,60 @@ client = None
 snapshots = {}
 
 #------------------------------------------------------------------------------
+def enable_pairs(authlist):
+    """To disable all pairs/freq, pass in empty list.
+    """
+    db = app.get_db()
+
+    result = db.meta.update_many({},
+        {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})
+
+    print("Reset {}/{} pairs.".format(
+        result.modified_count,
+        db.meta.find({'botTradeStatus':'ENABLED'}).count()
+    ))
+
+    ops = [
+        UpdateOne({'symbol':auth['pair']},
+            {'$set':{'botTradeStatus':'ENABLED'},
+            '$push':{'botTradeFreq':auth['freq']}},
+            upsert=True) for auth in authlist
+    ]
+    if len(ops) > 0:
+        result = db.meta.bulk_write(ops)
+        print("{} pairs updated, {} upserted.".format(
+            result.modified_count, result.upserted_count))
+
+#------------------------------------------------------------------------------
 def init():
     """Preload candles records from mongoDB to global dataframe.
     Performance: ~3,000ms/100k records
     """
     t1 = Timer()
-    print('Loading candles...')
-    app.bot.dfc = candles.load(pairs)
-
     # Lookup/store Binance asset metadata for active trading pairs.
     client = Client('','')
     info = client.get_exchange_info()
-    meta = [n for n in info['symbols'] if n['symbol'] in pairs]
-    ops = [ ReplaceOne({'symbol':n['symbol']}, n, upsert=True) for n in meta ]
-    get_db().meta.bulk_write(ops)
 
-    # TODO: Determine all freqs required in trading algo's, return
-    # list to daemon to setup timers for each.
+    ops = [UpdateOne({'symbol':n['symbol']}, {'$set':n}, upsert=True) for n in info['symbols']]
+    get_db().assets.bulk_write(ops)
+
+    print("{} available trading pairs retrieved from api.".format(len(ops)))
+
+    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
+
+    if enabled.count() == 0:
+        raise Exception("No tradepairs enabled")
+
+    pairs = [ n['symbol'] for n in list(enabled) ]
+
+    print("{} pairs meet requirements and have been enabled.".format(enabled.count()))
+    print(pairs)
     print('{} active trading strategies.'.format(len(strategies)))
-    print('Initialized in {} ms. Ready to trade.'.format(t1.elapsed()))
+    print('Loading candles...')
+
+    app.bot.dfc = candles.load(pairs)
+
+    print('Ready for trading. [{:.0f}ms]'.format(t1.elapsed()))
 
 #------------------------------------------------------------------------------
 def update(freqstr):
@@ -63,7 +98,7 @@ def update(freqstr):
     db = get_db()
 
     # Merge new candle data
-    tradelog('-'*logwidth)
+    #tradelog('-'*logwidth)
     app.bot.dfc = candles.load(pairs,
         freqstr=freqstr,
         startstr="{} seconds ago utc".format(freq*3),
@@ -76,18 +111,16 @@ def update(freqstr):
 
     tradelog('*'*logwidth)
     duration = to_relative_str(now() - start)
-    hdr = "Cycle #{}, Period {} {:>%s}" % (41 - len(str(n_cycles)))
+    hdr = "Cycle #{}, Period {} {:>%s}" % (31 - len(str(n_cycles)))
     tradelog(hdr.format(n_cycles, freq_str, duration))
-    tradelog('*'*logwidth)
+    tradelog('-'*logwidth)
 
     _ids += exits(freqstr)
     _ids += entries(freqstr)
 
-    tradelog('-'*logwidth)
     printer.new_trades([n for n in _ids if n])
     tradelog('-'*logwidth)
     printer.positions(freqstr)
-    tradelog('-'*logwidth)
     tradelog('-'*logwidth)
     earnings()
     n_cycles +=1
@@ -263,7 +296,6 @@ def snapshot(candle):
 
     return odict({
         'time': now(),
-        #'details': macd_desc['details'],
         'price': odict({
             'close': candle['close'],
             'ask': ask,
@@ -284,6 +316,7 @@ def snapshot(candle):
             'desc': current.describe().round(3).to_dict(),
             'history': dfh.to_dict('record')
         }),
+        'rsi': signals.rsi(df['close'], 14),
         'orderBook':ob
     })
 

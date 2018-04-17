@@ -13,53 +13,68 @@ def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
 def aggregate_mkt(freqstr=None):
-    formatters={
-        '24h_wt_price_change': '{:+.2f}%'.format,
-        '24h_agg_volume': '{:,.0f}'.format
-    }
     try:
-        df = binance_24h()
+        dfT = binance_24h()
     except Exception as e:
         return print("Binance client error. {}".format(str(e)))
 
-    vol = df.groupby('quoteAsset').apply(lambda x: x['quoteVol'].sum())
-    vol.name = 'volume'
-    dfV = pd.DataFrame(vol)
+    dfV = pd.DataFrame(
+        dfT.groupby('quoteAsset').apply(lambda x: x['quoteVol'].sum()),
+        columns=['volume'])
 
     summaries=[]
     for idx, row in dfV.iterrows():
-        summaries.append(summarize(df, idx))
+        summaries.append(summarize(dfT, idx))
 
-    df_agg = pd.DataFrame(summaries)
-    df_agg.index = df_agg['symbol']
-    df_agg = df_agg[['pairs', '24h_wt_price_change', '24h_agg_volume']]
-    df_agg = df_agg.round(2).sort_values('24h_agg_volume')
+    dfA = pd.DataFrame(summaries, index=[n['symbol'] for n in summaries])
+    dfA = dfA[['pairs', '24hPriceChange', '24hAggVol']]\
+        .round(2).sort_values('24hAggVol')
 
-    # Find price change of given frequency by finding difference
-    # between both 24h_wt_price_changes
+    # Diff in both 24h_delta_price's is freq price change.
+    formatters={}
+    k=None
     if freqstr:
         db = app.get_db()
-        last = list(db.tickers.find(
-            {'freq':freqstr},
+        last = list(db.tickers.find({'freq':freqstr},
             {'_id':0,'freq':0,'ex':0,'time':0}).sort('time',-1))
-
-        db.tickers.insert_one({**{'ex':'Binance', 'time': now(), 'freq': freqstr},
-            **df_agg.to_dict('index')})
+        db.tickers.insert_one({
+            **{'ex':'Binance', 'time': now(), 'freq': freqstr},
+            **dfA.to_dict('index')
+        })
 
         if len(last) > 0:
-            _df = pd.DataFrame(last[0]).T
-            k = '{}_wt_price_change'.format(freqstr)
-            df_agg[k] = df_agg['24h_wt_price_change'] - _df['24h_wt_price_change']
-            formatters[k] = '{:+.2f}%'.format
+            k = '{}.Δprice'.format(freqstr)
+            dfA[k] = dfA['24hPriceChange'] - pd.DataFrame(last[0]).T['24hPriceChange']
+            formatters[k] = '   {:+.2f}%'.format
 
-    scanlog("")
+    dfA = dfA.rename(columns={
+        '24hPriceChange':'24h.Δprice',
+        '24hAggVol':'24h.agg.vol'
+    })
+    formatters.update({
+        '24h.Δprice':   '   {:+.2f}%'.format,
+        '24h.agg.vol':  '   {:,.0f}'.format
+    })
     scanlog("Aggregate Markets")
-    lines = df_agg.to_string(formatters=formatters).split("\n")
+    columns=['pairs', k, '24h.Δprice', '24h.agg.vol']
+    if not k:
+        columns = [n for n in columns if n]
+    lines = dfA.to_string(
+        columns=columns,
+        formatters=formatters
+    ).split("\n")
     [ scanlog(line) for line in lines]
-    return df_agg
+    scanlog("")
+    return dfA
 
 #------------------------------------------------------------------------------
 def summarize(df, symbol):
+    """
+    # print("{} Stats: {} pairs, {:+.2f}% weighted price change, "\
+    #    "{:,.1f} {} traded in last 24 hours."\
+    #    .format(symbol, len(df), wt_price_change, _df['quoteVol'].sum(),
+    #    symbol))
+    """
     # Filter rows
     df = df[df.index.str.contains(symbol)]
 
@@ -70,18 +85,13 @@ def summarize(df, symbol):
         _df.ix[idx,'quoteVol'] = row['volume']
         _df.ix[idx,'volume'] = tmp
     wt_price_change = \
-        (_df['pctPriceChange'] * _df['quoteVol']).sum() / _df['quoteVol'].sum()
-
-    #print("{} Stats: {} pairs, {:+.2f}% weighted price change, "\
-    #    "{:,.1f} {} traded in last 24 hours."\
-    #    .format(symbol, len(df), wt_price_change, _df['quoteVol'].sum(),
-    #    symbol))
+        (_df['24hPriceChange'] * _df['quoteVol']).sum() / _df['quoteVol'].sum()
 
     return {
         'symbol': symbol,
         'pairs': len(df),
-        '24h_wt_price_change': wt_price_change,
-        '24h_agg_volume': _df['quoteVol'].sum()
+        '24hPriceChange': wt_price_change,
+        '24hAggVol': _df['quoteVol'].sum()
     }
 
 #------------------------------------------------------------------------------
@@ -105,7 +115,7 @@ def binance_24h():
     df['closeTime'] = df['closeTime'].apply(lambda x: from_ts(int(x/1000)))
     df = df.sort_index()
     df = df.rename(columns={
-        'priceChangePercent':'pctPriceChange',
+        'priceChangePercent':'24hPriceChange',
         'quoteVolume':'quoteVol'
     })
 
@@ -114,8 +124,9 @@ def binance_24h():
     dfM = pd.DataFrame(list(meta))
     dfM.index = dfM['symbol']
     dfM = dfM[['baseAsset', 'quoteAsset']]
-    df = df.join(dfM)
-    return df.sort_index()
+    df = df.join(dfM).sort_index()
+    # Prune dummy '123456' symbol row
+    return df.iloc[1:]
 
 #------------------------------------------------------------------------------
 def meta():

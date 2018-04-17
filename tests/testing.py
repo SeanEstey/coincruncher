@@ -11,40 +11,11 @@ import importlib
 import pandas as pd
 import numpy as np
 from binance.client import Client
-from docs.botconf import trade_pairs
 import app
 from app.common.utils import utc_datetime as now
 from app.common.timeutils import freqtostr, strtofreq
 from app.bot import candles, macd, scanner, trade, tickers
 
-trade_pairs = [
-    'ADABTC',
-    'AIONBTC',
-    'BNBBTC',
-    'BTCUSDT',
-    'DGDBTC',
-    'DNTBTC',
-    'ELFBTC',
-    'ETHUSDT',
-    'FUNBTC',
-    'EOSBTC',
-    'ENJBTC',
-    'ICXBTC',
-    'HSRBTC',
-    'LRCBTC',
-    'OMGBTC',
-    'POWRBTC',
-    'ONTBTC',
-    'OSTBTC',
-    'SALTBTC',
-    'STEEMBTC',
-    'SUBBTC',
-    'XVGBTC',
-    'WABIBTC',
-    'WANBTC',
-    'WTCBTC',
-    'ZILBTC'
-]
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 app.set_db(["localhost", "45.79.176.125"][0])

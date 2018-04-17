@@ -2,7 +2,7 @@ import logging
 from dateparser import parse
 import pandas as pd
 import numpy as np
-from pymongo import UpdateOne, ReplaceOne
+from pymongo import ReplaceOne
 from bson import ObjectId
 from bsonnumpy import sequence_to_ndarray
 from binance.client import Client
@@ -206,19 +206,19 @@ def to_dict(pair, freqstr, partial=False):
     """
     freq = strtofreq(freqstr)
 
-    if (pair,freq) not in app.bot.dfc:
+    if (pair,freq) not in app.bot.dfc.index:
         raise Exception("({},{}) not in app.bot.dfc.index!".format(pair,freq))
 
-    df = dfc.loc[pair, freq]
-    df = df[df['partial'] == partial].tail(1)
+    df = app.bot.dfc.loc[pair, freq].tail(1)
+    #df = df[df['partial'] == partial].tail(1)
 
     if len(df) < 1:
         raise Exception("{},{},{} candle not found in app.bot.dfc".format(
             pair, freq, partial))
 
     return {
-        **{'open_time':df.index.to_pydatetime()[0]},
-        **df.to_dict('record')
+        **{'pair':pair, 'freq':freqstr, 'open_time':df.index.to_pydatetime()[0]},
+        **df.to_dict('record')[0]
     }
 
 #------------------------------------------------------------------------------

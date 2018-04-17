@@ -78,7 +78,7 @@ def histo_phases(df, pair, freqstr, periods):
             phases.append(phase)
             idx = iloc[1] + 1
 
-    dfh = DF(np_arr, columns=['start', 'end', 'bars', 'phase', 'amp_mean', 'amp_max'])
+    dfh = DF(np_arr, columns=['start', 'end', 'bars', 'phase', 'ampMean', 'ampMax'])
 
     # Gen labels and calc % price changes
     lbls, pxy_corr, pct_py, pct_px = [],[],[],[]
@@ -104,16 +104,16 @@ def histo_phases(df, pair, freqstr, periods):
 
     dfh['lbl'] = lbls
     dfh['duration'] = dfh['end'] - dfh['start']
-    dfh['pricey'] = pct_py
-    dfh['pricex'] = pct_px
-    dfh['captured'] = abs(dfh['pricex'] / dfh['pricey'])
+    dfh['priceY'] = pct_py
+    dfh['priceX'] = pct_px
+    dfh['capt'] = abs(dfh['priceX'] / dfh['priceY'])
     dfh['corr'] = pxy_corr
 
     # Append cols/clean up formatting
     dfh.index = dfh['start'] #.dt.strftime("%b-%d %H:%M")
     dfh = dfh.sort_index()
-    dfh = dfh[['lbl', 'bars', 'duration', 'amp_mean', 'amp_max',
-        'pricey', 'pricex', 'captured', 'corr']].round(2)
+    dfh = dfh[['lbl', 'bars', 'duration', 'ampMean', 'ampMax',
+        'priceY', 'priceX', 'capt', 'corr']].round(2)
     return (dfh, phases)
 
 #------------------------------------------------------------------------------

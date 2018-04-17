@@ -69,10 +69,10 @@ def receive_kline(msg):
     else:
         color = colors.WHITE
 
-    print("{}{:%H:%M:%S:} {:<7} {:>5} {:>12g}{}"\
+    print("{}{:<7} {:>5} {:>12g}{}"\
         .format(
             colors.WHITE,
-            to_local(doc['close_time']),
+            #to_local(doc['close_time']),
             doc['pair'],
             doc['freq'],
             doc['close'],

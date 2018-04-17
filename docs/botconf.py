@@ -1,44 +1,27 @@
 """botconf.py
-
 Settings for formatting/subscribing to API data and trading bot.
 """
+tradepairs = {
+    "filters": [
+        # Aggregate parent symbol (quote asset) market price
+        lambda tckr, mkt: mkt['24h.Δprice'] > 0,
+        # Individual pair price.
+        lambda tckr, mkt: tckr['24hPriceChange'] > 7.5
+    ],
+    "conditions": [
+        # Positive macd oscilator phase
+        lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,
+        # Vertical price movement within oscilator phase.
+        lambda ss: ss['macd']['history'][-1]['priceY'] > 0,
+        # Sustained vertical price over X-axis (current)
+        lambda ss: ss['macd']['history'][-1]['priceX'] > 0
+   ]
+}
 
-# Max simultaneous open trades
-max_positions = 10
-
-# Trade pairs for Binance WSS client to subcribe
-trade_pairs = [
-    'ADABTC',
-    'ADAETH',
-    #'AIONBTC',
-    'BLZBNB',
-    #'BNBBTC',
-    #'BTCUSDT',
-    #'DGDBTC',
-    #'DNTBTC',
-    #'ELFBTC',
-    #'ETHUSDT',
-    #'EOSBTC',
-    #'ENJBTC',
-    #'FUNBTC',
-    'ICXBTC',
-    'ICXETH',
-    'KNCBTC',
-    #'HSRBTC',
-    #'LRCBTC',
-    'OMGBTC',
-    #'POWRBTC',
-    #'ONTBTC',
-    'OSTBTC',
-    'RDNBNB',
-    #'SALTBTC',
-    #'STEEMBTC',
-    #'SUBBTC',
-    #'XVGBTC',
-    'WABIBTC',
-    #'WANBTC',
-    'WTCBTC',
-    #'ZILBTC'
+macd_scan = [
+    #{'freqstr':'5m', 'startstr':'36 hours ago utc', 'periods':350}
+    {'freqstr':'30m', 'startstr':'72 hours ago utc', 'periods':100}
+    #{'freqstr':'1h', 'startstr':'72 hours ago utc', 'periods':72},
 ]
 
 ### Trade Algorithms ###########################################################
@@ -48,20 +31,21 @@ trade_pairs = [
 strategies = [
     #---------------------------------------------------------------------------
     {
-        "name": "macd_5m_phase",
+        "name": "macd5m",
         "ema": (12, 26, 9),
         "stop_loss": {"freq": ['5m'], "pct": -0.75},
         "entry": {
-            "filters": [lambda c, ss: c['freq'] in ['5m']],
+            "filters": [],
             "conditions": [
                 lambda c,ss: ss['macd']['values'][-1] > 0,
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['pricex'] > 0
+                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
+                lambda c,ss: ss['rsi'] <= 0.3
             ]
         },
         "exit": {
-            "filters": [lambda c, ss, doc: c['freq'] in ['5m']],
+            "filters": [],
             "conditions": [
                 lambda c,ss,doc: ss['macd']['values'][-1] > 0,
                 lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
@@ -71,21 +55,22 @@ strategies = [
     },
     #---------------------------------------------------------------------------
     {
-        "name": "macd_30m_phase",
+        "name": "macd30m",
         "ema": (12, 26, 9),
         "stop_loss": {"freq": ['5m'], "pct": -0.75},
         "entry": {
-            "filters": [lambda c, ss: c['freq'] in ['30m']],
+            "filters": [],
             "conditions": [
                 lambda c,ss: ss['macd']['values'][-1] > 0,
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['pricex'] > 0
+                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
+                lambda c,ss: ss['rsi'] <= 0.3
 
             ]
         },
         "exit": {
-            "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
+            "filters": [],
             "conditions": [
                 lambda c,ss,doc: ss['macd']['values'][-1] > 0,
                 lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
@@ -95,16 +80,17 @@ strategies = [
     },
     #---------------------------------------------------------------------------
     {
-        "name": "macd_1h_phase",
+        "name": "macd1h",
         "ema": (12, 26, 9),
         "stop_loss": {"freq": ['5m'], "pct": -0.75},
         "entry": {
-            "filters": [lambda c, ss: c['freq'] in ['1h']],
+            "filters": [],
             "conditions": [
                 lambda c,ss: ss['macd']['values'][-1] > 0,
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['pricex'] > 0
+                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
+                lambda c,ss: ss['rsi'] <= 0.3
             ]
         },
         "exit": {
