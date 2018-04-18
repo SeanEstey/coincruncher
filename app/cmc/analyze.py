@@ -109,6 +109,7 @@ def corr_minmax(symbol, start, end, maxrank):
 
 #------------------------------------------------------------------------------
 def corr_minmax_history(symbol, start, freq, max_rank):
+    # TODO: replace parse_period with strtofreq
     delta = parse_period(freq)[2]
     _date = start
     results=[]

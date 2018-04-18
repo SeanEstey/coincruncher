@@ -8,11 +8,10 @@ import numpy as np
 import pandas as pd
 from docs.conf import macd_ema
 from app.common.utils import utc_datetime as now, to_relative_str as relative
-from app.common.utils import to_local, abc
+from app.common.utils import pct_diff, to_local, abc
 from app.common.timeutils import strtofreq, freqtostr
 from app.common.timer import Timer
 import app.bot
-from app.bot import pct_diff
 
 log = logging.getLogger('macd')
 

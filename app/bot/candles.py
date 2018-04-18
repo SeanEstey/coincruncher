@@ -6,23 +6,21 @@ import pandas as pd
 import numpy as np
 from pymongo import ReplaceOne
 from bsonnumpy import sequence_to_ndarray
-from binance.client import Client
-import app, app.bot
 from docs.conf import *
 from docs.botconf import *
+import app, app.bot
 from app.common.timer import Timer
 from app.common.utils import strtodt, strtoms
 from app.common.timeutils import strtofreq
 
 log = logging.getLogger('candles')
-db = app.get_db()
 
 #------------------------------------------------------------------------------
 def load(pairs, freqstrs, startstr=None, dfm=None):
-    global db
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
+    db = app.get_db()
     t1 = Timer()
     columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_ratio']
     exclude = ['_id', 'quote_vol','sell_vol', 'close_time']
@@ -37,7 +35,7 @@ def load(pairs, freqstrs, startstr=None, dfm=None):
 
     batches = db.candles.find_raw_batches(query, proj)
     if batches.count() < 1:
-        print("No DB matches found for query: {}".format(query))
+        print("No db matches for ({},{}).".format(query))
         return dfm
 
     dtype = np.dtype([
@@ -89,13 +87,15 @@ def load(pairs, freqstrs, startstr=None, dfm=None):
     return dfc
 
 #------------------------------------------------------------------------------
-def update(pairs, freqstrs, startstr=None, client=None):
+def update(pairs, freqstrs, startstr=None):
+    db = app.get_db()
+    client = app.bot.client
     t1 = Timer()
     candles = []
 
     for pair in pairs:
         for freqstr in freqstrs:
-            data = query_api(pair, freqstr, startstr=startstr, client=client)
+            data = query_api(pair, freqstr, startstr=startstr)
             if len(data) == 0:
                 continue
             for i in range(0, len(data)):
@@ -134,17 +134,13 @@ def update(pairs, freqstrs, startstr=None, client=None):
     return candles
 
 #------------------------------------------------------------------------------
-def query_api(pair, freqstr, startstr=None, endstr=None, client=None):
+def query_api(pair, freqstr, startstr=None, endstr=None):
     """Get Historical Klines (candles) from Binance.
     @freqstr: 1m, 3m, 5m, 15m, 30m, 1h, ettc
     """
+    client = app.bot.client
     t1 = Timer()
     ms_period = strtofreq(freqstr) * 1000
-
-    if client is None:
-        print("Creating new Binance client (slow).")
-        client = Client('','')
-
     end = strtoms(endstr or "now utc") # if endstr else time.time()
     start = strtoms(startstr or DEF_KLINE_HIST_LEN)
     results = []

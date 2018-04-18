@@ -11,64 +11,22 @@ from datetime import timedelta as delta, datetime
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
-from app.bot import pct_diff, candles, macd, reports, signals
+from app.bot import candles, macd, reports, signals
 from app.common.timeutils import strtofreq
-from app.common.utils import to_local, utc_datetime as now, to_relative_str
+from app.common.utils import pct_diff, to_local, utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
-
-db = None
 log = logging.getLogger('trade')
-client = None
-
-#------------------------------------------------------------------------------
-def init(client_=None):
-    t1 = Timer()
-    global client, db
-    db = app.get_db()
-    client = client_ if client_ else Client('','')
-
-    # Get available exchange trade pairs
-    info = client.get_exchange_info()
-    ops = [ UpdateOne({'symbol':n['symbol']}, {'$set':n},
-        upsert=True) for n in info['symbols'] ]
-    db.assets.bulk_write(ops)
-    print("{} available trading pairs retrieved from api.".format(len(ops)))
-
-    enabled = db.assets.find({'botTradeStatus':'ENABLED'})
-    if enabled.count() == 0:
-        raise Exception("No tradepairs enabled")
-
-    pairs = [ n['symbol'] for n in list(enabled) ]
-
-    print("{} enabled pairs: {}".format(enabled.count(), pairs))
-    print('{} trading algorithms.'.format(len(TRADE_ALGOS)))
-
-    # Load revelent historic candle data from DB, query any (pair,freq)
-    # index data that's missing.
-    app.bot.dfc = candles.load(pairs, TRADEFREQS, dfm=pd.DataFrame())
-    tuples = pd.MultiIndex.from_product([pairs, TRADEFREQS]).values.tolist()
-
-    for idx in tuples:
-        if (idx[0], strtofreq(idx[1])) in app.bot.dfc.index:
-            continue
-        print("Retrieving {} candle data...".format(idx))
-        candles.update([idx[0]], [idx[1]], client=client)
-        app.bot.dfc = candles.load([idx[0]], [idx[1]], dfm=app.bot.dfc)
-
-    print("{} historic candles loaded.".format(len(app.bot.dfc)))
-
-    print('Initialized in {:,.0f} ms.'.format(t1.elapsed()))
-    print('Ready to trade, sir!')
 
 #---------------------------------------------------------------------------
-def run():
+def run(e_pairs):
     from main import q_closed
-    global client
+
+    client = app.bot.client
+    db = app.db
     n_cycles = 0
-    client = client if client else Client('','')
 
     while True:
         exited, entered = None, None
@@ -95,11 +53,12 @@ def run():
         time.sleep(10)
 
 #------------------------------------------------------------------------------
-def stoploss():
+def stoploss(e_pairs):
     """consume from q_open and sell any trades if price falls below stop
     loss threshold.
     """
     from main import q_open
+    db = app.get_db()
 
     while True:
         n=0
@@ -118,34 +77,8 @@ def stoploss():
         time.sleep(10)
 
 #------------------------------------------------------------------------------
-def get_enabled_pairs():
-    enabled = db.assets.find({'botTradeStatus':'ENABLED'})
-    return [ n['symbol'] for n in list(enabled) ]
-
-#------------------------------------------------------------------------------
-def enable_pairs(authpairs):
-    """To disable all pairs/freq, pass in empty list.
-    """
-    result = db.assets.update_many({},
-        {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})
-
-    print("Reset {}/{} pairs.".format(
-        result.modified_count,
-        db.meta.find({'botTradeStatus':'ENABLED'}).count()))
-
-    ops = [
-        UpdateOne({'symbol':pair},
-            {'$set':{'botTradeStatus':'ENABLED'},
-            '$push':{'botTradeFreq':TRADEFREQS}},
-            upsert=True) for pair in authpairs
-    ]
-    if len(ops) > 0:
-        result = db.assets.bulk_write(ops)
-        print("{} pairs updated, {} upserted.".format(
-            result.modified_count, result.upserted_count))
-
-#------------------------------------------------------------------------------
 def eval_entry(candle, ss):
+    db = app.get_db()
     ids = []
     for algo in TRADE_ALGOS:
         if db.trades.find_one({
@@ -162,6 +95,7 @@ def eval_entry(candle, ss):
 
 #------------------------------------------------------------------------------
 def eval_exit(candle, ss):
+    db = app.get_db()
     ids = []
     query = {
         'pair':candle['pair'],
@@ -185,7 +119,8 @@ def eval_exit(candle, ss):
 def buy(candle, algoconf, ss):
     """Create or update existing position for zscore above threshold value.
     """
-    global client
+    client = app.bot.client
+    db = app.db
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(orderbook['bidPrice'])
     ask = np.float64(orderbook['askPrice'])
@@ -222,7 +157,9 @@ def buy(candle, algoconf, ss):
 def sell(record, candle, ss, details=None):
     """Close off existing position and calculate earnings.
     """
-    global client
+    client = app.bot.client
+    db = app.db
+
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(ss['orderBook']['bidPrice'])
     ask = np.float64(orderbook['askPrice'])
@@ -281,7 +218,9 @@ def sell(record, candle, ss, details=None):
 def snapshot(candle):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
-    global client
+    client = app.bot.client
+    db = app.db
+
     ob = client.get_orderbook_ticker(symbol=candle['pair'])
     ask = np.float64(ob['askPrice'])
     bid = np.float64(ob['bidPrice'])

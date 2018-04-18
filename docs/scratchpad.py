@@ -3,6 +3,21 @@
 Unfinished or non-implemented code.
 """
 
+#------------------------------------------------------------------------------
+def get_global_loggers():
+    for key in logging.Logger.manager.loggerDict:
+        print(key)
+    print("--------")
+
+#----------------------------------------------------------------------
+def getAttributes(obj):
+    result = ''
+    for name, value in inspect.getmembers(obj):
+        if callable(value) or name.startswith('__'):
+            continue
+        result += pformat("%s: %s" %(name, value)) + "\n"
+    return result
+
 MACD_SCAN_RNG = [
     #{'freqstr':'5m', 'startstr':'36 hours ago utc', 'periods':350}
     {'freqstr':'30m', 'startstr':'72 hours ago utc', 'periods':100}

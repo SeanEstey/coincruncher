@@ -12,9 +12,9 @@ log = logging.getLogger('tickers')
 def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
-def aggregate_mkt(client, freqstr=None):
+def aggregate_mkt(freqstr=None):
     try:
-        dfT = binance_24h(client)
+        dfT = binance_24h()
     except Exception as e:
         return print("Binance client error. {}".format(str(e)))
 
@@ -91,7 +91,9 @@ def summarize(df, symbol):
     }
 
 #------------------------------------------------------------------------------
-def binance_24h(client):
+def binance_24h():
+    client = app.bot.client
+
     try:
         tickers = client.get_ticker()
     except Exception as e:

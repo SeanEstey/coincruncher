@@ -4,7 +4,6 @@ import time
 import pytz
 import pandas as pd
 import numpy as np
-from binance.client import Client
 from docs.botconf import *
 import app, app.bot
 from app.common.timer import Timer
@@ -14,12 +13,11 @@ from . import candles, macd, tickers, trade
 def scanlog(msg): log.log(98, msg)
 
 log = logging.getLogger('scanner')
-client = None
 
 #---------------------------------------------------------------------------
-def run():
-    global client
-    client = Client('','')
+def run(e_pairs):
+    #global client
+    #client = Client('','')
     update()
     tmr = Timer(name='scanner', expire='every 30 clock min utc')
 
@@ -32,15 +30,12 @@ def run():
 #------------------------------------------------------------------------------
 def update():
     from app.common.utils import strtodt, strtoms
-    global client
-    if client is None:
-        client = Client('','')
 
     scanlog('*'*59)
 
     try:
-        dfT = tickers.binance_24h(client).sort_values('24hPriceChange')
-        dfA = tickers.aggregate_mkt(client)
+        dfT = tickers.binance_24h().sort_values('24hPriceChange')
+        dfA = tickers.aggregate_mkt()
     except Exception as e:
         return print("Agg/Ticker Binance client error. {}".format(str(e)))
 
@@ -55,8 +50,8 @@ def update():
         else:
             authpairs.append(pair)
 
-    print("{} pairs authed: {}".format(len(authpairs), authpairs))
-    print("app.bot.dfc.length={}".format(len(app.bot.dfc)))
+    #print("{} pairs authed: {}".format(len(authpairs), authpairs))
+    #print("app.bot.dfc.length={}".format(len(app.bot.dfc)))
 
     # Load revelent historic candle data from DB, query any (pair,freq)
     # index data that's missing.
@@ -66,7 +61,7 @@ def update():
         if (idx[0], strtofreq(idx[1])) in app.bot.dfc.index:
             continue
         print("Retrieving {} candle data...".format(idx))
-        candles.update([idx[0]], [idx[1]], client=client)
+        candles.update([idx[0]], [idx[1]])
         app.bot.dfc = candles.load([idx[0]], [idx[1]], dfm=app.bot.dfc)
 
     for pair in authpairs:
@@ -99,8 +94,8 @@ def update():
             [ scanlog(line) for line in lines]
             scanlog("")
 
-    print("authpairs.length={}".format(len(authpairs)))
-    trade.enable_pairs(authpairs)
+    #print("authpairs.length={}".format(len(authpairs)))
+    app.bot.enable_pairs(authpairs)
 
 
 """

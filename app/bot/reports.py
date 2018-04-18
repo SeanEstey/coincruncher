@@ -6,15 +6,13 @@ from datetime import datetime
 import pytz
 import pandas as pd
 import app, app.bot
-from app.bot import pct_diff
-from app.common.utils import colors, to_relative_str, utc_datetime as now
+from app.common.utils import colors, pct_diff, to_relative_str, utc_datetime as now
 from app.common.timeutils import strtofreq
 from . import candles, signals
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
-
-log = logging.getLogger('print')
+log = logging.getLogger('reports')
 
 #-------------------------------------------------------------------------------
 def earnings():

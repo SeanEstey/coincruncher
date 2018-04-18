@@ -6,7 +6,6 @@ from datetime import datetime, timedelta, time, date
 from pprint import pformat
 log = logging.getLogger(__name__)
 
-#---------------------------------------------------------------------------
 class colors:
     BLUE = '\033[94m'
     GRN = '\033[92m'
@@ -21,38 +20,40 @@ class colors:
 abc = ['a','b','c','d','e','f','g','h','i','j','k','l','m','n','o','p','q','r',\
     's','t','u','v','w','x','y','z']
 
-# Dataframes
-def df_to_list(df): return df.to_string().title().split("\n")
+def pct_diff(a,b): return ((b-a)/a)*100
 
-#------------------------------------------------------------------------------
+##### Datetime #################################################################
+
 def to_ts(dt):
     return int(dt.timestamp())
-#------------------------------------------------------------------------------
+
 def dt_to_ms(dt):
     return int(dt.timestamp()*1000)
-#------------------------------------------------------------------------------
+
 def utc_date():
     """current date in UTC timezone"""
     return datetime.utcnow().replace(tzinfo=pytz.utc).date()
-#------------------------------------------------------------------------------
+
 def utc_dtdate():
     """current date as datetime obj at T:00:00:00:00 in UTC timezone"""
     return datetime.combine(utc_date(), time()).replace(tzinfo=pytz.utc)
-#------------------------------------------------------------------------------
+
 def utc_datetime():
     """tz-aware UTC datetime object"""
     return datetime.utcnow().replace(tzinfo=pytz.utc)
-#------------------------------------------------------------------------------
+
 def duration(_timedelta, units='total_seconds'):
     if units == 'total_seconds':
         return int(_timedelta.total_seconds())
     elif units == 'hours':
         return round(_timedelta.total_seconds()/3600,1)
-#------------------------------------------------------------------------------
+
 def to_local(dt):
+    """Show time in local tz.
+    """
     zone = tzinfo=tzlocal.get_localzone()
     return dt.astimezone(zone)
-#------------------------------------------------------------------------------
+
 def to_dt(val):
     """Convert timestamp or ISOstring to datetime obj
     """
@@ -75,6 +76,7 @@ def to_dt(val):
             except Exception as e:
                 raise
     raise Exception("to_dt(): invalid type '%s'" % type(val))
+
 #----------------------------------------------------------------------
 def to_relative_str(_delta):
     diff_ms = abs(_delta.total_seconds() * 1000)
@@ -143,9 +145,10 @@ def strtodt(date_str):
         d = d.replace(tzinfo=pytz.utc)
     return d
 
-#------------------------------------------------------------------------------
-# Data type methods
+##### Datatypes ################################################################
+
 import numpy
+
 #------------------------------------------------------------------------------
 def numpy_to_py(adict):
     """Convert dict containing numpy.int64 values to python int's
@@ -195,42 +198,3 @@ def to_float(val, dec=None):
     elif not is_number(val):
         return None
     return round(float(val),dec) if dec else float(val)
-
-# Miscellaneous methods
-
-#------------------------------------------------------------------------------
-def get_global_loggers():
-    for key in logging.Logger.manager.loggerDict:
-        print(key)
-    print("--------")
-#------------------------------------------------------------------------------
-def parse_period(p):
-    """Return properties tuple (quantity, time_unit, timedelta) from given time
-    period string. Arg format: <int><time_unit>
-    Examples: '1H' (1 hour), '1D' (24 hrs), '7D' (7 days)
-    Return (quantity, time_unit) tuple
-    """
-    if type(p) != str:
-        log.error("period '%s' must be a string, not %s", p, type(p))
-        raise TypeError
-
-    qty = int(p[0:-1]) if len(p) > 1 else 1
-    unit = p[-1]
-
-    if unit in ['m','M']:
-        tdelta = timedelta(minutes = qty)
-    elif unit in ['h','H']:
-        tdelta = timedelta(hours = qty)
-    elif unit in ['d', 'D']:
-        tdelta = timedelta(days = qty)
-    elif unit in ['y', 'Y']:
-        tdelta = timedelta(days = 365 * qty)
-    return (qty, unit, tdelta)
-#----------------------------------------------------------------------
-def getAttributes(obj):
-    result = ''
-    for name, value in inspect.getmembers(obj):
-        if callable(value) or name.startswith('__'):
-            continue
-        result += pformat("%s: %s" %(name, value)) + "\n"
-    return result

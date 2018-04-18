@@ -11,13 +11,12 @@ import sys
 import pandas as pd
 import numpy as np
 from twisted.internet import reactor
-from binance.client import Client
 from binance.websockets import BinanceSocketManager
 from docs.botconf import *
 import app, app.bot
 from app.common.utils import colors as c
 from app.common.timer import Timer
-from .trade import get_enabled_pairs
+from app.bot import get_pairs
 from main import q_open, q_closed
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
@@ -25,28 +24,30 @@ connkeys, storedata = [], []
 ws = None
 
 #---------------------------------------------------------------------------
-def run():
+def run(e_pairs):
     global storedata, connkeys
 
-    cred = list(app.get_db().api_keys.find())[0]
-    client = Client(cred['key'], cred['secret'])
-
+    tmr = Timer(name='pairs', expire='every 5 clock min utc')
     print("Connecting to websocket...")
+    client = app.bot.client
     ws = BinanceSocketManager(client)
-    pairs = get_enabled_pairs()
+    pairs = get_pairs()
 
     connkeys += [ws.start_kline_socket(pair, recv_kline, interval=n) \
         for n in TRADEFREQS for pair in pairs]
     print("Subscribed to {} kline sockets.".format(len(connkeys)))
-
     ws.start()
     print('Connected. Press Ctrl+C to quit')
 
-    tmr = Timer(name='pairs', expire='every 5 clock min utc')
+    pairset = set([n[0:n.index('@')].upper() for n in connkeys])
+
     while True:
+        if e_pairs.isSet():
+            update_sockets()
+            e_pairs.clear()
+
         if tmr.remain(quiet=True) == 0:
             tmr.reset(quiet=True)
-
             if len(storedata) > 0:
                 print("SAVING CANDLES TO DB")
                 storedata = []
@@ -55,6 +56,29 @@ def run():
         time.sleep(0.1)
 
     close_all()
+
+#---------------------------------------------------------------------------
+def update_sockets():
+    """conn_key str format: <symbol>@kline_<interval>
+    """
+    global connkeys
+    print("Pair event triggered.")
+    old = set([n[0:n.index('@')].upper() for n in connkeys])
+    new = set(app.bot.get_pairs())
+
+    # Removed pairs: close all sockets w/ matching symbols.
+    for pair in (old - new):
+        for k in connkeys:
+            if k.index(pair) > -1:
+                ws.stop_socket(k)
+                idx = connkeys.index(k)
+                connkeys = connkeys[0:idx] + connkeys[idx+1:]
+    print("{} pair sockets removed.".format(len(old-new)))
+
+    # Added pairs: create sockets for each candle frequency.
+    newpairs = new - old
+    connkeys += [ws.start_kline_socket(i, recv_kline, interval=j) for j in TRADEFREQS for i in newpairs]
+    print("{} pair sockets created.".format(len(newpairs)))
 
 #---------------------------------------------------------------------------
 def recv_kline(msg):

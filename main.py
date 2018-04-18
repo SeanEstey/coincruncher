@@ -3,25 +3,28 @@ import getopt
 import sys
 import logging
 import time
-from threading import Thread
+from threading import Thread, Event
 from queue import Queue
 from binance.client import Client
-import app
 from docs.conf import *
 from docs.botconf import *
+import app, app.bot
+from app.bot import candles, scanner, trade, websock
+
+##### Globals #####
 
 log = logging.getLogger('main')
 divstr = "***** %s *****"
-# Global candle queues. Data added by websock thread, accessed by trade thread
+# Candle data queues fed by app.bot.websock thread and consumed
+# by app.bot.trade thread.
 q_closed = Queue()
 q_open = Queue()
+e_pairs = Event()
 
 if __name__ == '__main__':
-    log.info('Initializing main.')
-
     killer = app.GracefulKiller()
     app.set_db(host)
-    from app.bot import candles, scanner, trade, websock
+    app.bot.init()
 
     # Handle input commands
     try:
@@ -31,22 +34,22 @@ if __name__ == '__main__':
     for opt, arg in opts:
         if opt not in('-c', '--candles'):
             continue
-        pairs = trade.get_enabled_pairs()
+        pairs = app.bot.get_pairs()
         candles.update(pairs, TRADEFREQS)
 
-    client = Client('','')
-    trade.init(client_=client)
-
+    # Create worker threads. Set as daemons so they terminate
+    # automatically if main process is killed.
     threads = []
     for func in [websock.run, trade.run, trade.stoploss, scanner.run]:
         threads.append(Thread(
             name='{}.{}'.format(func.__module__, func.__name__),
-            target=func))
+            target=func,
+            args=(e_pairs,)
+        ))
         threads[-1].setDaemon(True)
         threads[-1].start()
 
-    n_threads = len(threads)
-
+    # Main loop. Monitors threads and terminates app on CTRL+C cmd.
     while True:
         if killer.kill_now:
             break
@@ -56,7 +59,7 @@ if __name__ == '__main__':
                 time.sleep(1)
         time.sleep(0.1)
 
-    print("quitting")
+    print("Goodbye")
     log.debug(divstr % "sys.exit()")
     log.info(divstr % "Terminating")
     sys.exit()

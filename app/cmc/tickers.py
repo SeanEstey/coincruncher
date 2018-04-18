@@ -314,6 +314,7 @@ def tkr_diff(symbol, price, period, to_format):
     @convert: return diff as percentage (dollar value by default)
     """
     db = get_db()
+    # TODO: replace parse_period with strtofreq
     qty, unit, tdelta = parse_period(period)
     compare_dt = dateparser.parse(str(date.today())) - tdelta
     ticker = db.tickers_1d.find({"symbol":symbol, "date":compare_dt})
@@ -333,6 +334,7 @@ def mkt_diff(period, to_format):
     @to_format: 'currency' or 'percentage'
     """
     db = get_db()
+    # TODO: replace parse_period with strtofreq
     qty, unit, tdelta = parse_period(period)
     dt = datetime.now(tz=pytz.UTC) - tdelta
 
