@@ -1,69 +1,79 @@
 # app.bot.scanner
 import logging
+import time
 import pytz
 import pandas as pd
 import numpy as np
 from binance.client import Client
-from docs.botconf import macd_scan, tradepairs
+from docs.botconf import *
 import app, app.bot
-from app.common.utils import to_local
+from app.common.timer import Timer
+from app.common.utils import to_local, utc_datetime as now
 from app.common.timeutils import strtofreq
 from . import candles, macd, tickers, trade
-log = logging.getLogger('scanner')
 def scanlog(msg): log.log(98, msg)
 
-#---------------------------------------------------------------------------
-def main():
-    import time
-    from app.common.timer import Timer
+log = logging.getLogger('scanner')
+client = None
 
-    tmr = Timer(name='scanner',
-        expire='every 30 clock min utc')
+#---------------------------------------------------------------------------
+def run():
+    global client
+    client = Client('','')
+    update()
+    tmr = Timer(name='scanner', expire='every 30 clock min utc')
 
     while True:
         if tmr.remain() == 0:
-            run()
+            update()
             tmr.reset()
         time.sleep(300)
 
 #------------------------------------------------------------------------------
-def run():
+def update():
+    from app.common.utils import strtodt, strtoms
+    global client
+    if client is None:
+        client = Client('','')
+
     scanlog('*'*59)
+
     try:
-        dfT = tickers.binance_24h().sort_values('24hPriceChange')
-        dfA = tickers.aggregate_mkt()
+        dfT = tickers.binance_24h(client).sort_values('24hPriceChange')
+        dfA = tickers.aggregate_mkt(client)
     except Exception as e:
         return print("Agg/Ticker Binance client error. {}".format(str(e)))
 
-    authlist=[]
-
+    authpairs=[]
     for pair in dfT.index.tolist():
-        # Ticker/Aggregate Market filters
         q_asset = dfT.loc[pair]['quoteAsset']
         mkt = dfA.loc[q_asset]
         tckr = dfT.loc[pair]
-
-        results = [ fn(tckr, mkt) for fn in tradepairs['filters'] ]
-
-        if all(result == True for result in results):
-            print("{} passed filter".format(pair))
-            authlist.append({'pair':pair, 'freq':'30m'})
-        else:
-            #print("{} failed filter: {}".format(pair, results))
+        results = [fn(tckr, mkt) for fn in TRADE_PAIR_ALGO['filters']]
+        if any([n == False for n in results]):
             continue
+        else:
+            authpairs.append(pair)
 
-        for rng in macd_scan:
-            freqstr, startstr, periods = rng['freqstr'], rng['startstr'], rng['periods']
+    print("{} pairs authed: {}".format(len(authpairs), authpairs))
+    print("app.bot.dfc.length={}".format(len(app.bot.dfc)))
+
+    # Load revelent historic candle data from DB, query any (pair,freq)
+    # index data that's missing.
+    app.bot.dfc = candles.load(authpairs, TRADEFREQS, dfm=app.bot.dfc)  #pd.DataFrame())
+    tuples = pd.MultiIndex.from_product([authpairs, TRADEFREQS]).values.tolist()
+    for idx in tuples:
+        if (idx[0], strtofreq(idx[1])) in app.bot.dfc.index:
+            continue
+        print("Retrieving {} candle data...".format(idx))
+        candles.update([idx[0]], [idx[1]], client=client)
+        app.bot.dfc = candles.load([idx[0]], [idx[1]], dfm=app.bot.dfc)
+
+    for pair in authpairs:
+        for freqstr in TRADEFREQS:
             freq = strtofreq(freqstr)
-
-            try:
-                candles.update([pair], [freqstr], start=startstr, force=True)
-            except Exception as e:
-                return print("Binance client error. {}".format(str(e)))
-            else:
-                df = candles.load([pair], [freqstr], startstr=startstr)
-                df = df.loc[pair, freq]
-
+            periods = int((strtoms("now utc") - strtoms(DEF_KLINE_HIST_LEN)) / ((freq * 1000)/2))
+            df = app.bot.dfc.loc[pair,freq]
             dfh, phases = macd.histo_phases(df, pair, freqstr, periods)
             dfh = dfh.tail(3)
             idx = dfh.index.to_pydatetime()
@@ -89,5 +99,16 @@ def run():
             [ scanlog(line) for line in lines]
             scanlog("")
 
-    print("authlist.length={}".format(len(authlist)))
-    trade.enable_pairs(authlist)
+    print("authpairs.length={}".format(len(authpairs)))
+    trade.enable_pairs(authpairs)
+
+
+"""
+try:
+    candles.update([pair], [freqstr], startstr=startstr, client=client)
+except Exception as e:
+    return print("Binance client error. {}".format(str(e)))
+else:
+    df = candles.load([pair], [freqstr], startstr=startstr)
+    df = df.loc[pair, freq]
+"""

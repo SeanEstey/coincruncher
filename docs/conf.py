@@ -29,6 +29,7 @@ max_log_date_width = 14
 max_log_name_width = 8
 max_log_line_width = 125
 log_newl_indent = 25
+TRADELOG_WIDTH = 50
 
 ### Screen Client #############################################################
 
@@ -47,30 +48,28 @@ macd_ema = (12,26,9)
 
 ### API Data ##################################################################
 
-from app.common.utils import to_dt, to_int
 # Candle format for both REST and WSS API
-binance = {
-    "trade_amt": 50.00,
-    "pct_fee": 0.05,
-    "kline_fields": [
-        'open_time',
-        'open',
-        'high',
-        'low',
-        'close',
-        'volume',
-        'close_time',
-        # Total quote asset vol
-        'quote_vol',
-        'trades',
-        # Taker buy base asset vol
-        'buy_vol',
-        # Taker buy quote asset vol
-        'buy_quote_vol',
-        'ignore'
-    ]
-}
-# REST API
+BINANCE_PCT_FEE = 0.05
+BINANCE_REST_QUERY_LIMIT = 500
+BINANCE_REST_KLINES = [
+    'open_time',
+    'open',
+    'high',
+    'low',
+    'close',
+    'volume',
+    'close_time',
+    # Total quote asset vol
+    'quote_vol',
+    'trades',
+    # Taker buy base asset vol
+    'buy_vol',
+    # Taker buy quote asset vol
+    'buy_quote_vol',
+    'ignore'
+]
+
+from app.common.utils import to_dt, to_int
 coinmarketcap = {
     'ticker_limit': 500,
     'currency': 'cad',

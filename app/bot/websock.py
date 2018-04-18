@@ -6,7 +6,6 @@ https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-so
 """
 import logging
 import itertools
-import importlib
 import time
 import sys
 import pandas as pd
@@ -14,35 +13,36 @@ import numpy as np
 from twisted.internet import reactor
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
-from docs.botconf import tradefreqs
-from app import get_db
+from docs.botconf import *
+import app, app.bot
 from app.common.utils import colors as c
 from app.common.timer import Timer
-import app.bot
 from .trade import get_enabled_pairs
 from main import q_open, q_closed
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
-conn_keys = []
-storedata = []
+connkeys, storedata = [], []
 ws = None
 
 #---------------------------------------------------------------------------
 def run():
-    global storedata
-    print("Connecting to Binance websocket client...")
+    global storedata, connkeys
 
     cred = list(app.get_db().api_keys.find())[0]
     client = Client(cred['key'], cred['secret'])
+
+    print("Connecting to websocket...")
     ws = BinanceSocketManager(client)
     pairs = get_enabled_pairs()
-    sub_klines(ws, pairs, tradefreqs)
-    ws.start()
 
+    connkeys += [ws.start_kline_socket(pair, recv_kline, interval=n) \
+        for n in TRADEFREQS for pair in pairs]
+    print("Subscribed to {} kline sockets.".format(len(connkeys)))
+
+    ws.start()
     print('Connected. Press Ctrl+C to quit')
 
     tmr = Timer(name='pairs', expire='every 5 clock min utc')
-
     while True:
         if tmr.remain(quiet=True) == 0:
             tmr.reset(quiet=True)
@@ -55,16 +55,6 @@ def run():
         time.sleep(0.1)
 
     close_all()
-
-#---------------------------------------------------------------------------
-def sub_klines(ws, pairlist, freqstrlist):
-    global conn_keys
-    print("Creating kline connections for: {}...".format(pairlist))
-    conn_keys += [
-        ws.start_kline_socket(pair, recv_kline, interval=n) \
-            for n in freqstrlist for pair in pairlist]
-    print("{} connections created.".format(len(conn_keys)))
-    return len(conn_keys)
 
 #---------------------------------------------------------------------------
 def recv_kline(msg):

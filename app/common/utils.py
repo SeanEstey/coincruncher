@@ -120,7 +120,7 @@ def to_relative_str(_delta):
     return "{} sec{}".format(nSec, 's' if nSec > 1 else '')
 
 #------------------------------------------------------------------------------
-def datestr_to_ms(date_str):
+def strtoms(date_str):
     """Convert UTC date to milliseconds
     If using offset strings add "UTC" to date string e.g. "now UTC", "11 hours
     ago UTC"
@@ -134,8 +134,9 @@ def datestr_to_ms(date_str):
     if d.tzinfo is None or d.tzinfo.utcoffset(d) is None:
         d = d.replace(tzinfo=pytz.utc)
     return int((d - epoch).total_seconds() * 1000.0)
+
 #------------------------------------------------------------------------------
-def datestr_to_dt(date_str):
+def strtodt(date_str):
     epoch = datetime.utcfromtimestamp(0).replace(tzinfo=pytz.utc)
     d = dateparser.parse(date_str)
     if d.tzinfo is None or d.tzinfo.utcoffset(d) is None:

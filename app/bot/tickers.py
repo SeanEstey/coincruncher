@@ -5,16 +5,16 @@ import numpy as np
 from datetime import datetime
 from pymongo import ReplaceOne
 from pprint import pprint
-from binance.client import Client
 import app, app.bot
 from app.common.utils import utc_datetime as now
+
 log = logging.getLogger('tickers')
 def scanlog(msg): log.log(98, msg)
 
 #------------------------------------------------------------------------------
-def aggregate_mkt(freqstr=None):
+def aggregate_mkt(client, freqstr=None):
     try:
-        dfT = binance_24h()
+        dfT = binance_24h(client)
     except Exception as e:
         return print("Binance client error. {}".format(str(e)))
 
@@ -47,10 +47,6 @@ def aggregate_mkt(freqstr=None):
             dfA[k] = dfA['24hPriceChange'] - pd.DataFrame(last[0]).T['24hPriceChange']
             formatters[k] = '   {:+.2f}%'.format
 
-    dfA = dfA.rename(columns={
-        '24hPriceChange':'24h.Δprice',
-        '24hAggVol':'24h.agg.vol'
-    })
     formatters.update({
         '24h.Δprice':   '   {:+.2f}%'.format,
         '24h.agg.vol':  '   {:,.0f}'.format
@@ -59,12 +55,12 @@ def aggregate_mkt(freqstr=None):
     columns=['pairs', k, '24h.Δprice', '24h.agg.vol']
     if not k:
         columns = [n for n in columns if n]
-    lines = dfA.to_string(
-        columns=columns,
-        formatters=formatters
-    ).split("\n")
-    [ scanlog(line) for line in lines]
+    _cols = dfA.columns.tolist()
+    dfA.columns = columns
+    lines = dfA.to_string(columns=columns, formatters=formatters).split("\n")
+    [scanlog(line) for line in lines]
     scanlog("")
+    dfA.columns = _cols
     return dfA
 
 #------------------------------------------------------------------------------
@@ -95,11 +91,8 @@ def summarize(df, symbol):
     }
 
 #------------------------------------------------------------------------------
-def binance_24h():
-    from_ts = datetime.fromtimestamp
-
+def binance_24h(client):
     try:
-        client = Client("","")
         tickers = client.get_ticker()
     except Exception as e:
         raise
@@ -111,6 +104,7 @@ def binance_24h():
         'priceChangePercent', 'quoteVolume','volume','weightedAvgPrice']]
     # Datatype formatting
     df = df.astype('float64')
+    from_ts = datetime.fromtimestamp
     df['openTime'] = df['openTime'].apply(lambda x: from_ts(int(x/1000)))
     df['closeTime'] = df['closeTime'].apply(lambda x: from_ts(int(x/1000)))
     df = df.sort_index()
@@ -120,20 +114,10 @@ def binance_24h():
     })
 
     # Query metadata, identity quote assets for all pairs
-    meta = app.get_db().meta.find()
+    meta = app.get_db().assets.find()
     dfM = pd.DataFrame(list(meta))
     dfM.index = dfM['symbol']
     dfM = dfM[['baseAsset', 'quoteAsset']]
     df = df.join(dfM).sort_index()
     # Prune dummy '123456' symbol row
     return df.iloc[1:]
-
-#------------------------------------------------------------------------------
-def meta():
-    # Lookup/store Binance asset metadata for active trading pairs.
-    client = Client('','')
-    info = client.get_exchange_info()
-    symbols = info['symbols']
-    ops = [ReplaceOne({'symbol':n['symbol']}, n, upsert=True) for n in symbols]
-    app.get_db().meta.bulk_write(ops)
-    print("{} exchange symbols metadata updated.".format(len(symbols)))

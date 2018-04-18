@@ -3,6 +3,27 @@
 Unfinished or non-implemented code.
 """
 
+MACD_SCAN_RNG = [
+    #{'freqstr':'5m', 'startstr':'36 hours ago utc', 'periods':350}
+    {'freqstr':'30m', 'startstr':'72 hours ago utc', 'periods':100}
+    #{'freqstr':'1h', 'startstr':'72 hours ago utc', 'periods':72},
+]
+
+#------------------------------------------------------------------------------
+def _old():
+    # FIXME: put on a thread timer
+    # Merge new candle data
+    start = now()
+    app.bot.dfc = candles.load(pairs, [freqstr],
+        startstr="{} seconds ago utc".format(freq*3),
+        dfm=app.bot.dfc)
+
+    tradelog('*'*TRADELOG_WIDTH)
+    duration = to_relative_str(now() - start)
+    hdr = "Cycle #{}, Period {} {:>%s}" % (31 - len(str(n_cycles)))
+    tradelog(hdr.format(n_cycles, freq_str, duration))
+    tradelog('-'*TRADELOG_WIDTH)
+
 #------------------------------------------------------------------------------
 def scan(freqstr, periods, n_results, min_vol, idx_filter=None, quiet=True):
     query_cols = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney']

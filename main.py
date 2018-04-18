@@ -1,30 +1,27 @@
 # main
+import getopt
+import sys
 import logging
 import time
+from threading import Thread
 from queue import Queue
+from binance.client import Client
 import app
-from app import GracefulKiller
-from app.bot import candles, scanner, trade, websock
-log = logging.getLogger('main')
+from docs.conf import *
+from docs.botconf import *
 
+log = logging.getLogger('main')
+divstr = "***** %s *****"
 # Global candle queues. Data added by websock thread, accessed by trade thread
 q_closed = Queue()
 q_open = Queue()
 
-#---------------------------------------------------------------------------
 if __name__ == '__main__':
-    import getopt
-    import threading
-    from threading import Thread
-    import sys
-    from app import set_db
-    from docs.conf import host
-    from docs.botconf import tradefreqs
-    divstr = "***** %s *****"
     log.info('Initializing main.')
 
-    killer = GracefulKiller()
-    set_db(host)
+    killer = app.GracefulKiller()
+    app.set_db(host)
+    from app.bot import candles, scanner, trade, websock
 
     # Handle input commands
     try:
@@ -35,12 +32,10 @@ if __name__ == '__main__':
         if opt not in('-c', '--candles'):
             continue
         pairs = trade.get_enabled_pairs()
-        # Query seed candle data from API
-        for n in tradefreqs:
-            candles.update(pairs, n,
-                start="72 hours ago utc", force=True)
+        candles.update(pairs, TRADEFREQS)
 
-    trade.init()
+    client = Client('','')
+    trade.init(client_=client)
 
     threads = []
     for func in [websock.run, trade.run, trade.stoploss, scanner.run]:

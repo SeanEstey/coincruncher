@@ -8,32 +8,67 @@ from pymongo import ReplaceOne, UpdateOne
 from collections import OrderedDict as odict
 from binance.client import Client
 from datetime import timedelta as delta, datetime
-from docs.conf import binance as _binance, macd_ema
-from docs.botconf import strategies as strats, tradefreqs
-from app import get_db
+from docs.conf import *
+from docs.botconf import *
+import app, app.bot
+from app.bot import pct_diff, candles, macd, reports, signals
 from app.common.timeutils import strtofreq
 from app.common.utils import to_local, utc_datetime as now, to_relative_str
 from app.common.timer import Timer
-import app.bot
-from app.bot import pct_diff, candles, macd, reports, signals
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 
-# GLOBALS
+db = None
 log = logging.getLogger('trade')
-logwidth = 50
-n_cycles = 0
-start = now()
 client = None
+
+#------------------------------------------------------------------------------
+def init(client_=None):
+    t1 = Timer()
+    global client, db
+    db = app.get_db()
+    client = client_ if client_ else Client('','')
+
+    # Get available exchange trade pairs
+    info = client.get_exchange_info()
+    ops = [ UpdateOne({'symbol':n['symbol']}, {'$set':n},
+        upsert=True) for n in info['symbols'] ]
+    db.assets.bulk_write(ops)
+    print("{} available trading pairs retrieved from api.".format(len(ops)))
+
+    enabled = db.assets.find({'botTradeStatus':'ENABLED'})
+    if enabled.count() == 0:
+        raise Exception("No tradepairs enabled")
+
+    pairs = [ n['symbol'] for n in list(enabled) ]
+
+    print("{} enabled pairs: {}".format(enabled.count(), pairs))
+    print('{} trading algorithms.'.format(len(TRADE_ALGOS)))
+
+    # Load revelent historic candle data from DB, query any (pair,freq)
+    # index data that's missing.
+    app.bot.dfc = candles.load(pairs, TRADEFREQS, dfm=pd.DataFrame())
+    tuples = pd.MultiIndex.from_product([pairs, TRADEFREQS]).values.tolist()
+
+    for idx in tuples:
+        if (idx[0], strtofreq(idx[1])) in app.bot.dfc.index:
+            continue
+        print("Retrieving {} candle data...".format(idx))
+        candles.update([idx[0]], [idx[1]], client=client)
+        app.bot.dfc = candles.load([idx[0]], [idx[1]], dfm=app.bot.dfc)
+
+    print("{} historic candles loaded.".format(len(app.bot.dfc)))
+
+    print('Initialized in {:,.0f} ms.'.format(t1.elapsed()))
+    print('Ready to trade, sir!')
 
 #---------------------------------------------------------------------------
 def run():
     from main import q_closed
     global client
     n_cycles = 0
-    db = get_db()
-    client = Client('','')
+    client = client if client else Client('','')
 
     while True:
         exited, entered = None, None
@@ -54,8 +89,10 @@ def run():
                 reports.positions()
             if entered or exited:
                 reports.earnings()
+        else:
+            print('closed candle queue empty.')
 
-        time.sleep(5)
+        time.sleep(10)
 
 #------------------------------------------------------------------------------
 def stoploss():
@@ -63,9 +100,9 @@ def stoploss():
     loss threshold.
     """
     from main import q_open
-    db = get_db()
 
     while True:
+        n=0
         while q_open.empty() == False:
             c = q_open.get()
             query = {'pair':c['pair'], 'freq':c['freqstr'], 'status':'open'}
@@ -75,149 +112,84 @@ def stoploss():
 
                 if diff < trade['stoploss']:
                     sell(trade, c, snapshot(c), details='Stop Loss')
+            n+=1
 
-        print('stoploss queue cleared.')
+        print('{} stoploss queue items cleared.'.format(n))
         time.sleep(10)
 
 #------------------------------------------------------------------------------
-def _old():
-    # FIXME: put on a thread timer
-    # Merge new candle data
-    app.bot.dfc = candles.load(pairs, [freqstr],
-        startstr="{} seconds ago utc".format(freq*3),
-        dfm=app.bot.dfc)
-
-    tradelog('*'*logwidth)
-    duration = to_relative_str(now() - start)
-    hdr = "Cycle #{}, Period {} {:>%s}" % (31 - len(str(n_cycles)))
-    tradelog(hdr.format(n_cycles, freq_str, duration))
-    tradelog('-'*logwidth)
-
-#------------------------------------------------------------------------------
-def init():
-    t1 = Timer()
-    # Lookup/store Binance asset metadata for active trading pairs.
-    client = Client('','')
-    info = client.get_exchange_info()
-
-    ops = [UpdateOne({'symbol':n['symbol']}, {'$set':n}, upsert=True) for n in info['symbols']]
-    get_db().assets.bulk_write(ops)
-
-    print("{} available trading pairs retrieved from api.".format(len(ops)))
-
-    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
-
-    if enabled.count() == 0:
-        raise Exception("No tradepairs enabled")
-
-    pairs = [ n['symbol'] for n in list(enabled) ]
-
-    print("{} pairs meet requirements and have been enabled.".format(enabled.count()))
-    print(pairs)
-    print('{} active trading strategies.'.format(len(strats)))
-
-    app.bot.dfc = candles.load(pairs, [])
-
-    for pair in pairs:
-        for freqstr in tradefreqs:
-            if (pair,freqstr) not in app.bot.dfc.index:
-                print("Querying ({},{}) data..."\
-                    .format(pair, freqstr))
-                candles.update([pair], freqstr,
-                    start="72 hours ago utc", force=True)
-                app.bot.dfc = candles.load(pairs, [freqstr],
-                    dfm=app.bot.dfc)
-
-    print('Initialized in {:.0f} ms.'.format(t1.elapsed()))
-    print('Ready to trade, sir!')
-
-#------------------------------------------------------------------------------
 def get_enabled_pairs():
-    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
+    enabled = db.assets.find({'botTradeStatus':'ENABLED'})
     return [ n['symbol'] for n in list(enabled) ]
 
 #------------------------------------------------------------------------------
-def enable_pairs(authlist):
+def enable_pairs(authpairs):
     """To disable all pairs/freq, pass in empty list.
     """
-    db = app.get_db()
-
-    result = db.meta.update_many({},
+    result = db.assets.update_many({},
         {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})
 
     print("Reset {}/{} pairs.".format(
         result.modified_count,
-        db.meta.find({'botTradeStatus':'ENABLED'}).count()
-    ))
+        db.meta.find({'botTradeStatus':'ENABLED'}).count()))
 
     ops = [
-        UpdateOne({'symbol':auth['pair']},
+        UpdateOne({'symbol':pair},
             {'$set':{'botTradeStatus':'ENABLED'},
-            '$push':{'botTradeFreq':auth['freq']}},
-            upsert=True) for auth in authlist
+            '$push':{'botTradeFreq':TRADEFREQS}},
+            upsert=True) for pair in authpairs
     ]
     if len(ops) > 0:
-        result = db.meta.bulk_write(ops)
+        result = db.assets.bulk_write(ops)
         print("{} pairs updated, {} upserted.".format(
             result.modified_count, result.upserted_count))
 
 #------------------------------------------------------------------------------
-def eval_entries(candle, ss):
-    db = get_db()
+def eval_entry(candle, ss):
     ids = []
+    for algo in TRADE_ALGOS:
+        if db.trades.find_one({
+            'freq':candle['freqstr'],
+            'algo':algo['name'],
+            'status':'open'
+        }): continue
 
-    for strat in strats:
-        if db.trades.find_one(
-            {'status':'open','strategy':strat['name'], 'pair':pair}
-        ): continue
-
-        # Entry Filters
-        results = [ i(candle,ss) for i in strat['entry']['filters'] ]
-        if any(i == False for i in results):
-            continue
-
-        # Entry Conditions
-        results = [ i(candle,ss) for i in strat['entry']['conditions'] ]
-        if all(i == True for i in results):
-            ids.append(buy(candle, strat['name'], ss))
+        # Test all filters/conditions eval to True
+        if all([fn(candle,ss) for fn in algo['entry']['filters']]):
+            if all([fn(candle,ss) for fn in algo['entry']['conditions']]):
+                ids.append(buy(candle, algo, ss))
     return ids
 
 #------------------------------------------------------------------------------
-def eval_exits(candle, ss):
-    db = get_db()
-    _ids = []
-    for trade in db.trades.find({'status':'open'}): #'freq':freqstr}):
-        candle = candles.to_dict(trade['pair'], freqstr)
-        conf = strats[[n['name'] for n in strats].index(trade['strategy'])]
-        ss = snapshots[trade['pair']]
+def eval_exit(candle, ss):
+    ids = []
+    query = {
+        'pair':candle['pair'],
+        'freq':candle['freqstr'],
+        'status':'open'
+    }
+    for trade in db.trades.find(query):
+        algo = [n for n in TRADE_ALGOS if n['name'] == trade['algorithm']][0]
 
-
-        # Evaluate exit conditions if all filters passed.
-        conditions = []
-        filt = [ n(candle, ss, trade) for n in conf['exit']['filters']]
-        if all(n == True for n in filt):
-            conditions += [ n(candle, ss, trade) for n in conf['exit']['conditions']]
-
-            if all(n == True for n in conditions):
-                print("SELL CONDITION(S) TRUE {} {}".format(candle['freq'], trade['pair']))
-                _ids.append(sell(trade, candle, ss))
+        # Test all filters/conditions eval to True
+        if all([fn(candle, ss, trade) for fn in algo['exit']['filters']]):
+            if all([fn(candle, ss, trade) for fn in algo['exit']['conditions']]):
+                ids.append(sell(trade, candle, ss,
+                    details="Algo filters/conditions met"))
             else:
-                db.trades.update_one(
-                    {"_id":trade["_id"]}, {"$push": {"snapshots":ss}}
-                )
-    return _ids
+                db.trades.update_one({"_id":trade["_id"]},
+                    {"$push": {"snapshots":ss}})
+    return ids
 
 #------------------------------------------------------------------------------
-def buy(candle, strategy, ss):
+def buy(candle, algoconf, ss):
     """Create or update existing position for zscore above threshold value.
     """
     global client
-    db = get_db()
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(orderbook['bidPrice'])
     ask = np.float64(orderbook['askPrice'])
     meta = db.assets.find_one({'symbol':candle['pair']})
-    stratconf = strats[[n['name'] for n in strats].index(strategy)]
 
     result = db.trades.insert_one(odict({
         'pair': candle['pair'],
@@ -225,8 +197,8 @@ def buy(candle, strategy, ss):
         'freq': candle['freqstr'],
         'status': 'open',
         'start_time': now(),
-        'strategy': strategy,
-        'stoploss': stratconf['stoploss'],
+        'algo': algoconf['name'],
+        'stoploss': algoconf['stoploss'],
         'snapshots': [ss],
         'orders': [odict({
             'action':'BUY',
@@ -236,14 +208,14 @@ def buy(candle, strategy, ss):
             'pct_spread': pct_diff(bid, ask),
             'pct_slippage': pct_diff(candle['close'], ask),
             'volume': 1.0,
-            'quote': _binance['trade_amt'],
-            'fee': _binance['trade_amt'] * (_binance['pct_fee']/100),
+            'quote': TRADE_AMT_MAX,
+            'fee': TRADE_AMT_MAX * (BINANCE_PCT_FEE/100),
             'orderbook': orderbook,
             'candle': candle
         })]
     }))
 
-    print("BUY {} ({})".format(candle['pair'], strategy))
+    print("BUY {} ({})".format(candle['pair'], algoconf['name']))
     return result.inserted_id
 
 #------------------------------------------------------------------------------
@@ -258,7 +230,7 @@ def sell(record, candle, ss, details=None):
     pct_slippage = pct_diff(candle['close'], bid)
     pct_total_slippage = record['orders'][0]['pct_slippage'] + pct_slippage
 
-    pct_fee = _binance['pct_fee']
+    pct_fee = BINANCE_PCT_FEE
     buy_vol = np.float64(record['orders'][0]['volume'])
     buy_quote = np.float64(record['orders'][0]['quote'])
     p1 = np.float64(record['orders'][0]['price'])
@@ -272,9 +244,9 @@ def sell(record, candle, ss, details=None):
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
 
     print("SELL {} ({}) Details: {}"\
-        .format(candle['pair'], record['strategy'], details))
+        .format(candle['pair'], record['algo'], details))
 
-    get_db().trades.update_one(
+    db.trades.update_one(
         {'_id': record['_id']},
         {
             '$push': {

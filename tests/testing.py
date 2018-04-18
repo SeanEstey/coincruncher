@@ -4,7 +4,6 @@ currentdir = os.path.dirname(
     os.path.abspath(inspect.getfile(inspect.currentframe())))
 parentdir = os.path.dirname(currentdir)
 sys.path.insert(0,parentdir)
-from dateparser import parse
 from datetime import datetime, timedelta
 from pprint import pprint
 import importlib
@@ -14,12 +13,13 @@ from binance.client import Client
 import app
 from app.common.utils import utc_datetime as now
 from app.common.timeutils import freqtostr, strtofreq
-from app.bot import candles, macd, scanner, trade, tickers
 
 pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
-app.set_db(["localhost", "45.79.176.125"][0])
+app.set_db("localhost")
 db = app.get_db()
+
+from app.bot import candles, macd, scanner, trade, tickers
 
 #---------------------------------------------------------------------------
 def histo_hist(df, pair, freqstr, startstr, periods):
@@ -40,8 +40,7 @@ def load(pair, freqstr, startstr):
 
 #df = load('ZILBTC','30m','72 hours ago utc')
 #dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
-#client = Client("","")
+trade.init()
+client = Client("","")
+scanner.update()
 
-assets = db.assets.find()
-pairs = [ n['symbol'] for n in list(assets) ]
-dfc = candles.load(pairs, [])

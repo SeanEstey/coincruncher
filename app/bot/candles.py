@@ -1,22 +1,25 @@
+# app.bot.candles
 import logging
+import time
 from dateparser import parse
 import pandas as pd
 import numpy as np
 from pymongo import ReplaceOne
-from bson import ObjectId
 from bsonnumpy import sequence_to_ndarray
 from binance.client import Client
-import app
-from docs.conf import binance as _conf
+import app, app.bot
+from docs.conf import *
+from docs.botconf import *
 from app.common.timer import Timer
+from app.common.utils import strtodt, strtoms
 from app.common.timeutils import strtofreq
-from app.common.utils import datestr_to_dt, datestr_to_ms, dt_to_ms, utc_datetime as now
-from app.common.mongo import locked
-import app.bot
+
 log = logging.getLogger('candles')
+db = app.get_db()
 
 #------------------------------------------------------------------------------
 def load(pairs, freqstrs, startstr=None, dfm=None):
+    global db
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
@@ -24,22 +27,19 @@ def load(pairs, freqstrs, startstr=None, dfm=None):
     columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_ratio']
     exclude = ['_id', 'quote_vol','sell_vol', 'close_time']
     proj = dict(zip(exclude, [False]*len(exclude)))
-    idx, data = [], []
-    db = app.get_db()
-    query = {'pair':{'$in':pairs}}
+    query = {
+        'pair': {'$in':pairs},
+        'freq': {'$in':freqstrs}
+    }
+
     if startstr:
         query['open_time'] = {'$gte':parse(startstr)}
-    if freqstrs:
-        query['freq'] = freqstrs
-    else:
-        query['freq'] = {'$in':['5m','30m','1h','1d']}
 
-    # Bulk load mongodb records into predefined, fixed-size numpy array.
-    # 10x faster than manually casting mongo cursor into python list.
     batches = db.candles.find_raw_batches(query, proj)
     if batches.count() < 1:
         print("No DB matches found for query: {}".format(query))
         return dfm
+
     dtype = np.dtype([
         ('pair', 'S12'),
         ('freq', 'S3'),
@@ -53,6 +53,8 @@ def load(pairs, freqstrs, startstr=None, dfm=None):
         ('buy_ratio', np.float64),
         ('trades', np.int32)
     ])
+    # Bulk load mongodb records into predefined, fixed-size numpy array.
+    # 10x faster than manually casting mongo cursor into python list.
     try:
         ndarray = sequence_to_ndarray(batches, dtype, batches.count())
     except Exception as e:
@@ -64,7 +66,6 @@ def load(pairs, freqstrs, startstr=None, dfm=None):
     df['open_time'] = pd.to_datetime(df['open_time'], unit='ms')
     df['freq'] = df['freq'].str.decode('utf-8')
     df['pair'] = df['pair'].str.decode('utf-8')
-    df['partial'] = False
     # Convert freqstr->freq to enable index sorting
     [df['freq'].replace(n, strtofreq(n), inplace=True) \
         for n in df['freq'].drop_duplicates()]
@@ -88,14 +89,13 @@ def load(pairs, freqstrs, startstr=None, dfm=None):
     return dfc
 
 #------------------------------------------------------------------------------
-def update(pairs, freqstrs, start=None, force=False):
-    idx = 0
+def update(pairs, freqstrs, startstr=None, client=None):
     t1 = Timer()
     candles = []
 
     for pair in pairs:
         for freqstr in freqstrs:
-            data = query_api(pair, freqstr, start=start, force=force)
+            data = query_api(pair, freqstr, startstr=startstr, client=client)
             if len(data) == 0:
                 continue
             for i in range(0, len(data)):
@@ -114,8 +114,8 @@ def update(pairs, freqstrs, start=None, force=False):
                     float(x[10]),
                     None
                 ]
-                d = dict(zip(_conf['kline_fields'], x))
-                d.update({'pair': pair, 'freq': freqstr, 'partial':False})
+                d = dict(zip(BINANCE_REST_KLINES, x))
+                d.update({'pair': pair, 'freq': freqstr})
                 if d['volume'] > 0:
                     d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
                 else:
@@ -123,81 +123,53 @@ def update(pairs, freqstrs, start=None, force=False):
                 data[i] = d
             candles += data
 
+    # Setting ordered to False will attempt all inserts even one or more
+    # errors occur due to attempting to insert duplicate unique index keys.
+    # If ordered is True, a single error will abort all remaining inserts.
     if len(candles) > 0:
-        db = app.get_db()
-
-        if force == True:
-            ops = []
-            for candle in candles:
-                ops.append(ReplaceOne(
-                    {"close_time":candle["close_time"],
-                        "pair":candle["pair"], "freq":candle["freq"]},
-                    candle,
-                    upsert=True
-                ))
-            result = db.candles.bulk_write(ops)
-        else:
-            # Should not create any duplicates because of force==False
-            # check in query_api()
-            result = db.candles.insert_many(candles)
-
-    log.info("%s %s records queried/stored. [%ss]",
-        len(candles), freqstr, t1.elapsed(unit='s'))
-
+        try:
+            result = db.candles.insert_many(candles, ordered=False)
+        except Exception as e:
+            print("MongoDB bulk insert error. Msg: {}".format(str(e)))
     return candles
 
 #------------------------------------------------------------------------------
-def query_api(pair, freqstr, start=None, end=None, force=False):
+def query_api(pair, freqstr, startstr=None, endstr=None, client=None):
     """Get Historical Klines (candles) from Binance.
-    @freqstr: Binance kline frequency:
-        1m, 3m, 5m, 15m, 30m, 1h, 2h, 4h, 6h, 8h, 12h, 1d, 3d, 1w, 1M]
-        m -> minutes; h -> hours; d -> days; w -> weeks; M -> months
-    @force: if False, only query unstored data (faster). If True, query all.
-    Return: list of OHLCV value
+    @freqstr: 1m, 3m, 5m, 15m, 30m, 1h, ettc
     """
     t1 = Timer()
-    limit = 500
-    idx = 0
+    ms_period = strtofreq(freqstr) * 1000
+
+    if client is None:
+        print("Creating new Binance client (slow).")
+        client = Client('','')
+
+    end = strtoms(endstr or "now utc") # if endstr else time.time()
+    start = strtoms(startstr or DEF_KLINE_HIST_LEN)
     results = []
-    periodlen = strtofreq(freqstr) * 1000
-    end_ts = datestr_to_ms(end) if end else dt_to_ms(now())
-    start_ts = datestr_to_ms(start) if start else end_ts - (periodlen * 20)
+    #print("query_api start={}, end={}".format(start, end))
 
-    # Skip queries for records already stored
-    if force == False:
-        query = {"pair":pair, "freq":freq}
-        if start:
-            query["open_time"] = {"$gt": datestr_to_dt(start)}
-
-        newer = app.get_db().candles.find(query).sort('open_time',-1).limit(1)
-
-        if newer.count() > 0:
-            dt = list(newer)[0]['open_time']
-            start_ts = int(dt.timestamp()*1000 + periodlen)
-
-            if start_ts > end_ts:
-                log.debug("All records for %s already stored.", pair)
-                return []
-
-    client = Client("", "")
-
-    #while len(results) < 500 and start_ts < end_ts:
-    while start_ts < end_ts:
+    while start < end:
         try:
-            data = client.get_klines(symbol=pair, interval=freqstr,
-                limit=limit, startTime=start_ts, endTime=end_ts)
-
-            if len(data) == 0:
-                start_ts += periodlen
-            else:
-                # Don't want candles that aren't closed yet
-                if data[-1][6] >= dt_to_ms(now()):
-                    results += data[:-1]
-                    break
-                results += data
-                start_ts = data[-1][0] + periodlen
+            data = client.get_klines(
+                symbol=pair,
+                interval=freqstr,
+                limit=BINANCE_REST_QUERY_LIMIT,
+                startTime=start, endTime=end)
         except Exception as e:
             log.exception("Binance API request error. e=%s", str(e))
+            continue
+
+        if len(data) == 0:
+            start += ms_period
+        else:
+            # Don't want candles that aren't closed yet
+            if data[-1][6] >= time.time():
+                results += data[:-1]
+                break
+            results += data
+            start = data[-1][0] + ms_period
 
     log.debug('%s %s %s queried [%ss].', len(results), freqstr, pair,
         t1.elapsed(unit='s'))
@@ -213,7 +185,6 @@ def to_dict(pair, freqstr, partial=False):
         raise Exception("({},{}) not in app.bot.dfc.index!".format(pair,freq))
 
     df = app.bot.dfc.loc[pair, freq].tail(1)
-    #df = df[df['partial'] == partial].tail(1)
 
     if len(df) < 1:
         raise Exception("{},{},{} candle not found in app.bot.dfc".format(

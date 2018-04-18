@@ -1,38 +1,33 @@
-"""botconf.py
-Settings for formatting/subscribing to API data and trading bot.
-"""
+# botconf
+# Configuration and algorithm definitions for trading bot.
 
-tradefreqs = ['5m', '30m', '1h', '1d']
+DEF_KLINE_HIST_LEN = "72 hours ago utc"
 
-tradepairs = {
+TRADE_AMT_MAX = 50.00
+
+TRADEFREQS = ['5m', '30m', '1h'] #, '1d']
+
+# Algorithm that decides which trading pairs are enabled
+# @tckr: binance ticker dataframe
+# @mkt: binance aggregate market dataframe for parent symbol (quote asset)
+# @ss: trade.snapshot() result w/ indicators
+TRADE_PAIR_ALGO = {
     "filters": [
-        # Aggregate parent symbol (quote asset) market price
-        lambda tckr, mkt: mkt['24h.Δprice'] > 0,
-        # Individual pair price.
-        lambda tckr, mkt: tckr['24hPriceChange'] > 7.5
+        #lambda tckr, mkt: mkt['24hPriceChange'] > -5,
+        lambda tckr, mkt: tckr['24hPriceChange'] > 10.0
     ],
     "conditions": [
-        # Positive macd oscilator phase
         lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,
-        # Vertical price movement within oscilator phase.
         lambda ss: ss['macd']['history'][-1]['priceY'] > 0,
-        # Sustained vertical price over X-axis (current)
         lambda ss: ss['macd']['history'][-1]['priceX'] > 0
    ]
 }
 
-macd_scan = [
-    #{'freqstr':'5m', 'startstr':'36 hours ago utc', 'periods':350}
-    {'freqstr':'30m', 'startstr':'72 hours ago utc', 'periods':100}
-    #{'freqstr':'1h', 'startstr':'72 hours ago utc', 'periods':72},
-]
-
-### Trade Algorithms ###########################################################
-# It's possible to have any number of simultaneously running strategies, with
-# any config/callback combination. "name" is used as the primary key.
-################################################################################
-strategies = [
-    #---------------------------------------------------------------------------
+# Can run any number of algorithms simultaneously as long as they have unique names.
+# @c: candle dict
+# @ss: trade.snapshot() result w/ indicators
+# @doc: mongodb trade record dict
+TRADE_ALGOS = [
     {
         "name": "macd5m",
         "ema": (12, 26, 9),
@@ -55,8 +50,7 @@ strategies = [
                 lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
-    },
-    #---------------------------------------------------------------------------
+    }, # END
     {
         "name": "macd30m",
         "ema": (12, 26, 9),
@@ -80,8 +74,7 @@ strategies = [
                 lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
-    },
-    #---------------------------------------------------------------------------
+    }, # END
     {
         "name": "macd1h",
         "ema": (12, 26, 9),
@@ -103,95 +96,5 @@ strategies = [
                 lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
-    }
+    }   # END
 ]
-"""
-#---------------------------------------------------------------------------
-{
-    "name": "macd_30m_peak",
-    "ema": (12, 26, 9),
-    "stop_loss": {"freq": ["5m"], "pct": -0.75},
-    "entry": {
-        "filters": [lambda c, ss: c['freq'] in ['30m']],
-        "conditions": [
-            lambda c,ss: ss['macd']['values'][-1] < 0,
-            lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
-            lambda c,ss: ss['macd']['trend'] > 0
-        ]
-    },
-    "exit": {
-        "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
-        "conditions": [
-           lambda c,ss,doc: ss['macd']['values'][-1] > 0,
-           lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
-           lambda c,ss,doc: ss['macd']['trend'] < 0
-        ]
-    }
-},
-#---------------------------------------------------------------------------
-{
-    "name": "macd_30m_mean",
-    "ema": (12, 26, 9),
-    "stop_loss": {"freq": ['5m'], "pct": -0.75},
-    "entry": {
-        "filters": [lambda c, ss: c['freq'] in ['30m']],
-        "conditions": [
-            lambda c,ss: ss['macd']['values'][-1] < 0,
-            lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
-            lambda c,ss: ss['macd']['trend'] > 0
-        ]
-    },
-    "exit": {
-       "filters": [lambda c, ss, doc: c['freq'] in ['30m']],
-       "conditions": [
-           lambda c,ss,doc: ss['macd']['values'][-1] > 0,
-           lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['mean'],
-           lambda c,ss,doc: ss['macd']['trend'] < 0
-       ]
-    }
-},
-#---------------------------------------------------------------------------
-{
-    "name": "macd_1h_peak",
-    "ema": (12, 26, 9),
-    "stop_loss": {"freq": ["5m", "1h"], "pct": -0.75},
-    "entry": {
-        "filters": [lambda c, ss: c['freq'] in ['1h']],
-        "conditions": [
-            lambda c,ss: ss['macd']['values'][-1] < 0,
-            lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
-            lambda c,ss: ss['macd']['trend'] > 0
-        ]
-    },
-    "exit": {
-        "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
-        "conditions": [
-            lambda c,ss,doc: ss['macd']['values'][-1] > 0,
-            lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
-            lambda c,ss,doc: ss['macd']['trend'] < 0
-        ]
-    }
-},
-#---------------------------------------------------------------------------
-{
-    "name": "macd_1h_mean",
-    "ema": (12, 26, 9),
-    "stop_loss": {"freq": ['5m'], "pct": -0.75},
-    "entry": {
-        "filters": [lambda c, ss: c['freq'] in ['1h']],
-        "conditions": [
-            lambda c,ss: ss['macd']['values'][-1] < 0,
-            lambda c,ss: ss['macd']['values'][-1] > ss['macd']['desc']['min'],
-            lambda c,ss: ss['macd']['trend'] > 0
-        ]
-    },
-    "exit": {
-       "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
-       "conditions": [
-           lambda c,ss,doc: ss['macd']['values'][-1] > 0,
-           lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['mean'],
-           lambda c,ss,doc: ss['macd']['trend'] < 0
-       ]
-    }
-}
-"""
