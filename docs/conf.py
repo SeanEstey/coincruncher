@@ -5,7 +5,8 @@ Settings for formatting/subscribing to API data and trading bot.
 
 #### App #####################################################################
 
-host = "45.79.176.125"
+#host = "45.79.176.125"
+host = "localhost"
 mongo_port = 27017
 db_name = "coincruncher"
 

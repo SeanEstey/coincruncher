@@ -16,7 +16,7 @@ import app.bot
 log = logging.getLogger('candles')
 
 #------------------------------------------------------------------------------
-def load(pairs, freqstr=None, startstr=None, dfm=None):
+def load(pairs, freqstrs, startstr=None, dfm=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
@@ -29,8 +29,10 @@ def load(pairs, freqstr=None, startstr=None, dfm=None):
     query = {'pair':{'$in':pairs}}
     if startstr:
         query['open_time'] = {'$gte':parse(startstr)}
-    if freqstr:
-        query['freq'] = freqstr
+    if freqstrs:
+        query['freq'] = freqstrs
+    else:
+        query['freq'] = {'$in':['5m','30m','1h','1d']}
 
     # Bulk load mongodb records into predefined, fixed-size numpy array.
     # 10x faster than manually casting mongo cursor into python list.
@@ -68,6 +70,7 @@ def load(pairs, freqstr=None, startstr=None, dfm=None):
         for n in df['freq'].drop_duplicates()]
 
     df.sort_values(by=['pair','freq','open_time'], inplace=True)
+
     dfc = pd.DataFrame(df[columns].values,
         index = pd.MultiIndex.from_arrays(
             [df['pair'], df['freq'], df['open_time']],
@@ -85,40 +88,40 @@ def load(pairs, freqstr=None, startstr=None, dfm=None):
     return dfc
 
 #------------------------------------------------------------------------------
-def update(pairs, freqstr, start=None, force=False):
+def update(pairs, freqstrs, start=None, force=False):
     idx = 0
     t1 = Timer()
     candles = []
 
     for pair in pairs:
-        data = query_api(pair, freqstr, start=start, force=force)
-        if len(data) == 0:
-            continue
-
-        for i in range(0, len(data)):
-            x = data[i]
-            x = [
-                pd.to_datetime(int(x[0]), unit='ms', utc=True),
-                float(x[1]),
-                float(x[2]),
-                float(x[3]),
-                float(x[4]),
-                float(x[5]),
-                pd.to_datetime(int(x[6]), unit='ms', utc=True),
-                float(x[7]),
-                int(x[8]),
-                float(x[9]),
-                float(x[10]),
-                None
-            ]
-            d = dict(zip(_conf['kline_fields'], x))
-            d.update({'pair': pair, 'freq': freqstr, 'partial':False})
-            if d['volume'] > 0:
-                d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
-            else:
-                d['buy_ratio'] = 0.0
-            data[i] = d
-        candles += data
+        for freqstr in freqstrs:
+            data = query_api(pair, freqstr, start=start, force=force)
+            if len(data) == 0:
+                continue
+            for i in range(0, len(data)):
+                x = data[i]
+                x = [
+                    pd.to_datetime(int(x[0]), unit='ms', utc=True),
+                    float(x[1]),
+                    float(x[2]),
+                    float(x[3]),
+                    float(x[4]),
+                    float(x[5]),
+                    pd.to_datetime(int(x[6]), unit='ms', utc=True),
+                    float(x[7]),
+                    int(x[8]),
+                    float(x[9]),
+                    float(x[10]),
+                    None
+                ]
+                d = dict(zip(_conf['kline_fields'], x))
+                d.update({'pair': pair, 'freq': freqstr, 'partial':False})
+                if d['volume'] > 0:
+                    d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
+                else:
+                    d['buy_ratio'] = 0.0
+                data[i] = d
+            candles += data
 
     if len(candles) > 0:
         db = app.get_db()

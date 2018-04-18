@@ -40,5 +40,8 @@ def load(pair, freqstr, startstr):
 
 #df = load('ZILBTC','30m','72 hours ago utc')
 #dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
-
 #client = Client("","")
+
+assets = db.assets.find()
+pairs = [ n['symbol'] for n in list(assets) ]
+dfc = candles.load(pairs, [])

@@ -1,3 +1,5 @@
+# app.bot.trade
+import time
 import logging
 import pytz
 import numpy as np
@@ -7,13 +9,13 @@ from collections import OrderedDict as odict
 from binance.client import Client
 from datetime import timedelta as delta, datetime
 from docs.conf import binance as _binance, macd_ema
-from docs.botconf import strategies
+from docs.botconf import strategies as strats, tradefreqs
 from app import get_db
 from app.common.timeutils import strtofreq
 from app.common.utils import to_local, utc_datetime as now, to_relative_str
 from app.common.timer import Timer
 import app.bot
-from app.bot import pct_diff, candles, macd, printer, signals
+from app.bot import pct_diff, candles, macd, reports, signals
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
@@ -23,10 +25,116 @@ log = logging.getLogger('trade')
 logwidth = 50
 n_cycles = 0
 start = now()
-freq = None
-freq_str = None
 client = None
-snapshots = {}
+
+#---------------------------------------------------------------------------
+def run():
+    from main import q_closed
+    global client
+    n_cycles = 0
+    db = get_db()
+    client = Client('','')
+
+    while True:
+        exited, entered = None, None
+        n=0
+
+        while q_closed.empty() == False:
+            candle = q_closed.get()
+            ss = snapshot(candle)
+            exited = eval_exit(candle, ss)
+            entered = eval_entry(candle, ss)
+            n+=1
+
+        if n > 0:
+            print('{} queue candles cleared.'.format(n))
+            if entered:
+                reports.trades(entered)
+            if db.trades.find({'status':'open'}).count() > 0:
+                reports.positions()
+            if entered or exited:
+                reports.earnings()
+
+        time.sleep(5)
+
+#------------------------------------------------------------------------------
+def stoploss():
+    """consume from q_open and sell any trades if price falls below stop
+    loss threshold.
+    """
+    from main import q_open
+    db = get_db()
+
+    while True:
+        while q_open.empty() == False:
+            c = q_open.get()
+            query = {'pair':c['pair'], 'freq':c['freqstr'], 'status':'open'}
+
+            for trade in db.trades.find(query):
+                diff = pct_diff(trade['orders'][0]['candle']['close'], c['close'])
+
+                if diff < trade['stoploss']:
+                    sell(trade, c, snapshot(c), details='Stop Loss')
+
+        print('stoploss queue cleared.')
+        time.sleep(10)
+
+#------------------------------------------------------------------------------
+def _old():
+    # FIXME: put on a thread timer
+    # Merge new candle data
+    app.bot.dfc = candles.load(pairs, [freqstr],
+        startstr="{} seconds ago utc".format(freq*3),
+        dfm=app.bot.dfc)
+
+    tradelog('*'*logwidth)
+    duration = to_relative_str(now() - start)
+    hdr = "Cycle #{}, Period {} {:>%s}" % (31 - len(str(n_cycles)))
+    tradelog(hdr.format(n_cycles, freq_str, duration))
+    tradelog('-'*logwidth)
+
+#------------------------------------------------------------------------------
+def init():
+    t1 = Timer()
+    # Lookup/store Binance asset metadata for active trading pairs.
+    client = Client('','')
+    info = client.get_exchange_info()
+
+    ops = [UpdateOne({'symbol':n['symbol']}, {'$set':n}, upsert=True) for n in info['symbols']]
+    get_db().assets.bulk_write(ops)
+
+    print("{} available trading pairs retrieved from api.".format(len(ops)))
+
+    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
+
+    if enabled.count() == 0:
+        raise Exception("No tradepairs enabled")
+
+    pairs = [ n['symbol'] for n in list(enabled) ]
+
+    print("{} pairs meet requirements and have been enabled.".format(enabled.count()))
+    print(pairs)
+    print('{} active trading strategies.'.format(len(strats)))
+
+    app.bot.dfc = candles.load(pairs, [])
+
+    for pair in pairs:
+        for freqstr in tradefreqs:
+            if (pair,freqstr) not in app.bot.dfc.index:
+                print("Querying ({},{}) data..."\
+                    .format(pair, freqstr))
+                candles.update([pair], freqstr,
+                    start="72 hours ago utc", force=True)
+                app.bot.dfc = candles.load(pairs, [freqstr],
+                    dfm=app.bot.dfc)
+
+    print('Initialized in {:.0f} ms.'.format(t1.elapsed()))
+    print('Ready to trade, sir!')
+
+#------------------------------------------------------------------------------
+def get_enabled_pairs():
+    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
+    return [ n['symbol'] for n in list(enabled) ]
 
 #------------------------------------------------------------------------------
 def enable_pairs(authlist):
@@ -54,116 +162,35 @@ def enable_pairs(authlist):
             result.modified_count, result.upserted_count))
 
 #------------------------------------------------------------------------------
-def init():
-    """Preload candles records from mongoDB to global dataframe.
-    Performance: ~3,000ms/100k records
-    """
-    t1 = Timer()
-    # Lookup/store Binance asset metadata for active trading pairs.
-    client = Client('','')
-    info = client.get_exchange_info()
-
-    ops = [UpdateOne({'symbol':n['symbol']}, {'$set':n}, upsert=True) for n in info['symbols']]
-    get_db().assets.bulk_write(ops)
-
-    print("{} available trading pairs retrieved from api.".format(len(ops)))
-
-    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
-
-    if enabled.count() == 0:
-        raise Exception("No tradepairs enabled")
-
-    pairs = [ n['symbol'] for n in list(enabled) ]
-
-    print("{} pairs meet requirements and have been enabled.".format(enabled.count()))
-    print(pairs)
-    print('{} active trading strategies.'.format(len(strategies)))
-    print('Loading candles...')
-
-    app.bot.dfc = candles.load(pairs)
-
-    print('Ready for trading. [{:.0f}ms]'.format(t1.elapsed()))
-
-#------------------------------------------------------------------------------
-def update(freqstr):
-    """Evaluate Binance market data and execute buy/sell trades.
-    """
-    global client, n_cycles, freq_str, freq, snapshots
-    # One Binance client instance per update cycle
-    client = Client("","")
-    _ids=[]
-    freq_str = freqstr
-    freq = strtofreq(freq_str)
-    t1 = Timer()
+def eval_entries(candle, ss):
     db = get_db()
+    ids = []
 
-    # Merge new candle data
-    #tradelog('-'*logwidth)
-    app.bot.dfc = candles.load(pairs,
-        freqstr=freqstr,
-        startstr="{} seconds ago utc".format(freq*3),
-        dfm=app.bot.dfc)
+    for strat in strats:
+        if db.trades.find_one(
+            {'status':'open','strategy':strat['name'], 'pair':pair}
+        ): continue
 
-    snapshots = {}
-    for pair in pairs:
-        candle = candles.to_dict(pair, freqstr)
-        snapshots[pair] = snapshot(candle)
+        # Entry Filters
+        results = [ i(candle,ss) for i in strat['entry']['filters'] ]
+        if any(i == False for i in results):
+            continue
 
-    tradelog('*'*logwidth)
-    duration = to_relative_str(now() - start)
-    hdr = "Cycle #{}, Period {} {:>%s}" % (31 - len(str(n_cycles)))
-    tradelog(hdr.format(n_cycles, freq_str, duration))
-    tradelog('-'*logwidth)
-
-    _ids += exits(freqstr)
-    _ids += entries(freqstr)
-
-    printer.new_trades([n for n in _ids if n])
-    tradelog('-'*logwidth)
-    printer.positions(freqstr)
-    tradelog('-'*logwidth)
-    earnings()
-    n_cycles +=1
+        # Entry Conditions
+        results = [ i(candle,ss) for i in strat['entry']['conditions'] ]
+        if all(i == True for i in results):
+            ids.append(buy(candle, strat['name'], ss))
+    return ids
 
 #------------------------------------------------------------------------------
-def entries(freqstr):
-    db = get_db()
-    _ids = []
-    for pair in pairs:
-        c = candles.to_dict(pair, freqstr)
-        ss = snapshots[pair]
-        for strat in strategies:
-            if db.trades.find_one(
-                {'status':'open','strategy':strat['name'], 'pair':pair}
-            ): continue
-
-            # Entry Filters
-            results = [ i(c,ss) for i in strat['entry']['filters'] ]
-            if any(i == False for i in results):
-                continue
-
-            # Entry Conditions
-            results = [ i(c,ss) for i in strat['entry']['conditions'] ]
-            if all(i == True for i in results):
-                _ids.append(buy(c, strat['name'], ss))
-    return _ids
-
-#------------------------------------------------------------------------------
-def exits(freqstr):
+def eval_exits(candle, ss):
     db = get_db()
     _ids = []
     for trade in db.trades.find({'status':'open'}): #'freq':freqstr}):
         candle = candles.to_dict(trade['pair'], freqstr)
-        conf = strategies[[n['name'] for n in strategies].index(trade['strategy'])]
+        conf = strats[[n['name'] for n in strats].index(trade['strategy'])]
         ss = snapshots[trade['pair']]
 
-        # Stop loss
-        if candle['freq'] in conf['stop_loss']['freq']:
-            pct = pct_diff(trade['orders'][0]['candle']['close'], candle['close'])
-            if pct < conf['stop_loss']['pct']:
-                print("STOP LOSS {} {}".format(candle['freq'], trade['pair']))
-                _ids.append(sell(trade, candle, ss))
-                continue
 
         # Evaluate exit conditions if all filters passed.
         conditions = []
@@ -181,24 +208,25 @@ def exits(freqstr):
     return _ids
 
 #------------------------------------------------------------------------------
-def buy(candle, strat_name, ss):
+def buy(candle, strategy, ss):
     """Create or update existing position for zscore above threshold value.
     """
     global client
+    db = get_db()
     orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
     bid = np.float64(orderbook['bidPrice'])
     ask = np.float64(orderbook['askPrice'])
-
-    db = get_db()
-    meta = db.meta.find_one({'symbol':candle['pair']})
+    meta = db.assets.find_one({'symbol':candle['pair']})
+    stratconf = strats[[n['name'] for n in strats].index(strategy)]
 
     result = db.trades.insert_one(odict({
         'pair': candle['pair'],
         'quote_asset': meta['quoteAsset'],
-        'freq': candle['freq'],
+        'freq': candle['freqstr'],
         'status': 'open',
         'start_time': now(),
-        'strategy': strat_name,
+        'strategy': strategy,
+        'stoploss': stratconf['stoploss'],
         'snapshots': [ss],
         'orders': [odict({
             'action':'BUY',
@@ -215,11 +243,11 @@ def buy(candle, strat_name, ss):
         })]
     }))
 
-    print("BUY {} ({})".format(candle['pair'], strat_name))
+    print("BUY {} ({})".format(candle['pair'], strategy))
     return result.inserted_id
 
 #------------------------------------------------------------------------------
-def sell(record, candle, ss):
+def sell(record, candle, ss, details=None):
     """Close off existing position and calculate earnings.
     """
     global client
@@ -243,7 +271,8 @@ def sell(record, candle, ss):
     duration = now() - record['start_time']
     candle['buy_ratio'] = candle['buy_ratio'].round(4)
 
-    print("SELL {} ({})".format(candle['pair'], record['strategy']))
+    print("SELL {} ({}) Details: {}"\
+        .format(candle['pair'], record['strategy'], details))
 
     get_db().trades.update_one(
         {'_id': record['_id']},
@@ -285,8 +314,13 @@ def snapshot(candle):
     ask = np.float64(ob['askPrice'])
     bid = np.float64(ob['bidPrice'])
 
-    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])]
-    dfh, phases = macd.histo_phases(df, candle['pair'], candle['freq'], 100)
+    if float(candle['volume']) > 0:
+        candle['buy_ratio'] = (candle['buy_vol'] / candle['volume']).round(2)
+    else:
+        candle['buy_ratio'] = np.float64(0.0)
+
+    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freqstr'])]
+    dfh, phases = macd.histo_phases(df, candle['pair'], candle['freqstr'], 100)
     dfh['start'] = dfh.index
     dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
     current = phases[-1].round(3)
@@ -319,64 +353,3 @@ def snapshot(candle):
         'rsi': signals.rsi(df['close'], 14),
         'orderBook':ob
     })
-
-#-------------------------------------------------------------------------------
-def earnings():
-    """Performance summary of trades, grouped by day/strategy.
-    """
-    db = get_db()
-
-    gain = list(db.trades.aggregate([
-        {'$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
-        {'$group': {
-            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
-            'total': {'$sum':'$pct_net_gain'},
-            'count': {'$sum': 1}
-        }}
-    ]))
-    loss = list(db.trades.aggregate([
-        {'$match': {'status':'closed', 'pct_net_gain':{'$lt':0}}},
-        {'$group': {
-            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
-            'total': {'$sum':'$pct_net_gain'},
-            'count': {'$sum': 1}
-        }}
-    ]))
-    assets = list(db.trades.aggregate([
-        { '$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
-        { '$group': {
-            '_id': {
-                'asset':'$quote_asset',
-                'day': {'$dayOfYear':'$end_time'}},
-            'total': {'$sum':'$pct_net_gain'},
-            'count': {'$sum': 1}
-        }}
-    ]))
-
-    today = int(datetime.utcnow().strftime('%j'))
-    gain = [ n for n in gain if n['_id']['day'] == today]
-    loss = [ n for n in loss if n['_id']['day'] == today]
-    #today_by_asset = [ n for n in assets if n['_id']['day'] == day_of_yr]
-
-    for n in gain:
-        tradelog("{:} today: {:} wins ({:+.2f}%)."\
-            .format(
-                n['_id']['strategy'],
-                n['count'],
-                n['total']
-            ))
-    for n in loss:
-        tradelog("{:} today: {:} losses ({:+.2f}%)."\
-            .format(
-                n['_id']['strategy'],
-                n['count'],
-                n['total']
-            ))
-
-    #ratio = (n_win/len(closed))*100 if len(closed) >0 else 0
-    #duration = to_relative_str(now() - start)
-    #tradelog("{:+.2f}% net profit today.".format(pct_net_gain))
-    #tradelog('{:+.2f}% paid in slippage.'.format(pct_slip))
-    #tradelog('{:+.2f)% paid in fees.'.format(pct_fees))
-
-    return (gain, loss, assets)

@@ -12,6 +12,20 @@ from . import candles, macd, tickers, trade
 log = logging.getLogger('scanner')
 def scanlog(msg): log.log(98, msg)
 
+#---------------------------------------------------------------------------
+def main():
+    import time
+    from app.common.timer import Timer
+
+    tmr = Timer(name='scanner',
+        expire='every 30 clock min utc')
+
+    while True:
+        if tmr.remain() == 0:
+            run()
+            tmr.reset()
+        time.sleep(300)
+
 #------------------------------------------------------------------------------
 def run():
     scanlog('*'*59)
@@ -43,11 +57,11 @@ def run():
             freq = strtofreq(freqstr)
 
             try:
-                candles.update([pair], freqstr, start=startstr, force=True)
+                candles.update([pair], [freqstr], start=startstr, force=True)
             except Exception as e:
                 return print("Binance client error. {}".format(str(e)))
             else:
-                df = candles.load([pair], freqstr=freqstr, startstr=startstr)
+                df = candles.load([pair], [freqstr], startstr=startstr)
                 df = df.loc[pair, freq]
 
             dfh, phases = macd.histo_phases(df, pair, freqstr, periods)

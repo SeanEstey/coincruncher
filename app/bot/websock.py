@@ -11,48 +11,46 @@ import time
 import sys
 import pandas as pd
 import numpy as np
-from app.common.utils import utc_datetime as now
 from twisted.internet import reactor
 from binance.client import Client
 from binance.websockets import BinanceSocketManager
-import docs.botconf
-from docs.botconf import trade_pairs as pairs
-from app import GracefulKiller, set_db, get_db
-from app.common.utils import colors, to_local, utc_datetime as now
+from docs.botconf import tradefreqs
+from app import get_db
+from app.common.utils import colors as c
 from app.common.timer import Timer
 import app.bot
+from .trade import get_enabled_pairs
+from main import q_open, q_closed
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 conn_keys = []
+storedata = []
 ws = None
 
 #---------------------------------------------------------------------------
-def mainloop(pairs, freqstrlist):
-    db = set_db('localhost')
-    cred = list(db.api_keys.find())[0]
-    killer = GracefulKiller()
-
+def run():
+    global storedata
     print("Connecting to Binance websocket client...")
+
+    cred = list(app.get_db().api_keys.find())[0]
     client = Client(cred['key'], cred['secret'])
     ws = BinanceSocketManager(client)
-    n_conn = connect_klines(ws, pairs, freqstrlist)
-    print("{} connections created.".format(n_conn))
-
+    pairs = get_enabled_pairs()
+    sub_klines(ws, pairs, tradefreqs)
     ws.start()
 
-    print('Connected.')
-    print('Press Ctrl+C to quit')
+    print('Connected. Press Ctrl+C to quit')
 
-    timer_1m = Timer(name='pairs', expire='every 1 clock min utc')
+    tmr = Timer(name='pairs', expire='every 5 clock min utc')
 
     while True:
-        if timer_1m.remain(quiet=True) == 0:
-            pairs = detect_pair_change()
-            timer_1m.reset(quiet=True)
+        if tmr.remain(quiet=True) == 0:
+            tmr.reset(quiet=True)
 
-        if killer.kill_now:
-            print('Caught SIGINT command. Shutting down...')
-            break
+            if len(storedata) > 0:
+                print("SAVING CANDLES TO DB")
+                storedata = []
+
         update_spinner()
         time.sleep(0.1)
 
@@ -60,70 +58,47 @@ def mainloop(pairs, freqstrlist):
 
 #---------------------------------------------------------------------------
 def sub_klines(ws, pairlist, freqstrlist):
-    """Subscribe to pair/freq sockets.
-    """
     global conn_keys
-    print("Creating kline connections for: {}...".format(_pairs))
+    print("Creating kline connections for: {}...".format(pairlist))
     conn_keys += [
         ws.start_kline_socket(pair, recv_kline, interval=n) \
             for n in freqstrlist for pair in pairlist]
+    print("{} connections created.".format(len(conn_keys)))
     return len(conn_keys)
 
 #---------------------------------------------------------------------------
 def recv_kline(msg):
+    global storedata
+
     if msg['e'] != 'kline':
-        print('not a kline')
+        print('not a kline: {}'.format(msg))
         return
 
-    c = msg['k']
-    pair = c['s']
-    freqstr = c['i']
-    freq = strtofreq(freqstr)
-    open_time = pd.to_datetime(c['t'], unit='ms', utc=True)
-    close_time = pd.to_datetime(c['T'], unit='ms', utc=True)
+    k = msg['k']
+    candle = {
+        "open_time": pd.to_datetime(k['t'], unit='ms', utc=True),
+        "close_time": pd.to_datetime(k['T'], unit='ms', utc=True),
+        "pair": k['s'],
+        "freqstr": k['i'],
+        "open": np.float64(k['o']),
+        "close": np.float64(k['c']),
+        "high": np.float64(k['h']),
+        "low": np.float64(k['l']),
+        "trades": k['n'],
+        "volume": np.float64(k['v']),
+        "buy_vol": np.float64(k['V']),
+        "quote_volume": np.float64(k['q']),
+        "quote_buy_vol": np.float64(k['Q'])
+    }
 
-    if float(c['v']) > 0:
-        buy_ratio = np.float64(c['V']/c['v'])
+    if k['x'] == True:
+        q_closed.put(candle)
+        storedata.append(candle)
+
+        print("{}{:<7}{}{:>5}{:>12g}{}".format(c.GRN, candle['pair'], c.WHITE,
+            candle['freqstr'], candle['close'], c.ENDC))
     else:
-        buy_ratio = np.float64(0.0)
-
-    arr = [
-        np.float64(c['o']),         # open
-        np.float64(c['c']),         # close
-        np.float64(c['h']),         # high
-        np.float64(c['l']),         # low
-        c['n'],                     # trades
-        np.float64(c['v']),         # volume
-        buy_ratio,
-        c['x']                      # partial
-    ]
-
-    # Update in-memory candles dataframe
-    dfc = app.bot.dfc
-    idx = dfc.loc[pair, freq].iloc[-1].name
-    # Completed candle. Update existing dataframe row.
-    if c['x'] == True:
-        df.ix[(pair, freq, idx)] = arr
-    # Partial candle. Check if exists, if not, add
-    # new row to dataframe
-    else:
-        df.ix[(pair, freq, idx)] = arr
-
-    """
-    # Print output
-    color = None
-    if doc['freq'] == '5m':
-        color = colors.GRN
-    elif doc['freq'] == '1h' or doc['freq'] == '1d':
-        color = colors.BLUE
-    else:
-        color = colors.WHITE
-
-    print("{}{:%H:%M:%S:} {:<7} {:>5} {:>12g} {:>7}{}"\
-        .format(colors.WHITE, to_local(doc['close_time']),  doc['pair'],
-            doc['freq'], doc['close'], 'Closed' if msg['k']['x'] else 'Open',
-            colors.ENDC))
-    """
+        q_open.put(candle)
 
 #---------------------------------------------------------------------------
 def save_klines():
@@ -131,51 +106,6 @@ def save_klines():
     timer every ~60sec.
     """
     pass
-
-#---------------------------------------------------------------------------
-def detect_pair_change():
-    """Detect changes in pairs tracking conf
-    """
-    importlib.reload(docs.botconf)
-    from docs.botconf import trade_pairs
-    global pairs, conn_keys
-
-    if pairs == trade_pairs:
-        return pairs
-    else:
-        print("Detected change in trading pair(s).")
-        rmvd = set(pairs) - set(trade_pairs)
-        added = set(trade_pairs) - set(pairs)
-
-        if len(rmvd) > 0:
-            print("Removing {}...".format(rmvd))
-            n_rmv = 0
-
-            for pair in rmvd:
-                name = str(pair).lower()
-
-                for key in conn_keys:
-                    if name in key:
-                        # remove it
-                        ws.stop_socket(key)
-                        idx = conn_keys.index(key)
-                        conn_keys = conn_keys[0:idx] + conn_keys[idx+1:]
-                        n_rmv += 1
-
-            print("Removed {} websocket(s)".format(n_rmv))
-
-        if len(added) > 0:
-            print("Adding {}...".format(added))
-            n_added = 0
-
-            for pair in added:
-                n_added += connect_klines(ws, [str(pair)])
-            print("Added {} websocket(s)".format(n_added))
-
-        #print("Done. {} connections.".format(len(conn_keys)))
-
-        pairs = trade_pairs
-        return pairs
 
 #---------------------------------------------------------------------------
 def close_all():

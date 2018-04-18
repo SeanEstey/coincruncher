@@ -16,6 +16,59 @@ def siglog(msg): log.log(100, msg)
 
 log = logging.getLogger('print')
 
+#-------------------------------------------------------------------------------
+def earnings():
+    """Performance summary of trades, grouped by day/strategy.
+    """
+    db = get_db()
+
+    gain = list(db.trades.aggregate([
+        {'$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
+        {'$group': {
+            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
+            'total': {'$sum':'$pct_net_gain'},
+            'count': {'$sum': 1}
+        }}
+    ]))
+    loss = list(db.trades.aggregate([
+        {'$match': {'status':'closed', 'pct_net_gain':{'$lt':0}}},
+        {'$group': {
+            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
+            'total': {'$sum':'$pct_net_gain'},
+            'count': {'$sum': 1}
+        }}
+    ]))
+    assets = list(db.trades.aggregate([
+        { '$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
+        { '$group': {
+            '_id': {
+                'asset':'$quote_asset',
+                'day': {'$dayOfYear':'$end_time'}},
+            'total': {'$sum':'$pct_net_gain'},
+            'count': {'$sum': 1}
+        }}
+    ]))
+
+    today = int(datetime.utcnow().strftime('%j'))
+    gain = [ n for n in gain if n['_id']['day'] == today]
+    loss = [ n for n in loss if n['_id']['day'] == today]
+
+    for n in gain:
+        tradelog("{:} today: {:} wins ({:+.2f}%)."\
+            .format(
+                n['_id']['strategy'],
+                n['count'],
+                n['total']
+            ))
+    for n in loss:
+        tradelog("{:} today: {:} losses ({:+.2f}%)."\
+            .format(
+                n['_id']['strategy'],
+                n['count'],
+                n['total']
+            ))
+    return (gain, loss, assets)
+
 #------------------------------------------------------------------------------
 def new_trades(trade_ids):
     db = app.get_db()

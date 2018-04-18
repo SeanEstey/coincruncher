@@ -181,7 +181,7 @@ def plot(pair, freqstr, periods):
 
     # Query/load candle data
     candles.update([pair], freqstr, start=startstr, force=True)
-    df = candles.load([pair], freqstr=freqstr, startstr=startstr)
+    df = candles.load([pair], [freqstr], startstr=startstr)
     df = df.loc[pair,freq]
     # Macd analysis
     dfmacd = generate(df)

@@ -1,6 +1,9 @@
 """botconf.py
 Settings for formatting/subscribing to API data and trading bot.
 """
+
+tradefreqs = ['5m', '30m', '1h', '1d']
+
 tradepairs = {
     "filters": [
         # Aggregate parent symbol (quote asset) market price
@@ -33,7 +36,7 @@ strategies = [
     {
         "name": "macd5m",
         "ema": (12, 26, 9),
-        "stop_loss": {"freq": ['5m'], "pct": -0.75},
+        "stoploss": -0.75,
         "entry": {
             "filters": [],
             "conditions": [
@@ -57,7 +60,7 @@ strategies = [
     {
         "name": "macd30m",
         "ema": (12, 26, 9),
-        "stop_loss": {"freq": ['5m'], "pct": -0.75},
+        "stoploss": -0.75,
         "entry": {
             "filters": [],
             "conditions": [
@@ -82,7 +85,7 @@ strategies = [
     {
         "name": "macd1h",
         "ema": (12, 26, 9),
-        "stop_loss": {"freq": ['5m'], "pct": -0.75},
+        "stoploss": -0.75,
         "entry": {
             "filters": [],
             "conditions": [
