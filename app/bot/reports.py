@@ -23,7 +23,7 @@ def earnings():
     gain = list(db.trades.aggregate([
         {'$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},
         {'$group': {
-            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
+            '_id': {'algo':'$algo', 'day': {'$dayOfYear':'$end_time'}},
             'total': {'$sum':'$pct_net_gain'},
             'count': {'$sum': 1}
         }}
@@ -31,7 +31,7 @@ def earnings():
     loss = list(db.trades.aggregate([
         {'$match': {'status':'closed', 'pct_net_gain':{'$lt':0}}},
         {'$group': {
-            '_id': {'strategy':'$strategy', 'day': {'$dayOfYear':'$end_time'}},
+            '_id': {'also':'$algo', 'day': {'$dayOfYear':'$end_time'}},
             'total': {'$sum':'$pct_net_gain'},
             'count': {'$sum': 1}
         }}
@@ -54,14 +54,14 @@ def earnings():
     for n in gain:
         tradelog("{:} today: {:} wins ({:+.2f}%)."\
             .format(
-                n['_id']['strategy'],
+                n['_id']['algo'],
                 n['count'],
                 n['total']
             ))
     for n in loss:
         tradelog("{:} today: {:} losses ({:+.2f}%)."\
             .format(
-                n['_id']['strategy'],
+                n['_id']['algo'],
                 n['count'],
                 n['total']
             ))
@@ -83,9 +83,9 @@ def new_trades(trade_ids):
         if len(record['orders']) > 1:
             c1 = record['orders'][0]['candle']
             c2 = record['orders'][1]['candle']
-            df = dfc.loc[record['pair'], strtofreq(c2['freq'])].tail(40)
+            df = dfc.loc[record['pair'], strtofreq(c2['freqstr'])].tail(40)
             data.append([
-                c2['freq'],
+                c2['freqstr'],
                 'SELL',
                 pct_diff(c1['close'], c2['close']),
                 ss2['macd']['values'][-1],
@@ -96,9 +96,9 @@ def new_trades(trade_ids):
         # Buy trade
         else:
             c1 = record['orders'][0]['candle']
-            df = dfc.loc[record['pair'], strtofreq(c1['freq'])].tail(40)
+            df = dfc.loc[record['pair'], strtofreq(c1['freqstr'])].tail(40)
             data.append([
-                c1['freq'],
+                c1['freqstr'],
                 'BUY',
                 0.0,
                 ss1['macd']['values'][-1],
@@ -125,34 +125,32 @@ def new_trades(trade_ids):
     [tradelog(line) for line in lines]
 
 #------------------------------------------------------------------------------
-def positions(freqstr):
+def positions():
     """Position summary.
     """
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ["freq", "Δprice", "macd", "rsi", "time", "strat"]
+    cols = ["freq", "Δprice", "macd", "rsi", "time", "algo"]
     data, indexes = [], []
-    _trades = list(db.trades.find(
-        {'status':'open', 'pair':{"$in":pairs}}))
+    opentrades = db.trades.find({'status':'open'})
 
-    for record in _trades:
+    for record in opentrades:
         c1 = record['orders'][0]['candle']
-        c2 = candles.to_dict(record['pair'], freqstr)
         ss1 = record['snapshots'][0]
-        ss2 = record['snapshots'][-1]
-        df = dfc.loc[record['pair'], strtofreq(freqstr)].tail(40)
+        ss_new = record['snapshots'][-1]
+        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(40)
 
         data.append([
-            c1['freq'],
-            pct_diff(c1['close'], c2['close']),
-            ss2['macd']['values'][-1],
+            c1['freqstr'],
+            pct_diff(ss1['price']['close'], ss_new['price']['close']),
+            ss_new['macd']['values'][-1],
             signals.rsi(df['close'], 14),
             to_relative_str(now() - record['start_time']),
-            record['strategy']
+            record['algo']
         ])
         indexes.append(record['pair'])
 
-    if len(_trades) == 0:
+    if opentrades.count() == 0:
         tradelog("0 open positions")
     else:
         df = pd.DataFrame(data, index=pd.Index(indexes), columns=cols)

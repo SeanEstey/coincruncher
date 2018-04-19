@@ -18,7 +18,7 @@ def rsi(df, span):
     losses = diff[diff < 0]
     rs = abs(gains.mean() / losses.mean())
     rsi = 100 - (100 / (1.0 + rs))
-    return np.float64(rsi).round(2)
+    return int(rsi)
 
 #-----------------------------------------------------------------------------
 def z_score(df, columns, candle, span):

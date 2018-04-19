@@ -19,10 +19,13 @@ from app.common.timer import Timer
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('trade')
+start = now()
+n_cycles = 0
 
 #---------------------------------------------------------------------------
 def run(e_pairs):
     from main import q_closed
+    global n_cycles
 
     client = app.bot.client
     db = app.db
@@ -32,9 +35,18 @@ def run(e_pairs):
         exited, entered = None, None
         n=0
 
+        if q_closed.empty() == False:
+            n_cycles += 1
+            tradelog('*'*TRADELOG_WIDTH)
+            duration = to_relative_str(now() - start)
+            hdr = "Cycle #{} {:>%s}" % (31 - len(str(n_cycles)))
+            tradelog(hdr.format(n_cycles, duration))
+            tradelog('-'*TRADELOG_WIDTH)
+
         while q_closed.empty() == False:
             candle = q_closed.get()
             ss = snapshot(candle)
+            db.ss.insert_one({**{'pair':candle['pair']},**ss})
             exited = eval_exit(candle, ss)
             entered = eval_entry(candle, ss)
             n+=1
@@ -43,13 +55,16 @@ def run(e_pairs):
             print('{} queue candles cleared.'.format(n))
             if entered:
                 reports.trades(entered)
-            if db.trades.find({'status':'open'}).count() > 0:
-                reports.positions()
+
+            #if db.trades.find({'status':'open'}).count() > 0:
+            reports.positions()
+
             if entered or exited:
                 reports.earnings()
         else:
             print('closed candle queue empty.')
 
+        #print("app.bot.dfc.lenth={}.".format(len(app.bot.dfc)))
         time.sleep(10)
 
 #------------------------------------------------------------------------------
@@ -64,7 +79,7 @@ def stoploss(e_pairs):
         n=0
         while q_open.empty() == False:
             c = q_open.get()
-            query = {'pair':c['pair'], 'freq':c['freqstr'], 'status':'open'}
+            query = {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
 
             for trade in db.trades.find(query):
                 diff = pct_diff(trade['orders'][0]['candle']['close'], c['close'])
@@ -81,11 +96,9 @@ def eval_entry(candle, ss):
     db = app.get_db()
     ids = []
     for algo in TRADE_ALGOS:
-        if db.trades.find_one({
-            'freq':candle['freqstr'],
-            'algo':algo['name'],
-            'status':'open'
-        }): continue
+        if db.trades.find_one(
+            {'freqstr':candle['freqstr'], 'algo':algo['name'], 'status':'open'}):
+            continue
 
         # Test all filters/conditions eval to True
         if all([fn(candle,ss) for fn in algo['entry']['filters']]):
@@ -99,11 +112,11 @@ def eval_exit(candle, ss):
     ids = []
     query = {
         'pair':candle['pair'],
-        'freq':candle['freqstr'],
+        'freqstr':candle['freqstr'],
         'status':'open'
     }
     for trade in db.trades.find(query):
-        algo = [n for n in TRADE_ALGOS if n['name'] == trade['algorithm']][0]
+        algo = [n for n in TRADE_ALGOS if n['name'] == trade['algo']][0]
 
         # Test all filters/conditions eval to True
         if all([fn(candle, ss, trade) for fn in algo['exit']['filters']]):
@@ -111,8 +124,11 @@ def eval_exit(candle, ss):
                 ids.append(sell(trade, candle, ss,
                     details="Algo filters/conditions met"))
             else:
-                db.trades.update_one({"_id":trade["_id"]},
+                db.trades.update_one(
+                    {"_id":trade["_id"]},
                     {"$push": {"snapshots":ss}})
+
+
     return ids
 
 #------------------------------------------------------------------------------
@@ -129,7 +145,7 @@ def buy(candle, algoconf, ss):
     result = db.trades.insert_one(odict({
         'pair': candle['pair'],
         'quote_asset': meta['quoteAsset'],
-        'freq': candle['freqstr'],
+        'freqstr': candle['freqstr'],
         'status': 'open',
         'start_time': now(),
         'algo': algoconf['name'],

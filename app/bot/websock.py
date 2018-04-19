@@ -16,7 +16,7 @@ from docs.botconf import *
 import app, app.bot
 from app.common.utils import colors as c
 from app.common.timer import Timer
-from app.bot import get_pairs
+from app.bot import get_pairs, candles
 from main import q_open, q_closed
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
@@ -25,8 +25,9 @@ ws = None
 
 #---------------------------------------------------------------------------
 def run(e_pairs):
-    global storedata, connkeys
+    global storedata, connkeys, ws
 
+    # TODO: change this timer to 10 or 15 min
     tmr = Timer(name='pairs', expire='every 5 clock min utc')
     print("Connecting to websocket...")
     client = app.bot.client
@@ -45,31 +46,31 @@ def run(e_pairs):
         if e_pairs.isSet():
             update_sockets()
             e_pairs.clear()
-
         if tmr.remain(quiet=True) == 0:
             tmr.reset(quiet=True)
             if len(storedata) > 0:
                 print("SAVING CANDLES TO DB")
+                candles.bulk_save(storedata)
                 storedata = []
-
+                app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS, dfm=app.bot.dfc)
         update_spinner()
         time.sleep(0.1)
-
     close_all()
 
 #---------------------------------------------------------------------------
 def update_sockets():
     """conn_key str format: <symbol>@kline_<interval>
     """
-    global connkeys
-    print("Pair event triggered.")
+    global connkeys, storedata, ws
+    print("Event: enabled pairs changed. Updating websockets...")
+
     old = set([n[0:n.index('@')].upper() for n in connkeys])
     new = set(app.bot.get_pairs())
 
     # Removed pairs: close all sockets w/ matching symbols.
     for pair in (old - new):
         for k in connkeys:
-            if k.index(pair) > -1:
+            if pair in k:
                 ws.stop_socket(k)
                 idx = connkeys.index(k)
                 connkeys = connkeys[0:idx] + connkeys[idx+1:]
@@ -123,6 +124,7 @@ def save_klines():
 
 #---------------------------------------------------------------------------
 def close_all():
+    global ws
     print('Closing all sockets...')
     ws.close()
     print('Terminating twisted server...')

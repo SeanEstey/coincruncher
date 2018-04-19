@@ -9,7 +9,7 @@ from binance.client import Client
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
-from app.bot import candles, scanner, trade, websock
+
 
 ##### Globals #####
 
@@ -25,6 +25,8 @@ if __name__ == '__main__':
     killer = app.GracefulKiller()
     app.set_db(host)
     app.bot.init()
+
+    from app.bot import candles, scanner, trade, websock
 
     # Handle input commands
     try:

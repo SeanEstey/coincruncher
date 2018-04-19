@@ -18,6 +18,7 @@ pd.set_option("display.max_columns", 25)
 pd.set_option("display.width", 2000)
 app.set_db("localhost")
 db = app.get_db()
+from docs.botconf import *
 
 from app.bot import candles, macd, scanner, trade, tickers
 
@@ -34,13 +35,11 @@ def test_getphase(df, start_idx, pair, freq, periods):
 #---------------------------------------------------------------------------
 def load(pair, freqstr, startstr):
     candles.update([pair], freqstr, start=startstr, force=True)
-    df = candles.load([pair], freqstr=freqstr, startstr=startstr)
+    df = candles.bulk_load([pair], freqstr=freqstr, startstr=startstr)
     return df.loc[pair,strtofreq(freqstr)]
 
 
 #df = load('ZILBTC','30m','72 hours ago utc')
 #dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
-trade.init()
-client = Client("","")
-scanner.update()
-
+pairs = app.bot.get_pairs()
+app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS)

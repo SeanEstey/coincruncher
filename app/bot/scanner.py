@@ -8,6 +8,7 @@ from docs.botconf import *
 import app, app.bot
 from app.common.timer import Timer
 from app.common.utils import to_local, utc_datetime as now
+from app.common.utils import strtodt, strtoms
 from app.common.timeutils import strtofreq
 from . import candles, macd, tickers, trade
 def scanlog(msg): log.log(98, msg)
@@ -16,60 +17,50 @@ log = logging.getLogger('scanner')
 
 #---------------------------------------------------------------------------
 def run(e_pairs):
-    #global client
-    #client = Client('','')
-    update()
-    tmr = Timer(name='scanner', expire='every 30 clock min utc')
+    tmr = Timer(name='scanner', expire='every 15 clock min utc')
+    macd_scan()
 
     while True:
         if tmr.remain() == 0:
-            update()
+            # Scan and update enabled trading pairs
+            pairs = filter_pairs()
+            app.bot.enable_pairs(pairs)
+            app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=app.bot.dfc)
+            # Notify websocket thread to update its sockets
+            e_pairs.set()
+            macd_scan()
             tmr.reset()
         time.sleep(300)
 
 #------------------------------------------------------------------------------
-def update():
-    from app.common.utils import strtodt, strtoms
-
+def filter_pairs():
     scanlog('*'*59)
-
     try:
         dfT = tickers.binance_24h().sort_values('24hPriceChange')
         dfA = tickers.aggregate_mkt()
     except Exception as e:
         return print("Agg/Ticker Binance client error. {}".format(str(e)))
 
-    authpairs=[]
+    filterlist = []
     for pair in dfT.index.tolist():
         q_asset = dfT.loc[pair]['quoteAsset']
         mkt = dfA.loc[q_asset]
         tckr = dfT.loc[pair]
-        results = [fn(tckr, mkt) for fn in TRADE_PAIR_ALGO['filters']]
-        if any([n == False for n in results]):
-            continue
-        else:
-            authpairs.append(pair)
 
-    #print("{} pairs authed: {}".format(len(authpairs), authpairs))
-    #print("app.bot.dfc.length={}".format(len(app.bot.dfc)))
+        if all([ fn(tckr, mkt) for fn in TRADE_PAIR_ALGO['filters'] ]):
+            filterlist.append(pair)
+    return filterlist
 
-    # Load revelent historic candle data from DB, query any (pair,freq)
-    # index data that's missing.
-    app.bot.dfc = candles.load(authpairs, TRADEFREQS, dfm=app.bot.dfc)  #pd.DataFrame())
-    tuples = pd.MultiIndex.from_product([authpairs, TRADEFREQS]).values.tolist()
-    for idx in tuples:
-        if (idx[0], strtofreq(idx[1])) in app.bot.dfc.index:
-            continue
-        print("Retrieving {} candle data...".format(idx))
-        candles.update([idx[0]], [idx[1]])
-        app.bot.dfc = candles.load([idx[0]], [idx[1]], dfm=app.bot.dfc)
-
-    for pair in authpairs:
+#------------------------------------------------------------------------------
+def macd_scan():
+    for pair in app.bot.get_pairs():
         for freqstr in TRADEFREQS:
             freq = strtofreq(freqstr)
-            periods = int((strtoms("now utc") - strtoms(DEF_KLINE_HIST_LEN)) / ((freq * 1000)/2))
+            periods = int((strtoms("now utc") - strtoms(DEF_KLINE_HIST_LEN)) / ((freq * 1000))) #/2))
             df = app.bot.dfc.loc[pair,freq]
             dfh, phases = macd.histo_phases(df, pair, freqstr, periods)
+
+            # Format for log output
             dfh = dfh.tail(3)
             idx = dfh.index.to_pydatetime()
             dfh.index = [ to_local(n.replace(tzinfo=pytz.utc)).strftime("%m-%d %H:%M") for n in idx]
@@ -93,17 +84,3 @@ def update():
             ).split("\n")
             [ scanlog(line) for line in lines]
             scanlog("")
-
-    #print("authpairs.length={}".format(len(authpairs)))
-    app.bot.enable_pairs(authpairs)
-
-
-"""
-try:
-    candles.update([pair], [freqstr], startstr=startstr, client=client)
-except Exception as e:
-    return print("Binance client error. {}".format(str(e)))
-else:
-    df = candles.load([pair], [freqstr], startstr=startstr)
-    df = df.loc[pair, freq]
-"""

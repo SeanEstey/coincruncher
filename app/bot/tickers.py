@@ -35,10 +35,10 @@ def aggregate_mkt(freqstr=None):
     k=None
     if freqstr:
         db = app.get_db()
-        last = list(db.tickers.find({'freq':freqstr},
-            {'_id':0,'freq':0,'ex':0,'time':0}).sort('time',-1))
+        last = list(db.tickers.find({'freqstr':freqstr},
+            {'_id':0,'freqstr':0,'ex':0,'time':0}).sort('time',-1))
         db.tickers.insert_one({
-            **{'ex':'Binance', 'time': now(), 'freq': freqstr},
+            **{'ex':'Binance', 'time': now(), 'freqstr': freqstr},
             **dfA.to_dict('index')
         })
 

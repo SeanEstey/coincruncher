@@ -2,10 +2,8 @@
 # Configuration and algorithm definitions for trading bot.
 
 DEF_KLINE_HIST_LEN = "72 hours ago utc"
-
 TRADE_AMT_MAX = 50.00
-
-TRADEFREQS = ['5m', '30m', '1h'] #, '1d']
+TRADEFREQS = ['5m', '30m', '1h']
 
 # Algorithm that decides which trading pairs are enabled
 # @tckr: binance ticker dataframe
@@ -13,7 +11,7 @@ TRADEFREQS = ['5m', '30m', '1h'] #, '1d']
 # @ss: trade.snapshot() result w/ indicators
 TRADE_PAIR_ALGO = {
     "filters": [
-        #lambda tckr, mkt: mkt['24hPriceChange'] > -5,
+        lambda tckr, mkt: mkt['24hPriceChange'] > 0,
         lambda tckr, mkt: tckr['24hPriceChange'] > 10.0
     ],
     "conditions": [
@@ -36,10 +34,10 @@ TRADE_ALGOS = [
             "filters": [],
             "conditions": [
                 lambda c,ss: ss['macd']['values'][-1] > 0,
-                lambda c,ss: ss['macd']['trend'] > 0,
+                lambda c,ss: ss['macd']['trend'] > 0
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
                 lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-                lambda c,ss: ss['rsi'] <= 0.3
+                lambda c,ss: ss['rsi'] <= 75
             ]
         },
         "exit": {
@@ -62,8 +60,7 @@ TRADE_ALGOS = [
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
                 lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-                lambda c,ss: ss['rsi'] <= 0.3
-
+                lambda c,ss: ss['rsi'] <= 50
             ]
         },
         "exit": {
@@ -86,11 +83,11 @@ TRADE_ALGOS = [
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
                 lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-                lambda c,ss: ss['rsi'] <= 0.3
+                lambda c,ss: ss['rsi'] <= 50
             ]
         },
         "exit": {
-            "filters": [lambda c, ss, doc: c['freq'] in ['1h']],
+            "filters": [],
             "conditions": [
                 lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] < 0

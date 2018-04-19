@@ -29,7 +29,7 @@ def _old():
     # FIXME: put on a thread timer
     # Merge new candle data
     start = now()
-    app.bot.dfc = candles.load(pairs, [freqstr],
+    app.bot.dfc = candles.bulk_load(pairs, [freqstr],
         startstr="{} seconds ago utc".format(freq*3),
         dfm=app.bot.dfc)
 
@@ -132,7 +132,7 @@ def indicators(idx, freqstr, periods, quiet=True):
         for pair, row in df.iterrows():
             # Query/load candle data
             candles.update([pair], freqstr, start=startstr, force=True)
-            dfp = candles.load([pair], freqstr=freqstr, startstr=startstr)
+            dfp = candles.bulk_load([pair], freqstr=freqstr, startstr=startstr)
             dfp = dfp.loc[pair,freq]
 
             # Run MACD histogram analysis
