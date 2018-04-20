@@ -56,9 +56,7 @@ def enable_pairs(pairs):
     db = app.db
     # Add open trade pairs
     tradepairs = set([n['pair'] for n in list(db.trades.find({'status':'open'}))])
-    print("tradepairs: {}".format(tradepairs))
     pairs = list(set(pairs + list(tradepairs)))
-    print("pairs: {}".format(pairs))
 
     # Retrieve historic data and load.
     for pair in pairs:

@@ -22,7 +22,7 @@ def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('trade')
 # Track every trade price for open position pairs
-tradedata = {}
+cache = {}
 start = now()
 n_cycles = 0
 
@@ -39,6 +39,9 @@ def full_klines(e_pairs):
         n=0
 
         if q_closed.empty() == False:
+            app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS,
+                dfm=app.bot.dfc)
+
             n_cycles += 1
             tradelog('*'*TRADELOG_WIDTH)
             duration = to_relative_str(now() - start)
@@ -49,18 +52,19 @@ def full_klines(e_pairs):
         while q_closed.empty() == False:
             candle = q_closed.get()
             ss = snapshot(candle)
-            db.ss.insert_one({**{'pair':candle['pair']},**ss})
+            #db.ss.insert_one(ss)
             exited = eval_exit(candle, ss)
             entered = eval_entry(candle, ss)
             n+=1
 
         if n > 0:
-            print('{} closed_candle queue items cleared.'.format(n))
+            print('{} q_closed items emptied.'.format(n))
             if entered:
                 reports.new_trades(entered)
                 tradelog('-'*TRADELOG_WIDTH)
 
             reports.positions()
+            tradelog('-'*TRADELOG_WIDTH)
 
             if entered or exited:
                 reports.earnings()
@@ -73,43 +77,66 @@ def part_klines(e_pairs):
     # positions and invoke stop losses when necessary.
     """
     from main import q_open
-    global tradedata
+    global cache
     db = app.get_db()
+    tmr = Timer(name='open_trade_eval', expire='every 1 clock min utc')
 
     while True:
-        items = []
-        while q_open.empty() == False:
-            candle = q_open.get()
-            items.append(candle)
-            query = {'pair':candle['pair'], 'freqstr':candle['freqstr'], 'status':'open'}
+        if q_open.empty() == False:
+            items = []
+            while q_open.empty() == False:
+                candle = q_open.get()
+                items.append(candle)
 
-            for trade in db.trades.find(query):
-                diff = pct_diff(trade['snapshots'][0]['candle']['close'], candle['close'])
+                # Stop loss
+                query = {'pair':candle['pair'], 'freqstr':candle['freqstr'], 'status':'open'}
+                for trade in db.trades.find(query):
+                    diff = pct_diff(trade['snapshots'][0]['candle']['close'], candle['close'])
+                    if diff < trade['stoploss']:
+                        sell(trade, candle, snapshot(candle), details='Stop Loss')
 
-                if diff < trade['stoploss']:
-                    sell(trade, candle, snapshot(candle), details='Stop Loss')
+            savecache(items)
+            print('{} q_open items empties.'.format(len(items)))
 
-        # Update global trade price tracker list
-        if len(items) > 0:
-            rmv = [pair for pair in tradedata.keys() \
-                if pair not in get_pairs()]
-            for k in rmv:
-                del tradedata[k]
-            [tradedata.update({pair:[]}) for pair in get_pairs() \
-                if pair not in tradedata.keys()]
+        # Eval target/failure conditions via unclosed candles.
+        if tmr.remain(quiet=True) == 0:
+            for trade in db.trades.find({'status':'open'}):
+                c = [n for n in cache[trade['pair']] if n['freqstr'] == trade['freqstr']]
+                if len(c) > 0:
+                    ss = snapshot(c[-1], last_ss=trade['snapshots'][0])
+                    eval_exit(c[-1], ss)
 
-            openpairs = set([n['pair'] for n in db.trades.find({'status':'open'})])
-            # Save non-duplicate trade prices for each pair being currently traded.
-            for pair in openpairs:
-                prices = list(set([n['close'] for n in items if n['pair'] == pair]))
+            tmr.reset(quiet=True)
+            reports.positions()
+            tradelog('-'*TRADELOG_WIDTH)
 
-                if len(prices) > 0:
-                    tradedata[pair] += prices
-                    if len(tradedata[pair]) > 10:
-                        tradedata[pair] = tradedata[pair][-10:]
-                    pprint(tradedata)
-        print('{} open_candle queue items cleared.'.format(len(items)))
         time.sleep(10)
+
+#------------------------------------------------------------------------------
+def savecache(candledata):
+    """Update global trade price tracker list.
+    """
+    global cache
+    db = app.get_db()
+
+    # Update cache if changes to enabled pairs
+    rmv = [pair for pair in cache.keys() if pair not in get_pairs()]
+    for k in rmv:
+        del cache[k]
+
+    [cache.update({pair:[]}) for pair in get_pairs() \
+        if pair not in cache.keys()]
+
+    # Save non-duplicate trade prices for each pair being currently traded.
+    openpairs = set([n['pair'] for n in db.trades.find({'status':'open'})])
+    for pair in openpairs:
+        _candles = [n for n in candledata if n['pair'] == pair]
+
+        if len(_candles) > 0:
+            cache[pair] += _candles
+
+            if len(cache[pair]) > CACHE_SIZE:
+                cache[pair] = cache[pair][-CACHE_SIZE:]
 
 #------------------------------------------------------------------------------
 def eval_entry(candle, ss):
@@ -121,9 +148,8 @@ def eval_entry(candle, ss):
             continue
 
         # Test all filters/conditions eval to True
-        if all([fn(candle,ss) for fn in algo['entry']['filters']]):
-            if all([fn(candle,ss) for fn in algo['entry']['conditions']]):
-                ids.append(buy(candle, algo, ss))
+        if all([fn(candle,ss) for fn in algo['entry']['conditions']]):
+            ids.append(buy(candle, algo, ss))
     return ids
 
 #------------------------------------------------------------------------------
@@ -138,15 +164,16 @@ def eval_exit(candle, ss):
     for trade in db.trades.find(query):
         algo = [n for n in TRADE_ALGOS if n['name'] == trade['algo']][0]
 
-        # Test all filters/conditions eval to True
-        if all([fn(candle, ss, trade) for fn in algo['exit']['filters']]):
-            if all([fn(candle, ss, trade) for fn in algo['exit']['conditions']]):
-                ids.append(sell(trade, candle, ss,
-                    details="Algo filters/conditions met"))
-            else:
-                db.trades.update_one(
-                    {"_id":trade["_id"]},
-                    {"$push": {"snapshots":ss}})
+        if all([fn(candle, ss, trade) for fn in algo['target']['conditions']]):
+            ids.append(sell(trade, candle, ss,
+                details="Target conditions met"))
+        elif all([fn(candle, ss, trade) for fn in algo['failure']['conditions']]):
+            ids.append(sell(trade, candle, ss,
+                details="Failure conditions met"))
+        else:
+            db.trades.update_one(
+                {"_id":trade["_id"]},
+                {"$push": {"snapshots":ss}})
     return ids
 
 #------------------------------------------------------------------------------
@@ -227,14 +254,17 @@ def sell(record, candle, ss, details=None):
     return record['_id']
 
 #------------------------------------------------------------------------------
-def snapshot(candle):
+def snapshot(candle, last_ss=None):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
-    global tradedata
+    global cache
     client = app.bot.client
     db = app.db
+    buyratio = 0
+    _macd, _indicators, _interim = {}, {}, {}
+    pair, freqstr = candle['pair'], candle['freqstr']
 
-    book = odict(client.get_orderbook_ticker(symbol=candle['pair']))
+    book = odict(client.get_orderbook_ticker(symbol=pair))
     del book['symbol']
     [book.update({k:np.float64(v)}) for k,v in book.items()]
     book.update({
@@ -243,44 +273,45 @@ def snapshot(candle):
         'pctSlippage': round(pct_diff(candle['close'], book['askPrice']),3)
     })
 
-    buy_ratio = 0.0
     if float(candle['volume']) > 0:
-        buy_ratio = (candle['buy_vol'] / candle['volume']).round(2)
+        buyratio = (candle['buy_vol'] / candle['volume']).round(2)
 
-    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freqstr'])]
-    dfh, phases = macd.histo_phases(df, candle['pair'], candle['freqstr'], 100)
-    dfh['start'] = dfh.index
-    dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
+    # Generate interim price movement (since opening position) from unclosed (cached)
+    # candle data.
+    if candle['ended'] == False and last_ss:
+        _macd = last_ss['macd']
+        _indicators = last_ss['indicators']
+        prices = [n['close'] for n in cache[pair] if n['freqstr'] == freqstr]
+        _interim['n_prices'] = len(prices)
+        pdiff = pd.Series(prices).diff()
 
-    current = phases[-1].round(3)
-    idx = current.index.to_pydatetime()
-    current.index = [str(to_local(n.replace(tzinfo=pytz.utc))) for n in idx]
-
-    trend = 0
-    if candle['pair'] in tradedata.keys():
-        pdiff = pd.Series(tradedata[candle['pair']]).diff()
         if len(pdiff) > 0:
-            trend = pdiff.ewm(span=5).mean().iloc[-1]
-            n_dec = Decimal(str(trend)).as_tuple().exponent
-            trend = trend.round(n_dec)
+            _interim['pricetrend'] = pdiff.ewm(span=len(pdiff)).mean().iloc[-1]
+        else:
+            _interim['pricetrend'] = np.nan
+    else:
+        df = app.bot.dfc.loc[pair, strtofreq(freqstr)]
+        dfmacd, phases = macd.histo_phases(df, pair, freqstr, 100, to_bson=True)
+        _macd = odict({
+            'histo': [{k:v} for k,v in phases[-1].to_dict().items()],
+            'trend': phases[-1].diff().ewm(span=min(2, len(phases[-1]))).mean().iloc[-1],
+            'desc': phases[-1].describe().round(3).to_dict(),
+            'history': dfmacd.to_dict('record')
+        })
+        _indicators = odict({
+            'buyratio': buyratio,
+            'macd': phases[-1].values.tolist()[-1],
+            'rsi': signals.rsi(df['close'], 14),
+            'zscore': signals.zscore(df['close'], candle['close'], 21)
+        })
+        _interim['pricetrend'] = np.nan
 
     return odict({
-        'pair': candle['pair'],
+        'pair': pair,
         'time': now(),
         'book': book,
         'candle': odict(candle),
-        'indicators': odict({
-            'buyratio': buy_ratio,
-            'macd': current.values.tolist()[-1],
-            'rsi': signals.rsi(df['close'], 14),
-            'pricetrend': trend,
-            'zscore': signals.zscore(df['close'], candle['close'], 21)
-        }),
-        'macd': odict({
-            'histo': [{k:v} for k,v in current.to_dict().items()],
-            'trend': current.diff().ewm(span=min(2, len(current))).mean().iloc[-1],
-            'desc': current.describe().round(3).to_dict(),
-            'history': dfh.to_dict('record')
-        }),
-
+        'indicators': _indicators,
+        'interim': _interim,
+        'macd': _macd
     })

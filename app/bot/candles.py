@@ -98,6 +98,7 @@ def bulk_save(data):
         result = app.get_db().candles.insert_many(data, ordered=False)
     except OperationFailure as e:
         n_insert = len(data) - len(e.details['writeErrors'])
+        #print(e.details['writeErrors'][0])
     else:
         n_insert = len(result.inserted_ids)
 

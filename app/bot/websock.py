@@ -39,8 +39,8 @@ def run(e_pairs):
     ws.start()
     print('Connected. Press Ctrl+C to quit')
 
-    # TODO: change this timer to 10 or 15 min
     tmr = Timer(name='pairs', expire='every 5 clock min utc')
+
     while True:
         if e_pairs.isSet():
             update_sockets()
@@ -48,7 +48,7 @@ def run(e_pairs):
         if tmr.remain(quiet=True) == 0:
             tmr.reset(quiet=True)
             if len(storedata) > 0:
-                print("SAVING CANDLES TO DB")
+                print("websock_thread: saving new candles...")
                 candles.bulk_save(storedata)
                 storedata = []
                 app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS, dfm=app.bot.dfc)
@@ -102,7 +102,8 @@ def recv_kline(msg):
         "volume": np.float64(k['v']),
         "buy_vol": np.float64(k['V']),
         "quote_volume": np.float64(k['q']),
-        "quote_buy_vol": np.float64(k['Q'])
+        "quote_buy_vol": np.float64(k['Q']),
+        "ended": k['x']
     }
 
     if k['x'] == True:

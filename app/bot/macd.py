@@ -55,7 +55,7 @@ def generate(df, ema=None, normalize=True):
     return df
 
 #------------------------------------------------------------------------------
-def histo_phases(df, pair, freqstr, periods):
+def histo_phases(df, pair, freqstr, periods, to_bson=False):
     """Groups and analyzes the MACD histogram phases within given timespan.
     Determines how closely the histogram bars track with price.
     """
@@ -113,6 +113,14 @@ def histo_phases(df, pair, freqstr, periods):
     dfh = dfh.sort_index()
     dfh = dfh[['lbl', 'bars', 'duration', 'ampMean', 'ampMax',
         'priceY', 'priceX', 'capt', 'corr']].round(2)
+
+    if to_bson:
+        dfh['start'] = dfh.index
+        dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
+        phases[-1] = phases[-1].round(3)
+        idx = phases[-1].index.to_pydatetime()
+        phases[-1].index = [str(to_local(n.replace(tzinfo=pytz.utc))) for n in idx]
+
     return (dfh, phases)
 
 #------------------------------------------------------------------------------
