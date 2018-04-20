@@ -23,7 +23,7 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     """
     db = app.get_db()
     t1 = Timer()
-    columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_ratio']
+    columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_vol']
     exclude = ['_id', 'quote_vol','sell_vol', 'close_time']
     proj = dict(zip(exclude, [False]*len(exclude)))
     query = {
@@ -49,7 +49,6 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
         ('low', np.float64),
         ('buy_vol', np.float64),
         ('volume', np.float64),
-        ('buy_ratio', np.float64),
         ('trades', np.int32)
     ])
     # Bulk load mongodb records into predefined, fixed-size numpy array.
@@ -57,7 +56,7 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     try:
         ndarray = sequence_to_ndarray(batches, dtype, batches.count())
     except Exception as e:
-        log.error(str(e))
+        print(str(e))
         return dfm
 
     # Build multi-index dataframe from ndarray
@@ -69,6 +68,8 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     df = df.rename(columns={'freqstr':'freq'})
     [df['freq'].replace(n, strtofreq(n), inplace=True) for n in TRADEFREQS]
     df.sort_values(by=['pair','freq','open_time'], inplace=True)
+
+    print("df.len={}".format(len(df)))
 
     dfc = pd.DataFrame(df[columns].values,
         index = pd.MultiIndex.from_arrays(
@@ -134,10 +135,6 @@ def update(pairs, freqstrs, startstr=None):
                 ]
                 d = dict(zip(BINANCE_REST_KLINES, x))
                 d.update({'pair': pair, 'freqstr': freqstr})
-                if d['volume'] > 0:
-                    d['buy_ratio'] = round(d['buy_vol'] / d['volume'], 4)
-                else:
-                    d['buy_ratio'] = 0.0
                 data[i] = d
             candles += data
 
@@ -184,7 +181,7 @@ def query_api(pair, freqstr, startstr=None, endstr=None):
     return results
 
 #------------------------------------------------------------------------------
-def to_dict(pair, freqstr, partial=False):
+def to_dict(pair, freqstr):
     """Get most recently added candle to either dataframe or mongoDB.
     """
     freq = strtofreq(freqstr)
@@ -202,18 +199,3 @@ def to_dict(pair, freqstr, partial=False):
         **{'pair':pair, 'freqstr':freqstr, 'open_time':df.index.to_pydatetime()[0]},
         **df.to_dict('record')[0]
     }
-
-"""
-#------------------------------------------------------------------------------
-def describe(candle):
-    from app.bot.trade import snapshot
-    ss = snapshot(candle)
-
-    line = "{:<7} {:>5} {:>+10.2f} z-p {:>+10.2f} z-v {:>10.2f} bv"\
-           "{:>+10.2f} m" #{:>+10.2f} macd{}{}"
-
-    siglog(line.format(candle['pair'], candle['freqstr'],
-        ss['price']['z-score'], ss['volume']['z-score'], candle['buy_ratio'],
-        ss['price']['emaDiff']
-    ))
-"""

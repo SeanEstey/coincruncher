@@ -21,14 +21,13 @@ def rsi(df, span):
     return int(rsi)
 
 #-----------------------------------------------------------------------------
-def z_score(df, columns, candle, span):
+def zscore(series, value, span):
     """Calculate the number of standard deviations from the mean for each of the
     specified candle properties, given the historic values for each.
     """
-    ema = df.ewm(span=span).mean()
-    desc = ema.describe()
-    z_values = [((candle[n] - desc[n]['mean']) / desc[n]['std']) for n in columns]
-    return pd.Series(z_values, index=columns).astype('float64')
+    ema = series.ewm(span=span).mean()
+    z = (value - ema.mean()) / ema.std()
+    return z.round(2)
 
 #------------------------------------------------------------------------------
 def weighted_avg(values, weights):

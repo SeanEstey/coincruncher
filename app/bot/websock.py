@@ -26,22 +26,21 @@ ws = None
 #---------------------------------------------------------------------------
 def run(e_pairs):
     global storedata, connkeys, ws
-
-    # TODO: change this timer to 10 or 15 min
-    tmr = Timer(name='pairs', expire='every 5 clock min utc')
-    print("Connecting to websocket...")
     client = app.bot.client
-    ws = BinanceSocketManager(client)
-    pairs = get_pairs()
 
+    print("Connecting to websocket...")
+    ws = BinanceSocketManager(client)
+
+    pairs = get_pairs()
     connkeys += [ws.start_kline_socket(pair, recv_kline, interval=n) \
         for n in TRADEFREQS for pair in pairs]
     print("Subscribed to {} kline sockets.".format(len(connkeys)))
+
     ws.start()
     print('Connected. Press Ctrl+C to quit')
 
-    pairset = set([n[0:n.index('@')].upper() for n in connkeys])
-
+    # TODO: change this timer to 10 or 15 min
+    tmr = Timer(name='pairs', expire='every 5 clock min utc')
     while True:
         if e_pairs.isSet():
             update_sockets()

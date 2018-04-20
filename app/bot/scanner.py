@@ -6,6 +6,7 @@ import pandas as pd
 import numpy as np
 from docs.botconf import *
 import app, app.bot
+from app.bot import enable_pairs
 from app.common.timer import Timer
 from app.common.utils import to_local, utc_datetime as now
 from app.common.utils import strtodt, strtoms
@@ -24,7 +25,7 @@ def run(e_pairs):
         if tmr.remain() == 0:
             # Scan and update enabled trading pairs
             pairs = filter_pairs()
-            app.bot.enable_pairs(pairs)
+            enable_pairs(pairs)
             app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=app.bot.dfc)
             # Notify websocket thread to update its sockets
             e_pairs.set()

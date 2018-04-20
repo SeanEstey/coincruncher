@@ -52,19 +52,15 @@ def run(e_pairs):
             n+=1
 
         if n > 0:
-            print('{} queue candles cleared.'.format(n))
+            print('{} closed_candle queue items cleared.'.format(n))
             if entered:
                 reports.trades(entered)
 
-            #if db.trades.find({'status':'open'}).count() > 0:
             reports.positions()
 
             if entered or exited:
                 reports.earnings()
-        else:
-            print('closed candle queue empty.')
 
-        #print("app.bot.dfc.lenth={}.".format(len(app.bot.dfc)))
         time.sleep(10)
 
 #------------------------------------------------------------------------------
@@ -88,7 +84,7 @@ def stoploss(e_pairs):
                     sell(trade, c, snapshot(c), details='Stop Loss')
             n+=1
 
-        print('{} stoploss queue items cleared.'.format(n))
+        print('{} open_candle queue items cleared.'.format(n))
         time.sleep(10)
 
 #------------------------------------------------------------------------------
@@ -127,24 +123,16 @@ def eval_exit(candle, ss):
                 db.trades.update_one(
                     {"_id":trade["_id"]},
                     {"$push": {"snapshots":ss}})
-
-
     return ids
 
 #------------------------------------------------------------------------------
 def buy(candle, algoconf, ss):
     """Create or update existing position for zscore above threshold value.
     """
-    client = app.bot.client
     db = app.db
-    orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
-    bid = np.float64(orderbook['bidPrice'])
-    ask = np.float64(orderbook['askPrice'])
-    meta = db.assets.find_one({'symbol':candle['pair']})
-
     result = db.trades.insert_one(odict({
         'pair': candle['pair'],
-        'quote_asset': meta['quoteAsset'],
+        'quote_asset': db.assets.find_one({'symbol':candle['pair']})['quoteAsset'],
         'freqstr': candle['freqstr'],
         'status': 'open',
         'start_time': now(),
@@ -155,14 +143,10 @@ def buy(candle, algoconf, ss):
             'action':'BUY',
             'ex': 'Binance',
             'time': now(),
-            'price': ask,
-            'pct_spread': pct_diff(bid, ask),
-            'pct_slippage': pct_diff(candle['close'], ask),
+            'price': ss['book']['askPrice'],
             'volume': 1.0,
             'quote': TRADE_AMT_MAX,
-            'fee': TRADE_AMT_MAX * (BINANCE_PCT_FEE/100),
-            'orderbook': orderbook,
-            'candle': candle
+            'fee': TRADE_AMT_MAX * (BINANCE_PCT_FEE/100)
         })]
     }))
 
@@ -175,15 +159,9 @@ def sell(record, candle, ss, details=None):
     """
     client = app.bot.client
     db = app.db
-
-    orderbook = client.get_orderbook_ticker(symbol=candle['pair'])
-    bid = np.float64(ss['orderBook']['bidPrice'])
-    ask = np.float64(orderbook['askPrice'])
-    pct_spread = pct_diff(bid, ask)
-    pct_slippage = pct_diff(candle['close'], bid)
-    pct_total_slippage = record['orders'][0]['pct_slippage'] + pct_slippage
-
     pct_fee = BINANCE_PCT_FEE
+    bid = ss['book']['bidPrice']
+    ask = ss['book']['askPrice']
     buy_vol = np.float64(record['orders'][0]['volume'])
     buy_quote = np.float64(record['orders'][0]['quote'])
     p1 = np.float64(record['orders'][0]['price'])
@@ -192,9 +170,8 @@ def sell(record, candle, ss, details=None):
     quote = buy_quote * (1 - pct_fee/100)
     fee = (bid * buy_vol) * (pct_fee/100)
     pct_net_gain = net_earn = pct_gain - (pct_fee*2)
-
+    pct_total_slippage = record['snapshots'][0]['book']['pctSlippage'] + ss['book']['pctSlippage']
     duration = now() - record['start_time']
-    candle['buy_ratio'] = candle['buy_ratio'].round(4)
 
     print("SELL {} ({}) Details: {}"\
         .format(candle['pair'], record['algo'], details))
@@ -209,13 +186,9 @@ def sell(record, candle, ss, details=None):
                     'ex': 'Binance',
                     'time': now(),
                     'price': bid,
-                    'pct_spread': round(pct_spread,3),
-                    'pct_slippage': round(pct_slippage,3),
                     'volume': 1.0,
                     'quote': buy_quote,
-                    'fee': fee,
-                    'orderbook': ss['orderBook'],
-                    'candle': candle,
+                    'fee': fee
                 })
             },
             '$set': {
@@ -223,8 +196,7 @@ def sell(record, candle, ss, details=None):
                 'end_time': now(),
                 'duration': int(duration.total_seconds()),
                 'pct_gain': pct_gain.round(4),
-                'pct_net_gain': pct_net_gain.round(4),
-                'pct_slippage': round(pct_total_slippage,3)
+                'pct_net_gain': pct_net_gain.round(4)
             }
         }
     )
@@ -237,46 +209,44 @@ def snapshot(candle):
     client = app.bot.client
     db = app.db
 
-    ob = client.get_orderbook_ticker(symbol=candle['pair'])
-    ask = np.float64(ob['askPrice'])
-    bid = np.float64(ob['bidPrice'])
+    book = odict(client.get_orderbook_ticker(symbol=candle['pair']))
+    del book['symbol']
+    [book.update({k:np.float64(v)}) for k,v in book.items()]
+    book.update({
+        'price': candle['close'],
+        'pctSpread': round(pct_diff(book['bidPrice'], book['askPrice']),3),
+        'pctSlippage': round(pct_diff(candle['close'], book['askPrice']),3)
+    })
 
+    buy_ratio = 0.0
     if float(candle['volume']) > 0:
-        candle['buy_ratio'] = (candle['buy_vol'] / candle['volume']).round(2)
-    else:
-        candle['buy_ratio'] = np.float64(0.0)
+        buy_ratio = (candle['buy_vol'] / candle['volume']).round(2)
 
     df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freqstr'])]
     dfh, phases = macd.histo_phases(df, candle['pair'], candle['freqstr'], 100)
     dfh['start'] = dfh.index
     dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
+
     current = phases[-1].round(3)
     idx = current.index.to_pydatetime()
-    current.index = [str(to_local(n.replace(tzinfo=pytz.utc)))[:-10] for n in idx]
-    ema_span = len(current)/3 if len(current) >= 3 else len(current)
+    current.index = [str(to_local(n.replace(tzinfo=pytz.utc))) for n in idx]
 
     return odict({
+        'pair': candle['pair'],
         'time': now(),
-        'price': odict({
-            'close': candle['close'],
-            'ask': ask,
-            'bid': bid,
-            'pct_spread': round(pct_diff(bid, ask),3),
-            'pct_slippage': round(pct_diff(candle['close'], ask),3)
-        }),
-        'volume': odict({
-            'value': candle['volume']
-        }),
-        'buyRatio': odict({
-            'value': round(candle['buy_ratio'],2)
+        'book': book,
+        'candle': odict(candle),
+        'indicators': odict({
+            'buyratio': buy_ratio,
+            'macd': current.values.tolist()[-1],
+            'rsi': signals.rsi(df['close'], 14),
+            'zscore': signals.zscore(df['close'], candle['close'], 21)
         }),
         'macd': odict({
             'histo': [{k:v} for k,v in current.to_dict().items()],
-            'values': current.values.tolist(),
-            'trend': current.diff().ewm(span=ema_span).mean().iloc[-1],
+            'trend': current.diff().ewm(span=min(2, len(current))).mean().iloc[-1],
             'desc': current.describe().round(3).to_dict(),
             'history': dfh.to_dict('record')
         }),
-        'rsi': signals.rsi(df['close'], 14),
-        'orderBook':ob
+
     })

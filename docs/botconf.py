@@ -28,23 +28,27 @@ TRADE_PAIR_ALGO = {
 TRADE_ALGOS = [
     {
         "name": "macd5m",
+        "indicators": {
+            "rsi": {"span":14},
+            "zscore": {"span":21},
+        },
         "ema": (12, 26, 9),
         "stoploss": -0.75,
         "entry": {
             "filters": [],
             "conditions": [
-                lambda c,ss: ss['macd']['values'][-1] > 0,
-                lambda c,ss: ss['macd']['trend'] > 0
+                lambda c,ss: ss['indicators']['rsi'] <= 50,
+                lambda c,ss: ss['indicators']['macd'] > 0,
+                lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-                lambda c,ss: ss['rsi'] <= 75
+                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0
             ]
         },
         "exit": {
             "filters": [],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['values'][-1] > 0,
-                lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+                lambda c,ss: ss['indicators']['macd'] > 0,
+                lambda c,ss,doc: ss['indicators']['macd'] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
@@ -56,18 +60,18 @@ TRADE_ALGOS = [
         "entry": {
             "filters": [],
             "conditions": [
-                lambda c,ss: ss['macd']['values'][-1] > 0,
+                lambda c,ss: ss['indicators']['rsi'] <= 50,
+                lambda c,ss: ss['indicators']['macd'] > 0,
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-                lambda c,ss: ss['rsi'] <= 50
+                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0
             ]
         },
         "exit": {
             "filters": [],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['values'][-1] > 0,
-                lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+                lambda c,ss: ss['indicators']['macd'] > 0,
+                lambda c,ss,doc: ss['indicators']['macd'] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }
@@ -79,17 +83,17 @@ TRADE_ALGOS = [
         "entry": {
             "filters": [],
             "conditions": [
-                lambda c,ss: ss['macd']['values'][-1] > 0,
+                lambda c,ss: ss['indicators']['rsi'] <= 50,
+                lambda c,ss: ss['indicators']['macd'] > 0,
                 lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
                 lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-                lambda c,ss: ss['rsi'] <= 50
             ]
         },
         "exit": {
             "filters": [],
             "conditions": [
-                lambda c,ss,doc: ss['macd']['values'][-1] < ss['macd']['desc']['max'],
+                lambda c,ss,doc: ss['indicators']['macd'] < ss['macd']['desc']['max'],
                 lambda c,ss,doc: ss['macd']['trend'] < 0
             ]
         }

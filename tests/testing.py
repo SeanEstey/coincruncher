@@ -9,6 +9,7 @@ from pprint import pprint
 import importlib
 import pandas as pd
 import numpy as np
+from collections import OrderedDict as odict
 from binance.client import Client
 import app
 from app.common.utils import utc_datetime as now
@@ -41,5 +42,9 @@ def load(pair, freqstr, startstr):
 
 #df = load('ZILBTC','30m','72 hours ago utc')
 #dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
+app.bot.client = client = Client('','')
 pairs = app.bot.get_pairs()
 app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS)
+dfc = app.bot.dfc
+candle = candles.to_dict('SNMBTC','1h')
+trade.snapshot(candle)

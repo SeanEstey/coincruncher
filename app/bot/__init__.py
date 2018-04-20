@@ -37,8 +37,7 @@ def init():
     print("{} active pairs retrieved from api.".format(len(ops)))
     print("Running scanner...")
 
-    pairs = scanner.filter_pairs()
-    enable_pairs(pairs)
+    pairs = enable_pairs(scanner.filter_pairs())
     dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=dfc)
 
     print("{:,} historic candles loaded.".format(len(dfc)))
@@ -55,17 +54,17 @@ def enable_pairs(pairs):
     """To disable all pairs/freq, pass in empty list.
     """
     db = app.db
+    # Add open trade pairs
+    tradepairs = set([n['pair'] for n in list(db.trades.find({'status':'open'}))])
+    print("tradepairs: {}".format(tradepairs))
+    pairs = list(set(pairs + list(tradepairs)))
+    print("pairs: {}".format(pairs))
 
     # Retrieve historic data and load.
     for pair in pairs:
         print("Retrieving {} candles...".format(pair))
         candles.update([pair], TRADEFREQS)
 
-    # ##########################################################################
-    # TODO: what about open trade position pairs that fell below the filter?
-    # Can't disable their websockets until positions are closed or new data
-    # for trades thread.
-    # ##########################################################################
     result = db.assets.update_many({},
         {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})
 
@@ -79,6 +78,8 @@ def enable_pairs(pairs):
     if len(ops) > 0:
         result = db.assets.bulk_write(ops)
         n_enabled = db.assets.find({'botTradeStatus':'ENABLED'}).count()
-        print("{} pairs enabled.".format(n_enabled))
+        print("{} pairs enabled:".format(n_enabled))
+        print(pairs)
+    return pairs
 
 
