@@ -42,7 +42,7 @@ if __name__ == '__main__':
     # Create worker threads. Set as daemons so they terminate
     # automatically if main process is killed.
     threads = []
-    for func in [websock.run, trade.run, trade.stoploss, scanner.run]:
+    for func in [websock.run, trade.full_klines, trade.part_klines, scanner.run]:
         threads.append(Thread(
             name='{}.{}'.format(func.__module__, func.__name__),
             target=func,

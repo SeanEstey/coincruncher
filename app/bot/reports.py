@@ -121,7 +121,7 @@ def positions():
 def earnings():
     """Performance summary of trades, grouped by day/strategy.
     """
-    db = get_db()
+    db = app.get_db()
 
     gain = list(db.trades.aggregate([
         {'$match': {'status':'closed', 'pct_net_gain':{'$gte':0}}},

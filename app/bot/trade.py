@@ -4,6 +4,8 @@ import logging
 import pytz
 import numpy as np
 import pandas as pd
+from decimal import Decimal
+from pprint import pprint
 from pymongo import ReplaceOne, UpdateOne
 from collections import OrderedDict as odict
 from binance.client import Client
@@ -11,7 +13,7 @@ from datetime import timedelta as delta, datetime
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
-from app.bot import candles, macd, reports, signals
+from app.bot import get_pairs, candles, macd, reports, signals
 from app.common.timeutils import strtofreq
 from app.common.utils import pct_diff, to_local, utc_datetime as now, to_relative_str
 from app.common.timer import Timer
@@ -19,14 +21,15 @@ from app.common.timer import Timer
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('trade')
+# Track every trade price for open position pairs
+tradedata = {}
 start = now()
 n_cycles = 0
 
 #---------------------------------------------------------------------------
-def run(e_pairs):
+def full_klines(e_pairs):
     from main import q_closed
     global n_cycles
-
     client = app.bot.client
     db = app.db
     n_cycles = 0
@@ -54,7 +57,8 @@ def run(e_pairs):
         if n > 0:
             print('{} closed_candle queue items cleared.'.format(n))
             if entered:
-                reports.trades(entered)
+                reports.new_trades(entered)
+                tradelog('-'*TRADELOG_WIDTH)
 
             reports.positions()
 
@@ -64,27 +68,47 @@ def run(e_pairs):
         time.sleep(10)
 
 #------------------------------------------------------------------------------
-def stoploss(e_pairs):
-    """consume from q_open and sell any trades if price falls below stop
-    loss threshold.
+def part_klines(e_pairs):
+    """consume items from open candle queue. Track trade prices for open
+    # positions and invoke stop losses when necessary.
     """
     from main import q_open
+    global tradedata
     db = app.get_db()
 
     while True:
-        n=0
+        items = []
         while q_open.empty() == False:
-            c = q_open.get()
-            query = {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
+            candle = q_open.get()
+            items.append(candle)
+            query = {'pair':candle['pair'], 'freqstr':candle['freqstr'], 'status':'open'}
 
             for trade in db.trades.find(query):
-                diff = pct_diff(trade['orders'][0]['candle']['close'], c['close'])
+                diff = pct_diff(trade['snapshots'][0]['candle']['close'], candle['close'])
 
                 if diff < trade['stoploss']:
-                    sell(trade, c, snapshot(c), details='Stop Loss')
-            n+=1
+                    sell(trade, candle, snapshot(candle), details='Stop Loss')
 
-        print('{} open_candle queue items cleared.'.format(n))
+        # Update global trade price tracker list
+        if len(items) > 0:
+            rmv = [pair for pair in tradedata.keys() \
+                if pair not in get_pairs()]
+            for k in rmv:
+                del tradedata[k]
+            [tradedata.update({pair:[]}) for pair in get_pairs() \
+                if pair not in tradedata.keys()]
+
+            openpairs = set([n['pair'] for n in db.trades.find({'status':'open'})])
+            # Save non-duplicate trade prices for each pair being currently traded.
+            for pair in openpairs:
+                prices = list(set([n['close'] for n in items if n['pair'] == pair]))
+
+                if len(prices) > 0:
+                    tradedata[pair] += prices
+                    if len(tradedata[pair]) > 10:
+                        tradedata[pair] = tradedata[pair][-10:]
+                    pprint(tradedata)
+        print('{} open_candle queue items cleared.'.format(len(items)))
         time.sleep(10)
 
 #------------------------------------------------------------------------------
@@ -206,6 +230,7 @@ def sell(record, candle, ss, details=None):
 def snapshot(candle):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
+    global tradedata
     client = app.bot.client
     db = app.db
 
@@ -231,6 +256,14 @@ def snapshot(candle):
     idx = current.index.to_pydatetime()
     current.index = [str(to_local(n.replace(tzinfo=pytz.utc))) for n in idx]
 
+    trend = 0
+    if candle['pair'] in tradedata.keys():
+        pdiff = pd.Series(tradedata[candle['pair']]).diff()
+        if len(pdiff) > 0:
+            trend = pdiff.ewm(span=5).mean().iloc[-1]
+            n_dec = Decimal(str(trend)).as_tuple().exponent
+            trend = trend.round(n_dec)
+
     return odict({
         'pair': candle['pair'],
         'time': now(),
@@ -240,6 +273,7 @@ def snapshot(candle):
             'buyratio': buy_ratio,
             'macd': current.values.tolist()[-1],
             'rsi': signals.rsi(df['close'], 14),
+            'pricetrend': trend,
             'zscore': signals.zscore(df['close'], candle['close'], 21)
         }),
         'macd': odict({

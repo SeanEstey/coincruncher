@@ -69,8 +69,6 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     [df['freq'].replace(n, strtofreq(n), inplace=True) for n in TRADEFREQS]
     df.sort_values(by=['pair','freq','open_time'], inplace=True)
 
-    print("df.len={}".format(len(df)))
-
     dfc = pd.DataFrame(df[columns].values,
         index = pd.MultiIndex.from_arrays(
             [df['pair'], df['freq'], df['open_time']],
@@ -111,6 +109,12 @@ def update(pairs, freqstrs, startstr=None):
     client = app.bot.client
     t1 = Timer()
     candles = []
+
+    # ##########################################################################
+    # TODO Load all the data into dataframe first, reindex, and identify
+    # missing data within timespan. Call query_api from first missing datapoint
+    # rather than requesting all the data every time."""
+    # ##########################################################################
 
     for pair in pairs:
         for freqstr in freqstrs:

@@ -12,7 +12,7 @@ TRADEFREQS = ['5m', '30m', '1h']
 TRADE_PAIR_ALGO = {
     "filters": [
         lambda tckr, mkt: mkt['24hPriceChange'] > 0,
-        lambda tckr, mkt: tckr['24hPriceChange'] > 10.0
+        lambda tckr, mkt: tckr['24hPriceChange'] > 15.0
     ],
     "conditions": [
         lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,
@@ -27,19 +27,26 @@ TRADE_PAIR_ALGO = {
 # @doc: mongodb trade record dict
 TRADE_ALGOS = [
     {
-        "name": "macd5m",
-        "indicators": {
-            "rsi": {"span":14},
-            "zscore": {"span":21},
-        },
+        "name": "rsi",
         "ema": (12, 26, 9),
-        "stoploss": -0.75,
+        "stoploss": -25.0,
+        "entry": {
+            "filters": [],
+            "conditions": [lambda c,ss: ss['indicators']['rsi'] < 40]
+        },
+        "exit": {
+            "filters": [],
+            "conditions": [lambda c,ss,doc: ss['indicators']['rsi'] > 70]
+        }
+    }, ##### END
+    {
+        "name": "macd",
+        "ema": (12, 26, 9),
+        "stoploss": -5.0,
         "entry": {
             "filters": [],
             "conditions": [
-                lambda c,ss: ss['indicators']['rsi'] <= 50,
                 lambda c,ss: ss['indicators']['macd'] > 0,
-                lambda c,ss: ss['macd']['trend'] > 0,
                 lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
                 lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0
             ]
@@ -47,55 +54,9 @@ TRADE_ALGOS = [
         "exit": {
             "filters": [],
             "conditions": [
-                lambda c,ss: ss['indicators']['macd'] > 0,
                 lambda c,ss,doc: ss['indicators']['macd'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] < 0
+                lambda c,ss,doc: ss['indicators']['pricetrend'] < 0
             ]
         }
-    }, # END
-    {
-        "name": "macd30m",
-        "ema": (12, 26, 9),
-        "stoploss": -0.75,
-        "entry": {
-            "filters": [],
-            "conditions": [
-                lambda c,ss: ss['indicators']['rsi'] <= 50,
-                lambda c,ss: ss['indicators']['macd'] > 0,
-                lambda c,ss: ss['macd']['trend'] > 0,
-                lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0
-            ]
-        },
-        "exit": {
-            "filters": [],
-            "conditions": [
-                lambda c,ss: ss['indicators']['macd'] > 0,
-                lambda c,ss,doc: ss['indicators']['macd'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] < 0
-            ]
-        }
-    }, # END
-    {
-        "name": "macd1h",
-        "ema": (12, 26, 9),
-        "stoploss": -0.75,
-        "entry": {
-            "filters": [],
-            "conditions": [
-                lambda c,ss: ss['indicators']['rsi'] <= 50,
-                lambda c,ss: ss['indicators']['macd'] > 0,
-                lambda c,ss: ss['macd']['trend'] > 0,
-                lambda c,ss: ss['macd']['history'][-1]['bars'] < 5,
-                lambda c,ss: ss['macd']['history'][-1]['priceX'] > 0,
-            ]
-        },
-        "exit": {
-            "filters": [],
-            "conditions": [
-                lambda c,ss,doc: ss['indicators']['macd'] < ss['macd']['desc']['max'],
-                lambda c,ss,doc: ss['macd']['trend'] < 0
-            ]
-        }
-    }   # END
+    }, ##### END
 ]

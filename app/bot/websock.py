@@ -73,12 +73,12 @@ def update_sockets():
                 ws.stop_socket(k)
                 idx = connkeys.index(k)
                 connkeys = connkeys[0:idx] + connkeys[idx+1:]
-    print("{} pair sockets removed.".format(len(old-new)))
+    print("{} pair socket(s) removed.".format(len(old-new)))
 
     # Added pairs: create sockets for each candle frequency.
     newpairs = new - old
     connkeys += [ws.start_kline_socket(i, recv_kline, interval=j) for j in TRADEFREQS for i in newpairs]
-    print("{} pair sockets created.".format(len(newpairs)))
+    print("{} pair socket(s) created.".format(len(newpairs)))
 
 #---------------------------------------------------------------------------
 def recv_kline(msg):

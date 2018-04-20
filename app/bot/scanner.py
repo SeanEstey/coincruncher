@@ -19,7 +19,7 @@ log = logging.getLogger('scanner')
 #---------------------------------------------------------------------------
 def run(e_pairs):
     tmr = Timer(name='scanner', expire='every 15 clock min utc')
-    macd_scan()
+    #macd_scan()
 
     while True:
         if tmr.remain() == 0:
