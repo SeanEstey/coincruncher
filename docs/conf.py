@@ -29,7 +29,7 @@ max_log_date_width = 14
 max_log_name_width = 8
 max_log_line_width = 125
 log_newl_indent = 25
-TRADELOG_WIDTH = 50
+TRADELOG_WIDTH = 60
 
 ### Screen Client #############################################################
 

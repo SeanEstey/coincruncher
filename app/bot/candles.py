@@ -175,9 +175,9 @@ def query_api(pair, freqstr, startstr=None, endstr=None):
             start += ms_period
         else:
             # Don't want candles that aren't closed yet
-            if data[-1][6] >= strtoms("now utc"): #time.time():
-                results += data[:-1]
-                break
+            #if data[-1][6] >= strtoms("now utc"):
+            #    results += data[:-1]
+            #    break
             results += data
             start = data[-1][0] + ms_period
 

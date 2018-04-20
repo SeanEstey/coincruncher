@@ -17,8 +17,7 @@ log = logging.getLogger('main')
 divstr = "***** %s *****"
 # Candle data queues fed by app.bot.websock thread and consumed
 # by app.bot.trade thread.
-q_closed = Queue()
-q_open = Queue()
+q = Queue()
 e_pairs = Event()
 
 if __name__ == '__main__':
@@ -36,13 +35,12 @@ if __name__ == '__main__':
     for opt, arg in opts:
         if opt not in('-c', '--candles'):
             continue
-        pairs = app.bot.get_pairs()
-        candles.update(pairs, TRADEFREQS)
+        #pairs = app.bot.get_pairs()
 
     # Create worker threads. Set as daemons so they terminate
     # automatically if main process is killed.
     threads = []
-    for func in [websock.run, trade.full_klines, trade.part_klines, scanner.run]:
+    for func in [websock.run, trade.run, scanner.run]:
         threads.append(Thread(
             name='{}.{}'.format(func.__module__, func.__name__),
             target=func,

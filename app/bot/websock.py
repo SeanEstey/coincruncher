@@ -17,7 +17,7 @@ import app, app.bot
 from app.common.utils import colors as c
 from app.common.timer import Timer
 from app.bot import get_pairs, candles
-from main import q_open, q_closed
+from main import q
 
 spinner = itertools.cycle(['-', '/', '|', '\\'])
 connkeys, storedata = [], []
@@ -82,7 +82,8 @@ def update_sockets():
 
 #---------------------------------------------------------------------------
 def recv_kline(msg):
-    global storedata
+    global storedata, app.bot.dfc
+    t1 = Timer()
 
     if msg['e'] != 'kline':
         print('not a kline: {}'.format(msg))
@@ -103,24 +104,28 @@ def recv_kline(msg):
         "buy_vol": np.float64(k['V']),
         "quote_volume": np.float64(k['q']),
         "quote_buy_vol": np.float64(k['Q']),
-        "ended": k['x']
+        "closed": k['x']
     }
 
-    if k['x'] == True:
-        q_closed.put(candle)
-        storedata.append(candle)
+    # Build dataframe and merge into global candle dataframe
+    columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_vol']
+    freq = strtofreq(candle['freqstr'])
+    index = pd.MultiIndex.from_arrays(
+        [[candle['pair']], [freq], [candle['open_time']]],
+        names = ['pair','freq','open_time']
+    )
+    df = pd.DataFrame([[candle[n] for n in columns]],
+        columns=columns, index=index)
+    app.bot.dfc = app.bot.dfc.append(df).drop_duplicates()
 
+    print("recv.elapsed={:} ms".format(t1))
+
+    q.put(candle)
+
+    if k['x'] == True:
+        storedata.append(candle)
         print("{}{:<7}{}{:>5}{:>12g}{}".format(c.GRN, candle['pair'], c.WHITE,
             candle['freqstr'], candle['close'], c.ENDC))
-    else:
-        q_open.put(candle)
-
-#---------------------------------------------------------------------------
-def save_klines():
-    """Bulk write all new kline data to mongodb. Should be callled on a
-    timer every ~60sec.
-    """
-    pass
 
 #---------------------------------------------------------------------------
 def close_all():

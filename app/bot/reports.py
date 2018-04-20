@@ -73,8 +73,10 @@ def new_trades(trade_ids):
     tradelog("{} trade(s) executed:".format(len(df)))
     [tradelog(line) for line in lines]
 
+    tradelog('-'*TRADELOG_WIDTH)
+
 #------------------------------------------------------------------------------
-def positions():
+def positions(type_):
     """Position summary.
     """
     db = app.get_db()
@@ -115,6 +117,7 @@ def positions():
         }).split("\n")
         tradelog("{} position(s):".format(len(df)))
         [tradelog(line) for line in lines]
+        tradelog('-'*TRADELOG_WIDTH)
         return df
 
 #-------------------------------------------------------------------------------

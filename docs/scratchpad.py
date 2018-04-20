@@ -2,6 +2,109 @@
 
 Unfinished or non-implemented code.
 """
+#---------------------------------------------------------------------------
+def klines(e_pairs):
+    """tradelog('*'*TRADELOG_WIDTH)
+    duration = to_relative_str(now() - start)
+    hdr = "Cycle #{} {:>%s}" % (31 - len(str(n_cycles)))
+    tradelog(hdr.format(n_cycles, duration))
+    tradelog('-'*TRADELOG_WIDTH)
+    """
+    from main import q_closed
+    global n_cycles, cache
+    client = app.bot.client
+    db = app.db
+    n_cycles = 1
+
+    while True:
+        n, exited, entered = 0, None, None
+
+        if q.empty() == False:
+            #app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS,
+            #    dfm=app.bot.dfc)
+
+
+            # Consume queue candles, update trade positions.
+            while q_closed.empty() == False:
+                candle = q_closed.get()
+                clear_cache(candle['freqstr'])
+                ss = closed_snapshot(candle)
+                query = {
+                    'pair':candle['pair'],
+                    'freqstr':candle['freqstr'],
+                    'status':'open'
+                }
+
+                # Eval position exits.
+                for trade in db.trades.find(query):
+                    db.trades.update_one(
+                        {"_id":trade["_id"]},
+                        {"$push": {"snapshots":ss}})
+                    exited = eval_exit(trade, candle, ss)
+                # New position entries.
+                entered = eval_entry(candle, ss)
+                n+=1
+            # End while loop.
+
+            # Log updates.
+            if entered:
+                reports.new_trades(entered)
+                tradelog('-'*TRADELOG_WIDTH)
+            reports.positions('closed_kline')
+            tradelog('-'*TRADELOG_WIDTH)
+            if entered or exited:
+                reports.earnings()
+
+            n_cycles += 1
+            print('{} q_closed items emptied.'.format(n))
+
+        time.sleep(10)
+
+#------------------------------------------------------------------------------
+def part_klines(e_pairs):
+    """consume items from open candle queue. Track trade prices for open
+    # positions and invoke stop losses when necessary.
+    """
+    from main import q_open
+    global cache
+    db = app.get_db()
+    tmr = Timer(name='open_trade_eval', expire='every 1 clock min utc')
+
+    # ##########################################################################
+    # TODO: separate closed/unclosed candle snapshots
+    # ##########################################################################
+
+    while True:
+        n = 0
+        # Consome partial candles from queue and eval stop losses.
+        while q_open.empty() == False:
+            candle = q_open.get()
+
+            query = {'pair':candle['pair'], 'freqstr':candle['freqstr'], 'status':'open'}
+
+            for trade in db.trades.find(query):
+                save_cache([candle])
+                diff = pct_diff(trade['snapshots'][0]['candle']['close'], candle['close'])
+
+                if diff < trade['stoploss']:
+                    sell(trade, candle, snapshot(candle), details='Stop Loss')
+            n+=1
+
+        # Eval target/failure conditions via unclosed candles.
+        if tmr.remain(quiet=True) == 0:
+            for trade in db.trades.find({'status':'open'}):
+                cached = cache[trade['pair']][trade['freqstr']]
+
+                if len(cached) > 0:
+                    ss = snapshot(cached[-1], last_ss=trade['snapshots'][0])
+                    eval_exit(cached[-1], ss)
+
+            tmr.reset(quiet=True)
+            reports.positions('open_kline')
+            tradelog('-'*TRADELOG_WIDTH)
+
+        print('{} q_open items empties.'.format(n))
+        time.sleep(10)
 
 #------------------------------------------------------------------------------
 def get_global_loggers():

@@ -78,6 +78,5 @@ def enable_pairs(pairs):
         n_enabled = db.assets.find({'botTradeStatus':'ENABLED'}).count()
         print("{} pairs enabled:".format(n_enabled))
         print(pairs)
+
     return pairs
-
-

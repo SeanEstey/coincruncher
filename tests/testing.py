@@ -46,5 +46,5 @@ app.bot.client = client = Client('','')
 pairs = app.bot.get_pairs()
 app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS)
 dfc = app.bot.dfc
-candle = candles.to_dict('SNMBTC','1h')
-trade.snapshot(candle)
+#candle = candles.to_dict('SNMBTC','1h')
+#trade.snapshot(candle)

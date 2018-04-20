@@ -31,17 +31,17 @@ TRADE_ALGOS = [
         "stoploss": -25.0,
         "entry": {
             "conditions": [
-                lambda c, ss: 10 < ss['indicators']['rsi'] < 40
+                lambda ss: 10 < ss['rsi'] < 40
             ],
         },
         "target": {
             "conditions": [
-                lambda c, ss, doc: ss['indicators']['rsi'] > 70
+                lambda ss: ss['rsi'] > 70
             ]
         },
         "failure": {
             "conditions": [
-                lambda c, ss, doc: ss['indicators']['rsi'] < 5
+                lambda ss: ss['rsi'] < 5
             ]
         }
     },
@@ -52,21 +52,21 @@ TRADE_ALGOS = [
         "stoploss": -5.0,
         "entry": {
             "conditions": [
-                lambda c, ss: ss['indicators']['macd'] > 0,
-                lambda c, ss: ss['macd']['history'][-1]['bars'] < 2,
-                lambda c, ss: ss['macd']['history'][-1]['priceY'] > 0,
-                lambda c, ss: ss['macd']['history'][-1]['priceX'] > 0
+                lambda ss: ss['macd']['value'] > 0,
+                lambda ss: ss['macd']['bars'] < 2,
+                lambda ss: ss['macd']['priceY'] > 0,
+                lambda ss: ss['macd']['priceX'] > 0
             ]
         },
         "target": {
             "conditions": [
-                lambda c, ss, doc: (0 < ss['indicators']['macd'] < ss['macd']['desc']['max']),
-                lambda c, ss, doc: ss['interim']['pricetrend'] < 0
+                lambda ss: (0 < ss['macd']['value'] < ss['macd']['ampMax']),
+                lambda ss: ss['macd']['ampSlope'] < 0
             ]
         },
         "failure": {
             "conditions": [
-                lambda c, ss, doc: ss['indicators']['macd'] < 0
+                lambda ss: ss['macd']['value'] < 0
             ]
         }
     }
