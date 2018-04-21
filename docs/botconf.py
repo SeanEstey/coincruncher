@@ -13,7 +13,7 @@ TRADEFREQS = ['5m', '30m', '1h']
 TRADE_PAIR_ALGO = {
     "filters": [
         lambda tckr, mkt: mkt['24hPriceChange'] > 0,
-        lambda tckr, mkt: tckr['24hPriceChange'] > 15
+        lambda tckr, mkt: tckr['24hPriceChange'] > 5.5
     ],
     "conditions": [
         lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,

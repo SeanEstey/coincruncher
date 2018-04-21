@@ -5,6 +5,8 @@ import dateparser
 from datetime import datetime
 import pytz
 import pandas as pd
+from docs.botconf import *
+from docs.conf import *
 import app, app.bot
 from app.common.utils import colors, pct_diff, to_relative_str, utc_datetime as now
 from app.common.timeutils import strtofreq
@@ -35,7 +37,7 @@ def new_trades(trade_ids):
                 c2['freqstr'],
                 'SELL',
                 pct_diff(c1['close'], c2['close']),
-                ss_new['indicators']['macd'],
+                ss_new['indicators']['macd']['value'],
                 ss_new['indicators']['rsi'],
                 ss_new['indicators']['zscore'],
                 to_relative_str(now() - record['start_time']),
@@ -49,7 +51,7 @@ def new_trades(trade_ids):
                 c1['freqstr'],
                 'BUY',
                 0.0,
-                ss_new['indicators']['macd'],
+                ss_new['indicators']['macd']['value'],
                 ss_new['indicators']['rsi'],
                 ss_new['indicators']['zscore'],
                 "-",
@@ -76,7 +78,7 @@ def new_trades(trade_ids):
     tradelog('-'*TRADELOG_WIDTH)
 
 #------------------------------------------------------------------------------
-def positions(type_):
+def positions():
     """Position summary.
     """
     db = app.get_db()
@@ -89,12 +91,12 @@ def positions(type_):
         ss1 = record['snapshots'][0]
         c1 = ss1['candle']
         ss_new = record['snapshots'][-1]
-        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(40)
+        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(40).copy()
 
         data.append([
             c1['freqstr'],
-            pct_diff(ss1['book']['price'], ss_new['book']['price']),
-            ss_new['indicators']['macd'],
+            pct_diff(ss1['book']['askPrice'], ss_new['book']['askPrice']),
+            ss_new['indicators']['macd']['value'],
             ss_new['indicators']['rsi'],
             ss_new['indicators']['zscore'],
             to_relative_str(now() - record['start_time']),
@@ -137,7 +139,7 @@ def earnings():
     loss = list(db.trades.aggregate([
         {'$match': {'status':'closed', 'pct_net_gain':{'$lt':0}}},
         {'$group': {
-            '_id': {'also':'$algo', 'day': {'$dayOfYear':'$end_time'}},
+            '_id': {'algo':'$algo', 'day': {'$dayOfYear':'$end_time'}},
             'total': {'$sum':'$pct_net_gain'},
             'count': {'$sum': 1}
         }}

@@ -14,7 +14,8 @@ from twisted.internet import reactor
 from binance.websockets import BinanceSocketManager
 from docs.botconf import *
 import app, app.bot
-from app.common.utils import colors as c
+from app.common.utils import colors
+from app.common.timeutils import strtofreq
 from app.common.timer import Timer
 from app.bot import get_pairs, candles
 from main import q
@@ -23,7 +24,7 @@ spinner = itertools.cycle(['-', '/', '|', '\\'])
 connkeys, storedata = [], []
 ws = None
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def run(e_pairs):
     global storedata, connkeys, ws
     client = app.bot.client
@@ -56,7 +57,7 @@ def run(e_pairs):
         time.sleep(0.1)
     close_all()
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def update_sockets():
     """conn_key str format: <symbol>@kline_<interval>
     """
@@ -80,16 +81,20 @@ def update_sockets():
     connkeys += [ws.start_kline_socket(i, recv_kline, interval=j) for j in TRADEFREQS for i in newpairs]
     print("{} pair socket(s) created.".format(len(newpairs)))
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def recv_kline(msg):
-    global storedata, app.bot.dfc
-    t1 = Timer()
+    """Kline socket callback function. Formats raw candle data, feeds into
+    trading queue, adds to global dataframe, and saves to list for periodic
+    saving to DB.
+    """
+    global storedata
 
     if msg['e'] != 'kline':
         print('not a kline: {}'.format(msg))
         return
 
     k = msg['k']
+
     candle = {
         "open_time": pd.to_datetime(k['t'], unit='ms', utc=True),
         "close_time": pd.to_datetime(k['T'], unit='ms', utc=True),
@@ -107,27 +112,15 @@ def recv_kline(msg):
         "closed": k['x']
     }
 
-    # Build dataframe and merge into global candle dataframe
-    columns = ['open', 'close', 'high', 'low', 'trades', 'volume', 'buy_vol']
-    freq = strtofreq(candle['freqstr'])
-    index = pd.MultiIndex.from_arrays(
-        [[candle['pair']], [freq], [candle['open_time']]],
-        names = ['pair','freq','open_time']
-    )
-    df = pd.DataFrame([[candle[n] for n in columns]],
-        columns=columns, index=index)
-    app.bot.dfc = app.bot.dfc.append(df).drop_duplicates()
-
-    print("recv.elapsed={:} ms".format(t1))
-
-    q.put(candle)
-
     if k['x'] == True:
         storedata.append(candle)
-        print("{}{:<7}{}{:>5}{:>12g}{}".format(c.GRN, candle['pair'], c.WHITE,
-            candle['freqstr'], candle['close'], c.ENDC))
+        print("{}{:<7}{}{:>5}{:>12g}{}".format(colors.GRN, candle['pair'], colors.WHITE,
+            candle['freqstr'], candle['close'], colors.ENDC))
 
-#---------------------------------------------------------------------------
+    # Send to trade queue.
+    q.put(candle)
+
+#-------------------------------------------------------------------------------
 def close_all():
     global ws
     print('Closing all sockets...')
@@ -135,7 +128,7 @@ def close_all():
     print('Terminating twisted server...')
     reactor.stop()
 
-#---------------------------------------------------------------------------
+#-------------------------------------------------------------------------------
 def update_spinner():
     msg = 'listening %s' % next(spinner)
     sys.stdout.write(msg)

@@ -109,14 +109,18 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
     dfh['corr'] = pxy_corr
 
     # Append cols/clean up formatting
-    dfh.index = dfh['start'] #.dt.strftime("%b-%d %H:%M")
+    dfh.index = dfh['start']
+
     dfh = dfh.sort_index()
     dfh = dfh[['lbl', 'bars', 'duration', 'ampMean', 'ampMax',
         'priceY', 'priceX', 'capt', 'corr']].round(2)
 
     if to_bson:
-        dfh['start'] = dfh.index
+        dfh = dfh.reset_index()
+        dfh['start'] = [str(to_local(n.to_pydatetime().replace(tzinfo=pytz.utc))) for n in dfh['start']]
         dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
+        dfh['bars'].astype('int')
+
         phases[-1] = phases[-1].round(3)
         idx = phases[-1].index.to_pydatetime()
         phases[-1].index = [str(to_local(n.replace(tzinfo=pytz.utc))) for n in idx]

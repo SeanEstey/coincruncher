@@ -16,6 +16,9 @@ from app.common.timeutils import strtofreq
 
 log = logging.getLogger('candles')
 
+columns = ['pair', 'freq', 'open_time', 'open', 'close', 'high', 'low',
+    'trades', 'volume', 'buy_vol']
+
 #------------------------------------------------------------------------------
 def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k
@@ -204,3 +207,15 @@ def to_dict(pair, freqstr):
         **{'pair':pair, 'freqstr':freqstr, 'open_time':df.index.to_pydatetime()[0]},
         **df.to_dict('record')[0]
     }
+
+#------------------------------------------------------------------------------
+def append_df(c):
+    """Append candle dict onto global candle dataframe.
+    """
+    c_ = c.copy()
+    c_['freq'] = strtofreq(c_['freqstr'])
+    c_ = { k:v for k,v in c_.items() if k in columns}
+    c_['open_time'] = pd.Timestamp(c_['open_time'].strftime("%Y-%b-%d %H:%M"))
+    df = pd.DataFrame.from_dict([c_], orient='columns')\
+        .set_index(['pair','freq','open_time'])
+    app.bot.dfc = app.bot.dfc.append(df).drop_duplicates()

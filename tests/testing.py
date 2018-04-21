@@ -7,12 +7,13 @@ sys.path.insert(0,parentdir)
 from datetime import datetime, timedelta
 from pprint import pprint
 import importlib
+import pytz
 import pandas as pd
 import numpy as np
 from collections import OrderedDict as odict
 from binance.client import Client
 import app
-from app.common.utils import utc_datetime as now
+from app.common.utils import utc_datetime as now, to_local
 from app.common.timeutils import freqtostr, strtofreq
 
 pd.set_option("display.max_columns", 25)
@@ -33,18 +34,16 @@ def test_getphase(df, start_idx, pair, freq, periods):
     dfmacd = macd.generate(df).tail(periods)['macd_diff']
     return macd.get_phase(dfmacd, freq, start_idx)
 
-#---------------------------------------------------------------------------
-def load(pair, freqstr, startstr):
-    candles.update([pair], freqstr, start=startstr, force=True)
-    df = candles.bulk_load([pair], freqstr=freqstr, startstr=startstr)
-    return df.loc[pair,strtofreq(freqstr)]
 
+pair = 'AMBBTC'
+freqstr = '1h'
 
-#df = load('ZILBTC','30m','72 hours ago utc')
-#dfh, phases = macd.histo_phases(df, 'ZILBTC', '30m', 144)
+# Init
 app.bot.client = client = Client('','')
 pairs = app.bot.get_pairs()
 app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS)
 dfc = app.bot.dfc
-#candle = candles.to_dict('SNMBTC','1h')
-#trade.snapshot(candle)
+
+# Main
+df = dfc.loc[pair,3600]
+dfh, phases = macd.histo_phases(df, pair, freqstr, 144, to_bson=True)

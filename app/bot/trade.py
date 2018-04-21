@@ -4,18 +4,14 @@ import logging
 import pytz
 import numpy as np
 import pandas as pd
-from decimal import Decimal
 from pprint import pprint
-from pymongo import ReplaceOne, UpdateOne
 from collections import OrderedDict as odict
-from binance.client import Client
-from datetime import timedelta as delta, datetime
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
 from app.bot import get_pairs, candles, macd, reports, signals
 from app.common.timeutils import strtofreq
-from app.common.utils import pct_diff, to_local, utc_datetime as now, to_relative_str
+from app.common.utils import pct_diff, utc_datetime as now
 from app.common.timer import Timer
 
 def tradelog(msg): log.log(99, msg)
@@ -26,75 +22,81 @@ start = now()
 
 #---------------------------------------------------------------------------
 def run(e_pairs):
-    """Main trading loop thread.
+    """Main trading loop thread. Consumes candle data from queue and
+    manages/executes trades.
     """
+    from .candles import columns
     from main import q
     global dfW
+    n, ent_ids, ex_ids = 0, [], []
     db = app.get_db()
+    dfc = app.bot.dfc
+    print("start trade loop")
+    tmr = Timer(name='positions', expire='every 1 clock min utc')
 
     while True:
-        enterids, exitids = [], []
-        qsize = q.qsize()
-
-        while not q.empty():
+        while q.empty() == False:
             c = q.get()
             ss = snapshot(c)
             query = \
                 {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
 
-            if not c['closed']:
-                df = pd.DataFrame.from_dict([c], orient='columns')\
-                    .set_index(['pair','freqstr','open_time'])
-                dfW = dfW.append(df).drop_duplicates()
-            else:
-                # Save snapshot for closed candles only.
-                db.trades.update_many(query, {'$push':{'snapshots':ss}})
-                # Clear all partial candle data
-                dfW = dfW.drop([(c['pair'], strtofreq(c['freqstr']))])
-
-            # Eval position exits.
-            for trade in db.trades.find(query):
-                exitids += eval_exit(trade, c, ss)
-
-            # New position entries.
             if c['closed']:
-                enterids += eval_entry(c, ss)
-        # End Inner While
+                candles.append_df(c)
+                db.trades.update_many(query, {'$push':{'snapshots':ss}})
 
-        if len(enterids) > 0:
-            reports.new_trades(enterids)
+                # Clear all partial candle data
+                #dfW = dfW.drop([(c['pair'], strtofreq(c['freqstr']))])
+            else:
+                freq = strtofreq(c['freqstr'])
+                dfc.ix[(c['pair'],freq)].iloc[-1] = [c[n] for n in columns[3:]]
 
-        reports.positions()
+            # Eval position entries/exits
+            for trade in db.trades.find(query):
+                ex_ids += eval_exit(trade, c, ss)
+            if c['closed']:
+                ent_ids += eval_entry(c, ss)
 
-        if len(enterids) + len(exitds) > 0:
-            reports.earnings()
+            if len(ent_ids) > 0:
+                reports.new_trades(ent_ids)
+            if len(ent_ids) + len(ex_ids) > 0:
+                reports.positions()
+                reports.earnings()
 
-        print('{} q items emptied.'.format(qsize))
-        time.sleep(5)
-    # End Outer While
+            if tmr.remain(quiet=True) == 0:
+                reports.positions()
+                tmr.reset()
+            n+=1
+            # End Inner While
+        if n > 0:
+            print('{} queue items emptied.'.format(n))
+
+        n, ent_ids, ex_ids = 0, [], []
+        time.sleep(0.5)
 
 #------------------------------------------------------------------------------
-def eval_entry(candle, ss):
+def eval_entry(c, ss):
     db = app.get_db()
     ids = []
     for algo in TRADE_ALGOS:
         if db.trades.find_one(
-            {'freqstr':candle['freqstr'], 'algo':algo['name'], 'status':'open'}):
+            {'freqstr':c['freqstr'], 'algo':algo['name'], 'status':'open'}):
             continue
 
         # Test conditions eval to True
-        if all([fn(candle, ss['indicators']) for fn in algo['entry']['conditions']]):
+        if all([fn(ss['indicators']) for fn in algo['entry']['conditions']]):
             ids.append(
-                buy(candle, algo, ss))
+                buy(c, algo, ss))
     return ids
 
 #------------------------------------------------------------------------------
-def eval_exit(trade, candle, ss):
+def eval_exit(trade, c, ss):
     ids = []
     algo = [n for n in TRADE_ALGOS if n['name'] == trade['algo']][0]
 
     # Stop loss.
     diff = pct_diff(trade['snapshots'][0]['candle']['close'], c['close'])
+
     if diff < algo['stoploss']:
         sell(trade, c, ss, details='Stop Loss')
 
@@ -106,23 +108,23 @@ def eval_exit(trade, candle, ss):
     # Failure
     if all([ fn(ss['indicators']) for fn in algo['failure']['conditions'] ]):
         ids.append(
-            sell(trade_, candle, ss, details="Failure conditions met"))
+            sell(trade, c, ss, details="Failure conditions met"))
 
     return ids
 
 #------------------------------------------------------------------------------
-def buy(candle, algoconf, ss):
-    """Create or update existing position for zscore above threshold value.
+def buy(c, algo, ss):
+    """Open new position, insert record to DB.
     """
     db = app.db
     result = db.trades.insert_one(odict({
-        'pair': candle['pair'],
-        'quote_asset': db.assets.find_one({'symbol':candle['pair']})['quoteAsset'],
-        'freqstr': candle['freqstr'],
+        'pair': c['pair'],
+        'quote_asset': db.assets.find_one({'symbol':c['pair']})['quoteAsset'],
+        'freqstr': c['freqstr'],
         'status': 'open',
         'start_time': now(),
-        'algo': algoconf['name'],
-        'stoploss': algoconf['stoploss'],
+        'algo': algo['name'],
+        'stoploss': algo['stoploss'],
         'snapshots': [ss],
         'orders': [odict({
             'action':'BUY',
@@ -135,11 +137,11 @@ def buy(candle, algoconf, ss):
         })]
     }))
 
-    print("BUY {} ({})".format(candle['pair'], algoconf['name']))
+    print("BUY {} ({})".format(c['pair'], algo['name']))
     return result.inserted_id
 
 #------------------------------------------------------------------------------
-def sell(record, candle, ss, details=None):
+def sell(record, c, ss, details=None):
     """Close off existing position and calculate earnings.
     """
     client = app.bot.client
@@ -158,7 +160,7 @@ def sell(record, candle, ss, details=None):
     duration = now() - record['start_time']
 
     print("SELL {} ({}) Details: {}"\
-        .format(candle['pair'], record['algo'], details))
+        .format(c['pair'], record['algo'], details))
 
     db.trades.update_one(
         {'_id': record['_id']},
@@ -187,20 +189,26 @@ def sell(record, candle, ss, details=None):
     return record['_id']
 
 #------------------------------------------------------------------------------
-def snapshot(candle):
+def snapshot(c):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
     global dfW
-    c = candle
     pair, freqstr = c['pair'], c['freqstr']
     book = odict(app.bot.client.get_orderbook_ticker(symbol=pair))
     del book['symbol']
     [book.update({k:np.float64(v)}) for k,v in book.items()]
-    buyratio = (c['buy_vol']/c['volume']) if c['volume'] > 0 else 0
+    buyratio = (c['buy_vol']/c['volume']) if c['volume'] > 0 else 0.0
 
     # MACD Indicators
     df = app.bot.dfc.loc[pair, strtofreq(freqstr)]
-    dfmacd, phases = macd.histo_phases(df, pair, freqstr, 100, to_bson=True)
+    try:
+        dfmacd, phases = macd.histo_phases(df, pair, freqstr, 100, to_bson=True)
+    except Exception as e:
+        print(str(e))
+        log.exception(str(e))
+
+    dfm_dict = dfmacd.iloc[-1].to_dict()
+    dfm_dict['bars'] = int(dfm_dict['bars'])
     phase = phases[-1]
     amp_slope = phase.diff().ewm(span=len(phase)).mean().iloc[-1]
 
@@ -208,23 +216,26 @@ def snapshot(candle):
     if c['closed']:
         # Find price EMA WITHIN the wick (i.e. each trade). Very
         # small movements.
-        prices = dfW.loc[c['pair'], c['freqstr']]['close']
-        wick_slope = prices.diff().ewm(span=len(prices)).mean().iloc[-1]
+        #prices = dfW.loc[c['pair'], c['freqstr']]['close']
+        #wick_slope = prices.diff().ewm(span=len(prices)).mean().iloc[-1]
+        # FIXME
+        wick_slope = 0.0
 
-    return odict({
+    return {
         'pair': pair,
         'time': now(),
         'book': book,
-        'candle': odict(c),
-        'indicators': odict({
-            'buyRatio': buyratio.round(2),
+        'candle': c,
+        'indicators': {
+            'buyRatio': round(buyratio, 2),
             'rsi': signals.rsi(df['close'], 14),
             'wickSlope': wick_slope,
             'zscore': signals.zscore(df['close'], c['close'], 21),
-            'macd': odict({
-                **dfmacd.tail(1).to_dict()),
+            'macd': {
+                **dfm_dict,
                 **{'ampSlope':amp_slope,
-                  'value':phase.values.tolist()[-1]}
-            })
-        })
-    })
+                  'value':phases[-1].tolist()[-1]
+                  }
+            }
+        }
+    }
