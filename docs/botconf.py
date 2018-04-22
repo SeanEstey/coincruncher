@@ -1,7 +1,6 @@
 # botconf
 # Configuration and algorithm definitions for trading bot.
 
-CACHE_SIZE = 500
 DEF_KLINE_HIST_LEN = "72 hours ago utc"
 TRADE_AMT_MAX = 50.00
 TRADEFREQS = ['5m', '30m', '1h']
@@ -13,7 +12,7 @@ TRADEFREQS = ['5m', '30m', '1h']
 TRADE_PAIR_ALGO = {
     "filters": [
         lambda tckr, mkt: mkt['24hPriceChange'] > 0,
-        lambda tckr, mkt: tckr['24hPriceChange'] > 10.5
+        lambda tckr, mkt: tckr['24hPriceChange'] > 20.5
     ],
     "conditions": [
         lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,
@@ -37,6 +36,12 @@ TRADE_ALGOS = [
         "target": {
             "conditions": [
                 lambda ss: ss['rsi'] > 70
+            ]
+        },
+        "secondary": {
+            # Add 'percentAth' in trade stats. Sell on percentAth < 0.8
+            # (target not reached + price dropping from peak)
+            "conditions": [
             ]
         },
         "failure": {

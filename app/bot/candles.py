@@ -82,7 +82,7 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     # Merge if dataframe passed in
     n_bulk, n_merged = len(dfc), 0
     if dfm is not None:
-        dfc = pd.concat([dfm, dfc]).drop_duplicates().sort_index()
+        dfc = pd.concat([dfm, dfc]).sort_index() #drop_duplicates()
         n_merged = len(dfc) - n_bulk
     log.debug("{:,} docs loaded, {:,} merged in {:,.1f} ms.".format(
         n_bulk, n_merged, t1))
@@ -113,12 +113,6 @@ def update(pairs, freqstrs, startstr=None):
     client = app.bot.client
     t1 = Timer()
     candles = []
-
-    # ##########################################################################
-    # TODO Load all the data into dataframe first, reindex, and identify
-    # missing data within timespan. Call query_api from first missing datapoint
-    # rather than requesting all the data every time."""
-    # ##########################################################################
 
     for pair in pairs:
         for freqstr in freqstrs:
@@ -157,11 +151,9 @@ def query_api(pair, freqstr, startstr=None, endstr=None):
     client = app.bot.client
     t1 = Timer()
     ms_period = strtofreq(freqstr) * 1000
-    end = strtoms(endstr or "now utc") # if endstr else time.time()
+    end = strtoms(endstr or "now utc")
     start = strtoms(startstr or DEF_KLINE_HIST_LEN)
     results = []
-
-    #print("query_api start={}, end={}".format(start, end))
 
     while start < end:
         try:
@@ -177,10 +169,6 @@ def query_api(pair, freqstr, startstr=None, endstr=None):
         if len(data) == 0:
             start += ms_period
         else:
-            # Don't want candles that aren't closed yet
-            #if data[-1][6] >= strtoms("now utc"):
-            #    results += data[:-1]
-            #    break
             results += data
             start = data[-1][0] + ms_period
 
@@ -189,47 +177,9 @@ def query_api(pair, freqstr, startstr=None, endstr=None):
     return results
 
 #------------------------------------------------------------------------------
-def to_dict(pair, freqstr):
-    """Get most recently added candle to either dataframe or mongoDB.
-    """
-    freq = strtofreq(freqstr)
-
-    if (pair,freq) not in app.bot.dfc.index:
-        raise Exception("({},{}) not in app.bot.dfc.index!".format(pair,freq))
-
-    df = app.bot.dfc.loc[pair, freq].tail(1)
-
-    if len(df) < 1:
-        raise Exception("{},{},{} candle not found in app.bot.dfc".format(
-            pair, freq, partial))
-
-    return {
-        **{'pair':pair, 'freqstr':freqstr, 'open_time':df.index.to_pydatetime()[0]},
-        **df.to_dict('record')[0]
-    }
-
-#------------------------------------------------------------------------------
-def bulk_append_df(candles):
-    df = pd.DataFrame()
-    candles_ = []
-
-    for c in candles:
-        c_ = c.copy()
-        c_['freq'] = strtofreq(c_['freqstr'])
-        c_ = { k:v for k,v in c_.items() if k in columns}
-        c_['open_time'] = pd.Timestamp(c_['open_time'].strftime("%Y-%b-%d %H:%M"))
-
-        df_ = pd.DataFrame.from_dict([c_], orient='columns')\
-            .set_index(['pair','freq','open_time'])
-        df = df.append(df_)
-
-    pprint(df)
-    dfc = app.bot.dfc
-    dfc = dfc.append(df).drop_duplicates().sort_index()
-
-#------------------------------------------------------------------------------
 def modify_dfc(c):
-    """Modify global candle dataframe.
+    """Edit or append a single index to global candle dataframe.
+    @c: candle dict
     """
     pair = c['pair']
     freq = strtofreq(c['freqstr'])
@@ -252,4 +202,26 @@ def modify_dfc(c):
         app.bot.dfc = app.bot.dfc.append(df)
         app.bot.dfc = app.bot.dfc.sort_index()
 
-        #print("dfc.len={}, dfc.index date: {}".format(len(app.bot.dfc), app.bot.dfc.ix[(pair,freq)].iloc[-1].name))
+#------------------------------------------------------------------------------
+def bulk_append_dfc(candlelist):
+    """Append multiple indexes to global candle dataframe.
+    @candles: list of candle dicts
+    """
+    candles_ = []
+    # Rebuild candle list formatted for dataframe.
+    for c in candlelist:
+        c_ = c.copy()
+        c_['freq'] = strtofreq(c_['freqstr'])
+        c_['open_time'] = pd.Timestamp(c_['open_time'].replace(tzinfo=None))
+        c_ = { k:v for k,v in c_.items() if k in columns}
+        candles_.append(c_)
+
+    df = pd.DataFrame.from_dict(candles_, orient='columns')\
+        .set_index(['pair','freq','open_time'])
+
+    app.bot.dfc = app.bot.dfc.append(df).sort_index()
+
+    # Drop any rows that have duplicate (pair,freq,open_time) indexes.
+    app.bot.dfc = app.bot.dfc[~app.bot.dfc.index.duplicated(keep='first')]
+
+    return app.bot.dfc

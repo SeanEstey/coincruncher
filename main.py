@@ -11,6 +11,7 @@ from docs.botconf import *
 import app, app.bot
 
 ##### Globals #####
+
 log = logging.getLogger('main')
 divstr = "***** %s *****"
 # Candle data queue. Feeder is bot.websock, consumer is bot.trade
@@ -49,7 +50,7 @@ if __name__ == '__main__':
         threads[-1].setDaemon(True)
         threads[-1].start()
 
-    # Main loop. Monitors threads and terminates app on CTRL+C cmd.
+    # Main loop. Monitors threads and terminates app on CTRL+C.
     while True:
         if killer.kill_now:
             e_kill.set()

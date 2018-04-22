@@ -37,8 +37,7 @@ def init():
     print("{} active pairs retrieved from api.".format(len(ops)))
     print("Running scanner...")
 
-    pairs = enable_pairs(scanner.filter_pairs())
-    dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=dfc)
+    pairs = update_pairs(scanner.filter_pairs())
 
     print("{:,} historic candles loaded.".format(len(dfc)))
     print('{} trading algorithms.'.format(len(TRADE_ALGOS)))
@@ -50,27 +49,39 @@ def get_pairs():
     return [ n['symbol'] for n in list(enabled) ]
 
 #------------------------------------------------------------------------------
-def enable_pairs(pairs):
-    """To disable all pairs/freq, pass in empty list.
+def update_pairs(pairs, query_all=True):
+    """Update authorized trading pair list, query historic data and load into
+    global dataframe.
+    @query_all: if set to False, will only query historic data for new
+    pairs not already loaded into global candle dataframe.
     """
     db = app.db
     # Add open trade pairs
     tradepairs = set([n['pair'] for n in list(db.trades.find({'status':'open'}))])
-    pairs = list(set(pairs + list(tradepairs)))
+
+    if query_all == True:
+        querylist = list(set(pairs + list(tradepairs)))
+        print("Querying historic data for all {} pairs...".format(len(querylist)))
+    else:
+        querylist = list(set(pairs) - set(get_pairs()))
+        print("Querying historic data for {} new pairs...".format(len(querylist)))
 
     # Retrieve historic data and load.
-    for pair in pairs:
+    candlelist = []
+    for pair in querylist:
         print("Retrieving {} candles...".format(pair))
-        candles.update([pair], TRADEFREQS)
+        candlelist += candles.update([pair], TRADEFREQS)
+    candles.bulk_append_dfc(candlelist)
 
     result = db.assets.update_many({},
         {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})
 
+    enabled = list(set(pairs + list(tradepairs)))
     ops = [
         UpdateOne({'symbol':pair},
             {'$set':{'botTradeStatus':'ENABLED'},
             '$push':{'botTradeFreq':TRADEFREQS}},
-            upsert=True) for pair in pairs
+            upsert=True) for pair in enabled
     ]
 
     if len(ops) > 0:
@@ -79,4 +90,4 @@ def enable_pairs(pairs):
         print("{} pairs enabled:".format(n_enabled))
         print(pairs)
 
-    return pairs
+    return enabled

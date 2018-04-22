@@ -1,25 +1,20 @@
 # app.bot.printer
 import logging
-import tzlocal
-import dateparser
 from datetime import datetime
-import pytz
 import pandas as pd
 from docs.botconf import *
 from docs.conf import *
 import app, app.bot
-from app.common.utils import colors, pct_diff, to_relative_str, utc_datetime as now
+from app.common.utils import pct_diff, to_relative_str, utc_datetime as now
 from app.common.timeutils import strtofreq
-from . import candles, macd, signals
+from . import macd, signals
 
 def tradelog(msg): log.log(99, msg)
-def siglog(msg): log.log(100, msg)
 log = logging.getLogger('reports')
 
 #------------------------------------------------------------------------------
 def trades(trade_ids):
     db = app.get_db()
-    dfc = app.bot.dfc
     cols = ['freq', "type", "Δprice", "macd", "rsi", "zscore", "time", "algo", "details"]
     data, indexes = [], []
 
@@ -28,7 +23,7 @@ def trades(trade_ids):
         indexes.append(record['pair'])
         ss1 = record['snapshots'][0]
         ss_new = record['snapshots'][-1]
-        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100)
+        df = app.bot.dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100)
 
         if len(record['orders']) > 1:
             c1 = ss1['candle']
@@ -84,7 +79,6 @@ def positions():
     """Position summary.
     """
     db = app.get_db()
-    dfc = app.bot.dfc
     cols = ["freq", "price", "Δprice", "macd", "rsi", "zscore", "time", "algo"]
     data, indexes = [], []
     opentrades = db.trades.find({'status':'open'})
@@ -93,14 +87,17 @@ def positions():
         ss1 = record['snapshots'][0]
         c1 = ss1['candle']
         ss_new = record['snapshots'][-1]
-        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100).copy()
+        df = app.bot.dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100).copy()
         freq = strtofreq(record['freqstr'])
+
+        dfmacd, phases = macd.histo_phases(df, record['pair'], record['freqstr'], 100, to_bson=True)
+        macd_val = phases[-1].tolist()[-1]
 
         data.append([
             c1['freqstr'],
             df.iloc[-1]['close'],
             pct_diff(c1['close'], df.iloc[-1]['close']),
-            macd.generate(df)['macd_diff'].iloc[-1],
+            macd_val,
             signals.rsi(df['close'], 14),
             signals.zscore(df['close'], df.iloc[-1]['close'], 21),
             to_relative_str(now() - record['start_time']),

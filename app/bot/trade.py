@@ -100,26 +100,36 @@ def eval_entry(c, ss):
 
 #------------------------------------------------------------------------------
 def eval_exit(trade, c, ss):
-    ids = []
+    db = app.get_db()
+
+    stats_ = trade['stats']
+    stats = {
+        'maxPrice': max(stats_['maxPrice'], c['close']),
+        'maxRsi': max(stats_['maxRsi'], ss['indicators']['rsi']),
+        'maxMacdValue': max(stats_['maxMacdValue'], ss['indicators']['macd']['value']),
+        'maxMacdAmpSlope': max(stats_['maxMacdAmpSlope'], ss['indicators']['macd']['ampSlope']),
+        'maxWickSlope': max(stats_['maxWickSlope'], ss['indicators']['wickSlope'])
+    }
+    db.trades.update_one({'_id':trade['_id']}, {'$set':{'stats':stats}})
+
     algo = [n for n in TRADE_ALGOS if n['name'] == trade['algo']][0]
 
     # Stop loss.
     diff = pct_diff(trade['snapshots'][0]['candle']['close'], c['close'])
-
     if diff < algo['stoploss']:
-        ids.append(sell(trade, ss, 'stoploss'))
+        return [sell(trade, ss, 'stoploss')]
 
     # Target (success)
     conds = algo['target']['conditions']
     if all([fn(ss['indicators']) for fn in conds]):
-        ids.append(sell(trade, ss, 'target'))
+        return [sell(trade, ss, 'target')]
 
     # Failure
     conds = algo['failure']['conditions']
     if all([ fn(ss['indicators']) for fn in conds]):
-        ids.append(sell(trade, ss, 'failure'))
+        return [sell(trade, ss, 'failure')]
 
-    return ids
+    return []
 
 #------------------------------------------------------------------------------
 def buy(ss, algo):
@@ -144,6 +154,13 @@ def buy(ss, algo):
         'algo': algo['name'],
         'stoploss': algo['stoploss'],
         'snapshots': [ss],
+        'stats': {
+            'maxPrice': ss['candle']['close'],
+            'maxRsi': ss['indicators']['rsi'],
+            'maxMacdValue': ss['indicators']['macd']['value'],
+            'maxMacdAmpSlope': ss['indicators']['macd']['ampSlope'],
+            'maxWickSlope': ss['indicators']['wickSlope']
+        },
         'details': [{
             'algo': algo['name'],
             'section': 'entry',

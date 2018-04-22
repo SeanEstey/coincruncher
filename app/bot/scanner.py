@@ -6,7 +6,7 @@ import pandas as pd
 import numpy as np
 from docs.botconf import *
 import app, app.bot
-from app.bot import enable_pairs
+from app.bot import update_pairs
 from app.common.timer import Timer
 from app.common.utils import to_local, utc_datetime as now
 from app.common.utils import strtodt, strtoms
@@ -19,7 +19,7 @@ log = logging.getLogger('scanner')
 #---------------------------------------------------------------------------
 def run(e_pairs, e_kill):
     tmr = Timer(name='scanner',
-        expire='every 32 clock min utc', quiet=True)
+        expire='every 15 clock min utc', quiet=True)
 
     while True:
         if e_kill.isSet():
@@ -27,11 +27,11 @@ def run(e_pairs, e_kill):
 
         if tmr.remain() == 0:
             # Scan and update enabled trading pairs
-            #pairs = filter_pairs()
-            #enable_pairs(pairs)
-            #app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=app.bot.dfc)
+            pairs = filter_pairs()
+            # Enable and load historic data into dataframe
+            update_pairs(pairs, query_all=False)
             # Notify websocket thread to update its sockets
-            #e_pairs.set()
+            e_pairs.set()
             macd_scan()
             tmr.reset()
 
