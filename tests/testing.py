@@ -35,7 +35,7 @@ def test_getphase(df, start_idx, pair, freq, periods):
     return macd.get_phase(dfmacd, freq, start_idx)
 
 
-pair = 'AMBBTC'
+pair = 'STORMBNB'
 freqstr = '1h'
 
 # Init

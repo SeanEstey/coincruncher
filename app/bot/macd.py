@@ -10,7 +10,6 @@ from docs.conf import macd_ema
 from app.common.utils import utc_datetime as now, to_relative_str as relative
 from app.common.utils import pct_diff, to_local, abc
 from app.common.timeutils import strtofreq, freqtostr
-from app.common.timer import Timer
 import app.bot
 
 log = logging.getLogger('macd')
@@ -61,12 +60,17 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
     """
     DF = pd.DataFrame
     freq = strtofreq(freqstr)
-    dfmacd = generate(df).tail(periods)['macd_diff']
+    dfmacd = generate(df).tail(periods)['macd_diff'].copy().drop_duplicates()
     np_arr, descs, phases = [],[],[]
     idx = 0
 
     while idx < len(dfmacd):
-        iloc, row, phase, desc = next_phase(dfmacd, freq, idx) ##.values()
+        try:
+            iloc, row, phase, desc = next_phase(dfmacd, freq, idx) ##.values()
+        except Exception as e:
+            log.info("{}".format(pair))
+            pprint(dfmacd)
+
         dfmacd = dfmacd.drop_duplicates()
         if row is None:
             idx+=1
@@ -141,9 +145,11 @@ def next_phase(dfmacd, freq, start_idx):
         else:
             return (None,None,None,None)
     except Exception as e:
-        log.debug("Duplicate indices!")
-        log.debug(dfmacd[dfmacd.index.duplicated()])
-        return (None,None,None,None)
+        log.info(str(e))
+        log.info("Duplicate indices!")
+        log.info(dfmacd[dfmacd.index.duplicated()])
+        dfmacd = dfmacd.tail(-1)
+        raise
 
     end_idx = len(dfmacd)-1 if skip.empty else dfmacd.index.get_loc(skip[0])-1
     n_bars = end_idx - start_idx + 1
@@ -196,9 +202,8 @@ def plot(pair, freqstr, periods):
     df = df.loc[pair,freq]
     # Macd analysis
     dfmacd = generate(df)
-    aggdesc = agg_describe(df, pair, freqstr, periods)
-
-    aggdesc['summary'] = aggdesc['summary'].replace("\n", "<br>")
+    #aggdesc = agg_describe(df, pair, freqstr, periods)
+    #aggdesc['summary'] = aggdesc['summary'].replace("\n", "<br>")
 
     # Stacked Subplots with a Shared X-Axis
     t1 = go.Scatter(
@@ -309,69 +314,4 @@ def plot(pair, freqstr, periods):
     # print("{} MACD Histogram Phases".format(pair))
     # for i in range(0, len(descs)):
     #    [print("{}. {}".format(abc[i].upper(), descs[i]))]
-
-#------------------------------------------------------------------------------
-def describe(candle, ema=None):
-    """Describe current histo phase.
-    """
-    _ema = ema if ema else macd_ema
-    df = app.bot.dfc.loc[candle['pair'], strtofreq(candle['freq'])].copy()
-    macd = generate(df, ema=_ema)
-
-    # Isolate current histo phase
-    last = np.float64(macd.tail(1)['macd_diff'])
-    if last < 0:
-        if len(macd[macd['macd_diff'] > 0]) > 0:
-            marker = macd[macd['macd_diff'] > 0].iloc[-1]
-        else:
-            marker = macd['macd_diff'].tail(1) #.iloc[-1]
-    else:
-        if len(macd[macd['macd_diff'] < 0]) > 0:
-            marker = macd[macd['macd_diff'] < 0].iloc[-1]
-        else:
-            marker = macd['macd_diff'].tail(1) #.iloc[-1]
-
-    try:
-        phase = macd.loc[slice(marker.name, macd.iloc[-1].name)].iloc[1:]['macd_diff']
-        desc = phase.describe()
-    except Exception as e:
-        phase = macd.iloc[1:]['macd_diff']
-        desc = phase.describe()
-
-    if len(phase) == 1:
-        details = 'Oscilator phase change.\n'
-        trend = 'UPWARD' if phase.iloc[0] >= 0 else 'DOWNWARD'
-    else:
-        trend = 'UPWARD' if last > phase.iloc[-2] else 'DOWNWARD'
-
-        if last < 0:
-            #if last > desc['min']:
-            #    pct = app.bot.pct_diff(desc['min'], last)
-            details = 'MACD (-), {0} bottom, trending {1}.\n'\
-                'Bottom is {2:+.2f}, mean is {3:+.2f}, now at {4:+.2f}.\n'\
-                .format(
-                    'ABOVE' if last > desc['min'] else 'AT',
-                    trend,
-                    float(desc['min']),
-                    float(desc['mean']),
-                    float(last))
-        elif last >= 0:
-            details = 'MACD (+), {0} peak, trending {1}.\n'\
-                'Peak is {2:+.2f}, mean is {3:+.2f}, now at {4:+.2f}.\n'\
-                .format(
-                    'BELOW' if last < desc['max'] else 'AT',
-                    trend,
-                    float(desc['max']),
-                    float(desc['mean']),
-                    float(last))
-    return {'phase':phase, 'trend':trend, 'details':details}
-
-#------------------------------------------------------------------------------
-def agg_histo_phases(pairs, freqstr, startstr, periods):
-    df = pd.DataFrame(df[columns].values,
-        index = pd.MultiIndex.from_arrays(
-            [df['pair'], df['freq'], df['open_time']],
-            names = ['pair','freq','open_time']),
-        columns = columns
-    ).sort_index()
 

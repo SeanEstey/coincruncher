@@ -24,17 +24,23 @@ start = now()
 def run(e_pairs):
     """Main trading loop thread. Consumes candle data from queue and
     manages/executes trades.
+    TODO: add in code for tracking unclosed candle wicks prices:
+        # Clear all partial candle data
+        dfW = dfW.drop([(c['pair'], strtofreq(c['freqstr']))])
     """
-    from .candles import columns
     from main import q
     global dfW
     n, ent_ids, ex_ids = 0, [], []
-    db = app.get_db()
-    dfc = app.bot.dfc
-    print("start trade loop")
-    tmr = Timer(name='positions', expire='every 1 clock min utc')
+    db, df = app.get_db(), app.bot.dfc
+    t1 = Timer()
+    tmr = Timer(
+        name='positions',
+        expire='every 1 clock min utc',
+        quiet=True
+    )
 
     while True:
+        n, ent_ids, ex_ids = 0, [], []
         while q.empty() == False:
             c = q.get()
             ss = snapshot(c)
@@ -42,14 +48,10 @@ def run(e_pairs):
                 {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
 
             if c['closed']:
-                candles.append_df(c)
+                candles.append_dfc(c)
                 db.trades.update_many(query, {'$push':{'snapshots':ss}})
-
-                # Clear all partial candle data
-                #dfW = dfW.drop([(c['pair'], strtofreq(c['freqstr']))])
             else:
-                freq = strtofreq(c['freqstr'])
-                dfc.ix[(c['pair'],freq)].iloc[-1] = [c[n] for n in columns[3:]]
+                candles.modify_dfc(c)
 
             # Eval position entries/exits
             for trade in db.trades.find(query):
@@ -57,22 +59,22 @@ def run(e_pairs):
             if c['closed']:
                 ent_ids += eval_entry(c, ss)
 
-            if len(ent_ids) > 0:
-                reports.new_trades(ent_ids)
-            if len(ent_ids) + len(ex_ids) > 0:
+            if tmr.remain() == 0:
                 reports.positions()
                 reports.earnings()
-
-            if tmr.remain(quiet=True) == 0:
-                reports.positions()
                 tmr.reset()
             n+=1
             # End Inner While
-        if n > 0:
-            print('{} queue items emptied.'.format(n))
 
-        n, ent_ids, ex_ids = 0, [], []
-        time.sleep(0.5)
+        if len(ent_ids) + len(ex_ids) > 0:
+            reports.trades(ent_ids + ex_ids)
+
+        if n > 0:
+            ms_per = t1.elapsed()/n
+            print('{} queue items processed. [{:,.0f} ms/item]'.format(n, ms_per))
+
+        time.sleep(0.1)
+        t1.reset()
 
 #------------------------------------------------------------------------------
 def eval_entry(c, ss):
@@ -103,12 +105,12 @@ def eval_exit(trade, c, ss):
     # Target (success)
     if all([ fn(ss['indicators']) for fn in algo['target']['conditions'] ]):
         ids.append(
-            sell(trade, c, ss, details="Target conditions met"))
+            sell(trade, c, ss, details="Target Conditions"))
 
     # Failure
     if all([ fn(ss['indicators']) for fn in algo['failure']['conditions'] ]):
         ids.append(
-            sell(trade, c, ss, details="Failure conditions met"))
+            sell(trade, c, ss, details="Failure Conditions"))
 
     return ids
 
@@ -116,7 +118,14 @@ def eval_exit(trade, c, ss):
 def buy(c, algo, ss):
     """Open new position, insert record to DB.
     """
-    db = app.db
+    db, client = app.db, app.bot.client
+
+    if ss['book'] is None:
+        book = odict(client.get_orderbook_ticker(symbol=c['pair']))
+        del book['symbol']
+        [book.update({k:np.float64(v)}) for k,v in book.items()]
+        ss['book'] = book
+
     result = db.trades.insert_one(odict({
         'pair': c['pair'],
         'quote_asset': db.assets.find_one({'symbol':c['pair']})['quoteAsset'],
@@ -146,6 +155,13 @@ def sell(record, c, ss, details=None):
     """
     client = app.bot.client
     db = app.db
+
+    if ss['book'] is None:
+        book = odict(client.get_orderbook_ticker(symbol=c['pair']))
+        del book['symbol']
+        [book.update({k:np.float64(v)}) for k,v in book.items()]
+        ss['book'] = book
+
     pct_fee = BINANCE_PCT_FEE
     bid = ss['book']['bidPrice']
     ask = ss['book']['askPrice']
@@ -179,6 +195,7 @@ def sell(record, c, ss, details=None):
             },
             '$set': {
                 'status': 'closed',
+                'details': details,
                 'end_time': now(),
                 'duration': int(duration.total_seconds()),
                 'pct_gain': pct_gain.round(4),
@@ -189,14 +206,18 @@ def sell(record, c, ss, details=None):
     return record['_id']
 
 #------------------------------------------------------------------------------
-def snapshot(c):
+def snapshot(c, ob=False):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
     global dfW
+    book = None
     pair, freqstr = c['pair'], c['freqstr']
-    book = odict(app.bot.client.get_orderbook_ticker(symbol=pair))
-    del book['symbol']
-    [book.update({k:np.float64(v)}) for k,v in book.items()]
+
+    if ob == True:
+        book = odict(app.bot.client.get_orderbook_ticker(symbol=pair))
+        del book['symbol']
+        [book.update({k:np.float64(v)}) for k,v in book.items()]
+
     buyratio = (c['buy_vol']/c['volume']) if c['volume'] > 0 else 0.0
 
     # MACD Indicators

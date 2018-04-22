@@ -209,13 +209,23 @@ def to_dict(pair, freqstr):
     }
 
 #------------------------------------------------------------------------------
-def append_df(c):
+def append_dfc(c):
     """Append candle dict onto global candle dataframe.
     """
+    dfc = app.bot.dfc
     c_ = c.copy()
     c_['freq'] = strtofreq(c_['freqstr'])
     c_ = { k:v for k,v in c_.items() if k in columns}
     c_['open_time'] = pd.Timestamp(c_['open_time'].strftime("%Y-%b-%d %H:%M"))
     df = pd.DataFrame.from_dict([c_], orient='columns')\
         .set_index(['pair','freq','open_time'])
-    app.bot.dfc = app.bot.dfc.append(df).drop_duplicates()
+    dfc = dfc.append(df).drop_duplicates()
+
+#------------------------------------------------------------------------------
+def modify_dfc(c):
+    dfc = app.bot.dfc
+    pair = c['pair']
+    freq = strtofreq(c['freqstr'])
+    dfc.ix[(pair,freq)].iloc[-1] = [c[n] for n in columns[3:]]
+
+    #log.debug(dfc.loc[pair,freq].tail(1))

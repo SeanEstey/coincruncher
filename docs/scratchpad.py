@@ -91,7 +91,7 @@ def part_klines(e_pairs):
             n+=1
 
         # Eval target/failure conditions via unclosed candles.
-        if tmr.remain(quiet=True) == 0:
+        if tmr.remain() == 0:
             for trade in db.trades.find({'status':'open'}):
                 cached = cache[trade['pair']][trade['freqstr']]
 
@@ -99,7 +99,7 @@ def part_klines(e_pairs):
                     ss = snapshot(cached[-1], last_ss=trade['snapshots'][0])
                     eval_exit(cached[-1], ss)
 
-            tmr.reset(quiet=True)
+            tmr.reset()
             reports.positions('open_kline')
             tradelog('-'*TRADELOG_WIDTH)
 

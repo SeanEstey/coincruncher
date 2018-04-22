@@ -40,19 +40,19 @@ def run(e_pairs):
     ws.start()
     print('Connected. Press Ctrl+C to quit')
 
-    tmr = Timer(name='pairs', expire='every 5 clock min utc')
+    tmr = Timer(name='pairs', expire='every 5 clock min utc', quiet=True)
 
     while True:
         if e_pairs.isSet():
             update_sockets()
             e_pairs.clear()
-        if tmr.remain(quiet=True) == 0:
-            tmr.reset(quiet=True)
+        if tmr.remain() == 0:
+            tmr.reset()
             if len(storedata) > 0:
                 print("websock_thread: saving new candles...")
                 candles.bulk_save(storedata)
                 storedata = []
-                app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS, dfm=app.bot.dfc)
+                #app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS, dfm=app.bot.dfc)
         update_spinner()
         time.sleep(0.1)
     close_all()

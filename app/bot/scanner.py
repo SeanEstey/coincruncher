@@ -26,7 +26,7 @@ def run(e_pairs):
             # Scan and update enabled trading pairs
             pairs = filter_pairs()
             enable_pairs(pairs)
-            app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=app.bot.dfc)
+            #app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=app.bot.dfc)
             # Notify websocket thread to update its sockets
             e_pairs.set()
             macd_scan()

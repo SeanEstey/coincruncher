@@ -10,17 +10,17 @@ from docs.conf import *
 import app, app.bot
 from app.common.utils import colors, pct_diff, to_relative_str, utc_datetime as now
 from app.common.timeutils import strtofreq
-from . import candles, signals
+from . import candles, macd, signals
 
 def tradelog(msg): log.log(99, msg)
 def siglog(msg): log.log(100, msg)
 log = logging.getLogger('reports')
 
 #------------------------------------------------------------------------------
-def new_trades(trade_ids):
+def trades(trade_ids):
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ['freq', "type", "Δprice", "macd", "rsi", "zscore", "time", "reason"]
+    cols = ['freq', "type", "Δprice", "macd", "rsi", "zscore", "time", "details"]
     data, indexes = [], []
 
     for _id in trade_ids:
@@ -28,11 +28,11 @@ def new_trades(trade_ids):
         indexes.append(record['pair'])
         ss1 = record['snapshots'][0]
         ss_new = record['snapshots'][-1]
+        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100)
 
         if len(record['orders']) > 1:
             c1 = ss1['candle']
             c2 = ss_new['candle']
-            df = dfc.loc[record['pair'], strtofreq(c2['freqstr'])].tail(40)
             data.append([
                 c2['freqstr'],
                 'SELL',
@@ -41,12 +41,11 @@ def new_trades(trade_ids):
                 ss_new['indicators']['rsi'],
                 ss_new['indicators']['zscore'],
                 to_relative_str(now() - record['start_time']),
-                "-"
+                record['details']
             ])
         # Buy trade
         else:
             c1 = ss1['candle']
-            df = dfc.loc[record['pair'], strtofreq(c1['freqstr'])].tail(40)
             data.append([
                 c1['freqstr'],
                 'BUY',
@@ -72,9 +71,10 @@ def new_trades(trade_ids):
         cols[5]: '{}'.format,
         cols[6]: '{}'.format
     }).split("\n")
+
+    tradelog('-'*TRADELOG_WIDTH)
     tradelog("{} trade(s) executed:".format(len(df)))
     [tradelog(line) for line in lines]
-
     tradelog('-'*TRADELOG_WIDTH)
 
 #------------------------------------------------------------------------------
@@ -91,14 +91,15 @@ def positions():
         ss1 = record['snapshots'][0]
         c1 = ss1['candle']
         ss_new = record['snapshots'][-1]
-        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(40).copy()
+        df = dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100).copy()
+        freq = strtofreq(record['freqstr'])
 
         data.append([
             c1['freqstr'],
-            pct_diff(ss1['book']['askPrice'], ss_new['book']['askPrice']),
-            ss_new['indicators']['macd']['value'],
-            ss_new['indicators']['rsi'],
-            ss_new['indicators']['zscore'],
+            pct_diff(c1['close'], df.iloc[-1]['close']),
+            macd.generate(df)['macd_diff'].iloc[-1],
+            signals.rsi(df['close'], 14),
+            signals.zscore(df['close'], df.iloc[-1]['close'], 21),
             to_relative_str(now() - record['start_time']),
             record['algo']
         ])

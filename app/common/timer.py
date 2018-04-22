@@ -18,6 +18,7 @@ class Timer():
     target = None
     words = None
     relative_kw = ['next', 'every']
+    quiet = None
 
     def __repr__(self):
         return str(self.elapsed())
@@ -25,12 +26,12 @@ class Timer():
         return "{:,}".format(self.elapsed())
 
     #--------------------------------------------------------------------------
-    def reset(self, quiet=False):
+    def reset(self):
         """Restart stopwatch or countdown timer.
         """
         self.start = now()
         if self.expire_str:
-            self.set_expiry(self.expire_str, quiet=quiet)
+            self.set_expiry(self.expire_str)
 
     #--------------------------------------------------------------------------
     def elapsed(self, unit='ms'):
@@ -43,7 +44,7 @@ class Timer():
             return round(sec, 1)
 
     #--------------------------------------------------------------------------
-    def remain(self, unit='ms', quiet=False):
+    def remain(self, unit='ms'):
         """If in timer mode, return time remaining as milliseconds
         integer (unit='ms') or minutes string (unit='str')
         """
@@ -51,10 +52,10 @@ class Timer():
             return None
 
         if self.expire > now():
-            if quiet != True:
+            if self.quiet != True:
                 print("{}: {}".format(self.name, to_relative_str(self.expire - now())))
         else:
-            if quiet != True:
+            if self.quiet != True:
                 print("{} expired!".format(self.name))
 
         rem_ms = int((self.expire - now()).total_seconds()*1000)
@@ -68,7 +69,7 @@ class Timer():
                 return "%s min" % round((rem_ms/1000/3600)*60,1)
 
     #--------------------------------------------------------------------------
-    def set_expiry(self, target, quiet=False):
+    def set_expiry(self, target):
         """target can be datetime.datetime obj or recognizable
         string.
         """
@@ -79,7 +80,7 @@ class Timer():
             self.start = now()
             self.parse(target)
 
-        if quiet != True:
+        if self.quiet != True:
             print("{} expires in {}".format(self.name, to_relative_str(self.expire - now())))
 
     #--------------------------------------------------------------------------
@@ -138,9 +139,9 @@ class Timer():
             raise Exception("Cannot parse '%s'" % target_str)
 
     #--------------------------------------------------------------------------
-    def __init__(self, name=None, expire=None):
+    def __init__(self, name=None, expire=None, quiet=False):
         self.start = now()
-
+        self.quiet = quiet
         if name:
             self.name=name
         if expire:
