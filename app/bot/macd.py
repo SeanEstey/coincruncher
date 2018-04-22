@@ -60,7 +60,7 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
     """
     DF = pd.DataFrame
     freq = strtofreq(freqstr)
-    dfmacd = generate(df).tail(periods)['macd_diff'].copy().drop_duplicates()
+    dfmacd = generate(df).tail(periods)['macd_diff'].copy()#.drop_duplicates()
     np_arr, descs, phases = [],[],[]
     idx = 0
 
@@ -71,7 +71,7 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
             log.info("{}".format(pair))
             pprint(dfmacd)
 
-        dfmacd = dfmacd.drop_duplicates()
+        dfmacd = dfmacd#.drop_duplicates()
         if row is None:
             idx+=1
             continue
@@ -153,7 +153,7 @@ def next_phase(dfmacd, freq, start_idx):
 
     end_idx = len(dfmacd)-1 if skip.empty else dfmacd.index.get_loc(skip[0])-1
     n_bars = end_idx - start_idx + 1
-    phase = dfmacd.iloc[start_idx:end_idx+1].drop_duplicates() #.copy()
+    phase = dfmacd.iloc[start_idx:end_idx+1]#.drop_duplicates() #.copy()
 
     dt1 = phase.head(1).index[0].to_pydatetime()
     local_dt1 = to_local(dt1.replace(tzinfo=pytz.utc))

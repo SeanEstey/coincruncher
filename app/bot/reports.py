@@ -20,7 +20,7 @@ log = logging.getLogger('reports')
 def trades(trade_ids):
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ['freq', "type", "Δprice", "macd", "rsi", "zscore", "time", "details"]
+    cols = ['freq', "type", "Δprice", "macd", "rsi", "zscore", "time", "algo", "details"]
     data, indexes = [], []
 
     for _id in trade_ids:
@@ -41,7 +41,8 @@ def trades(trade_ids):
                 ss_new['indicators']['rsi'],
                 ss_new['indicators']['zscore'],
                 to_relative_str(now() - record['start_time']),
-                record['details']
+                record['algo'],
+                record['details'][-1]['section'].title()
             ])
         # Buy trade
         else:
@@ -54,7 +55,8 @@ def trades(trade_ids):
                 ss_new['indicators']['rsi'],
                 ss_new['indicators']['zscore'],
                 "-",
-                "-"
+                record['algo'],
+                record['details'][-1]['section'].title()
             ])
 
     if len(data) == 0:
@@ -69,13 +71,13 @@ def trades(trade_ids):
         cols[3]: ' {:+.3f}'.format,
         cols[4]: '{:.0f}'.format,
         cols[5]: '{}'.format,
+        cols[5]: '{}'.format,
         cols[6]: '{}'.format
     }).split("\n")
 
     tradelog('-'*TRADELOG_WIDTH)
     tradelog("{} trade(s) executed:".format(len(df)))
     [tradelog(line) for line in lines]
-    tradelog('-'*TRADELOG_WIDTH)
 
 #------------------------------------------------------------------------------
 def positions():
@@ -83,7 +85,7 @@ def positions():
     """
     db = app.get_db()
     dfc = app.bot.dfc
-    cols = ["freq", "Δprice", "macd", "rsi", "zscore", "time", "algo"]
+    cols = ["freq", "price", "Δprice", "macd", "rsi", "zscore", "time", "algo"]
     data, indexes = [], []
     opentrades = db.trades.find({'status':'open'})
 
@@ -96,6 +98,7 @@ def positions():
 
         data.append([
             c1['freqstr'],
+            df.iloc[-1]['close'],
             pct_diff(c1['close'], df.iloc[-1]['close']),
             macd.generate(df)['macd_diff'].iloc[-1],
             signals.rsi(df['close'], 14),
@@ -112,15 +115,16 @@ def positions():
         df = df[cols]
         lines = df.to_string(formatters={
             cols[0]: ' {}'.format,
-            cols[1]: ' {:+.2f}%'.format,
-            cols[2]: '  {:+.3f}'.format,
-            cols[3]: '{:.0f}'.format,
-            cols[4]: '{}'.format,
-            cols[5]: ' {}'.format
+            cols[1]: ' {:g}'.format,
+            cols[2]: ' {:+.2f}%'.format,
+            cols[3]: '  {:+.3f}'.format,
+            cols[4]: '{:.0f}'.format,
+            cols[5]: '{}'.format,
+            cols[6]: ' {}'.format
         }).split("\n")
+        tradelog('-'*TRADELOG_WIDTH)
         tradelog("{} position(s):".format(len(df)))
         [tradelog(line) for line in lines]
-        tradelog('-'*TRADELOG_WIDTH)
         return df
 
 #-------------------------------------------------------------------------------
@@ -160,6 +164,7 @@ def earnings():
     gain = [ n for n in gain if n['_id']['day'] == today]
     loss = [ n for n in loss if n['_id']['day'] == today]
 
+    tradelog('-'*TRADELOG_WIDTH)
     for n in gain:
         tradelog("{:} today: {:} wins ({:+.2f}%)."\
             .format(
@@ -174,4 +179,6 @@ def earnings():
                 n['count'],
                 n['total']
             ))
+
+
     return (gain, loss, assets)

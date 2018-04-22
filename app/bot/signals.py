@@ -13,16 +13,21 @@ log = logging.getLogger('signals')
 def rsi(df, span):
     """RSI indicator for determining overbought/oversold prices.
     """
-    last = df.tail(span)
-    diff = last.diff().ewm(span=span).mean()
+    diff = df.diff().ewm(span=span, min_periods=span).mean().tail(span)
     gains = diff[diff > 0]
     losses = diff[diff < 0]
     rs = abs(gains.mean() / losses.mean())
     rsi = 100 - (100 / (1.0 + rs))
-    try:
-        return int(rsi)
-    except Exception as e:
-        return -1
+
+    if rsi == np.nan:
+        if gains.mean() == np.nan and losses.mean() != np.nan:
+            return 0
+        elif losses.mean() == np.nan and gains.mean() != np.nan:
+            return 100
+        else:
+            return np.nan
+    else:
+        return rsi
 
 #-----------------------------------------------------------------------------
 def zscore(series, value, span):

@@ -10,15 +10,15 @@ from docs.conf import *
 from docs.botconf import *
 import app, app.bot
 
-
 ##### Globals #####
-
 log = logging.getLogger('main')
 divstr = "***** %s *****"
-# Candle data queues fed by app.bot.websock thread and consumed
-# by app.bot.trade thread.
+# Candle data queue. Feeder is bot.websock, consumer is bot.trade
 q = Queue()
+# Enabled pair change event
 e_pairs = Event()
+# Thread termination event
+e_kill = Event()
 
 if __name__ == '__main__':
     killer = app.GracefulKiller()
@@ -44,7 +44,7 @@ if __name__ == '__main__':
         threads.append(Thread(
             name='{}.{}'.format(func.__module__, func.__name__),
             target=func,
-            args=(e_pairs,)
+            args=(e_pairs, e_kill,)
         ))
         threads[-1].setDaemon(True)
         threads[-1].start()
@@ -52,12 +52,18 @@ if __name__ == '__main__':
     # Main loop. Monitors threads and terminates app on CTRL+C cmd.
     while True:
         if killer.kill_now:
+            e_kill.set()
             break
         for t in threads:
             if t.is_alive() == False:
                 print("Thread {} is dead!".format(t.getName()))
                 time.sleep(1)
         time.sleep(0.1)
+
+    # Wait for trade & websock threads to close.
+    # Scanner sleep period too long to wait.
+    threads[0].join()
+    threads[1].join()
 
     print("Goodbye")
     log.debug(divstr % "sys.exit()")

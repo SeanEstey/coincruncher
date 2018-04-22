@@ -209,23 +209,47 @@ def to_dict(pair, freqstr):
     }
 
 #------------------------------------------------------------------------------
-def append_dfc(c):
-    """Append candle dict onto global candle dataframe.
-    """
+def bulk_append_df(candles):
+    df = pd.DataFrame()
+    candles_ = []
+
+    for c in candles:
+        c_ = c.copy()
+        c_['freq'] = strtofreq(c_['freqstr'])
+        c_ = { k:v for k,v in c_.items() if k in columns}
+        c_['open_time'] = pd.Timestamp(c_['open_time'].strftime("%Y-%b-%d %H:%M"))
+
+        df_ = pd.DataFrame.from_dict([c_], orient='columns')\
+            .set_index(['pair','freq','open_time'])
+        df = df.append(df_)
+
+    pprint(df)
     dfc = app.bot.dfc
-    c_ = c.copy()
-    c_['freq'] = strtofreq(c_['freqstr'])
-    c_ = { k:v for k,v in c_.items() if k in columns}
-    c_['open_time'] = pd.Timestamp(c_['open_time'].strftime("%Y-%b-%d %H:%M"))
-    df = pd.DataFrame.from_dict([c_], orient='columns')\
-        .set_index(['pair','freq','open_time'])
-    dfc = dfc.append(df).drop_duplicates()
+    dfc = dfc.append(df).drop_duplicates().sort_index()
 
 #------------------------------------------------------------------------------
 def modify_dfc(c):
-    dfc = app.bot.dfc
+    """Modify global candle dataframe.
+    """
     pair = c['pair']
     freq = strtofreq(c['freqstr'])
-    dfc.ix[(pair,freq)].iloc[-1] = [c[n] for n in columns[3:]]
+    open_time = pd.Timestamp(c['open_time'].replace(tzinfo=None))
 
-    #log.debug(dfc.loc[pair,freq].tail(1))
+    index = (pair, freq, open_time)
+
+    # Modify existing DF index.
+    if index in app.bot.dfc.index:
+        app.bot.dfc.ix[index] = [c[n] for n in columns[3:]]
+    # Create index in new DF and append.
+    else:
+        c_ = c.copy()
+        c_['freq'] = strtofreq(c_['freqstr'])
+        c_['open_time'] = open_time
+        c_ = { k:v for k,v in c_.items() if k in columns}
+
+        df = pd.DataFrame.from_dict([c_], orient='columns')\
+            .set_index(['pair','freq','open_time'])
+        app.bot.dfc = app.bot.dfc.append(df)
+        app.bot.dfc = app.bot.dfc.sort_index()
+
+        #print("dfc.len={}, dfc.index date: {}".format(len(app.bot.dfc), app.bot.dfc.ix[(pair,freq)].iloc[-1].name))

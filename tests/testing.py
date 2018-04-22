@@ -35,8 +35,8 @@ def test_getphase(df, start_idx, pair, freq, periods):
     return macd.get_phase(dfmacd, freq, start_idx)
 
 
-pair = 'STORMBNB'
-freqstr = '1h'
+pair = 'POEETH'
+freqstr = '5m'
 
 # Init
 app.bot.client = client = Client('','')
@@ -45,5 +45,6 @@ app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS)
 dfc = app.bot.dfc
 
 # Main
-df = dfc.loc[pair,3600]
+df = dfc.loc[pair, strtofreq(freqstr)]
 dfh, phases = macd.histo_phases(df, pair, freqstr, 144, to_bson=True)
+dfmacd = macd.generate(df)

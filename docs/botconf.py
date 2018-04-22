@@ -13,7 +13,7 @@ TRADEFREQS = ['5m', '30m', '1h']
 TRADE_PAIR_ALGO = {
     "filters": [
         lambda tckr, mkt: mkt['24hPriceChange'] > 0,
-        lambda tckr, mkt: tckr['24hPriceChange'] > 5.5
+        lambda tckr, mkt: tckr['24hPriceChange'] > 10.5
     ],
     "conditions": [
         lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,
@@ -28,7 +28,7 @@ TRADE_ALGOS = [
     {
         "name": "rsi",
         "ema": (12, 26, 9),
-        "stoploss": -25.0,
+        "stoploss": -0.75,
         "entry": {
             "conditions": [
                 lambda ss: 10 < ss['rsi'] < 40
@@ -49,7 +49,7 @@ TRADE_ALGOS = [
     {
         "name": "macd",
         "ema": (12, 26, 9),
-        "stoploss": -5.0,
+        "stoploss": -0.75,
         "entry": {
             "conditions": [
                 lambda ss: ss['macd']['value'] > 0,
@@ -66,7 +66,7 @@ TRADE_ALGOS = [
         },
         "failure": {
             "conditions": [
-                lambda ss: ss['macd']['value'] < 0
+                lambda ss: ss['macd']['value'] < 0 or ss['macd']['ampSlope'] < 0
             ]
         }
     }

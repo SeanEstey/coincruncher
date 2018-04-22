@@ -17,21 +17,27 @@ def scanlog(msg): log.log(98, msg)
 log = logging.getLogger('scanner')
 
 #---------------------------------------------------------------------------
-def run(e_pairs):
-    tmr = Timer(name='scanner', expire='every 32 clock min utc')
-    #macd_scan()
+def run(e_pairs, e_kill):
+    tmr = Timer(name='scanner',
+        expire='every 32 clock min utc', quiet=True)
 
     while True:
+        if e_kill.isSet():
+            break
+
         if tmr.remain() == 0:
             # Scan and update enabled trading pairs
-            pairs = filter_pairs()
-            enable_pairs(pairs)
+            #pairs = filter_pairs()
+            #enable_pairs(pairs)
             #app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS, dfm=app.bot.dfc)
             # Notify websocket thread to update its sockets
-            e_pairs.set()
+            #e_pairs.set()
             macd_scan()
             tmr.reset()
+
         time.sleep(300)
+
+    print("Scanner thread: terminating")
 
 #------------------------------------------------------------------------------
 def filter_pairs():

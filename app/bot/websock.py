@@ -25,7 +25,7 @@ connkeys, storedata = [], []
 ws = None
 
 #-------------------------------------------------------------------------------
-def run(e_pairs):
+def run(e_pairs, e_kill):
     global storedata, connkeys, ws
     client = app.bot.client
 
@@ -43,19 +43,25 @@ def run(e_pairs):
     tmr = Timer(name='pairs', expire='every 5 clock min utc', quiet=True)
 
     while True:
+        if e_kill.isSet():
+            break
+
         if e_pairs.isSet():
             update_sockets()
             e_pairs.clear()
+
         if tmr.remain() == 0:
             tmr.reset()
             if len(storedata) > 0:
                 print("websock_thread: saving new candles...")
                 candles.bulk_save(storedata)
                 storedata = []
-                #app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS, dfm=app.bot.dfc)
+
         update_spinner()
         time.sleep(0.1)
+
     close_all()
+    print("Websock thread: Terminating...")
 
 #-------------------------------------------------------------------------------
 def update_sockets():
@@ -123,9 +129,10 @@ def recv_kline(msg):
 #-------------------------------------------------------------------------------
 def close_all():
     global ws
-    print('Closing all sockets...')
+    sys.stdout.flush()
+    print('Websock thread: Closing all sockets...')
     ws.close()
-    print('Terminating twisted server...')
+    print('Websock thread: Terminating twisted server...')
     reactor.stop()
 
 #-------------------------------------------------------------------------------
