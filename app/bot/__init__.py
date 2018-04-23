@@ -56,8 +56,12 @@ def update_pairs(pairs, query_all=True):
     pairs not already loaded into global candle dataframe.
     """
     db = app.db
+    querylist = []
     # Add open trade pairs
     tradepairs = set([n['pair'] for n in list(db.trades.find({'status':'open'}))])
+
+    if len(set(pairs + list(tradepairs))) == 0:
+        raise Exception("No pairs enabled for trading.")
 
     if query_all == True:
         querylist = list(set(pairs + list(tradepairs)))
@@ -66,12 +70,13 @@ def update_pairs(pairs, query_all=True):
         querylist = list(set(pairs) - set(get_pairs()))
         print("Querying historic data for {} new pairs...".format(len(querylist)))
 
-    # Retrieve historic data and load.
-    candlelist = []
-    for pair in querylist:
-        print("Retrieving {} candles...".format(pair))
-        candlelist += candles.update([pair], TRADEFREQS)
-    candles.bulk_append_dfc(candlelist)
+    if len(querylist) > 0:
+        # Retrieve historic data and load.
+        candlelist = []
+        for pair in querylist:
+            print("Retrieving {} candles...".format(pair))
+            candlelist += candles.update([pair], TRADEFREQS)
+        candles.bulk_append_dfc(candlelist)
 
     result = db.assets.update_many({},
         {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})

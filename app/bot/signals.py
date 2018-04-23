@@ -1,5 +1,7 @@
 import logging
+import math
 from datetime import timedelta as delta
+from pprint import pformat
 import pandas as pd
 import numpy as np
 from docs.conf import ema9
@@ -18,16 +20,10 @@ def rsi(df, span):
     losses = diff[diff < 0]
     rs = abs(gains.mean() / losses.mean())
     rsi = 100 - (100 / (1.0 + rs))
-
-    if rsi == np.nan:
-        if gains.mean() == np.nan and losses.mean() != np.nan:
-            return 0
-        elif losses.mean() == np.nan and gains.mean() != np.nan:
-            return 100
-        else:
-            return np.nan
+    if math.isnan(rsi):
+        return 0 if len(gains) == 0 else 100
     else:
-        return rsi
+        return int(round(rsi,0))
 
 #-----------------------------------------------------------------------------
 def zscore(series, value, span):

@@ -3,7 +3,7 @@
 
 DEF_KLINE_HIST_LEN = "72 hours ago utc"
 TRADE_AMT_MAX = 50.00
-TRADEFREQS = ['5m', '30m', '1h']
+TRADEFREQS = ['5m', '30m', '1h', '1d']
 
 # Algorithm that decides which trading pairs are enabled
 # @tckr: binance ticker dataframe
@@ -12,7 +12,7 @@ TRADEFREQS = ['5m', '30m', '1h']
 TRADE_PAIR_ALGO = {
     "filters": [
         lambda tckr, mkt: mkt['24hPriceChange'] > 0,
-        lambda tckr, mkt: tckr['24hPriceChange'] > 20.5
+        lambda tckr, mkt: tckr['24hPriceChange'] > 15.0
     ],
     "conditions": [
         lambda ss: ss['macd']['history'][-1]['ampMean'] > 0,
@@ -27,7 +27,7 @@ TRADE_ALGOS = [
     {
         "name": "rsi",
         "ema": (12, 26, 9),
-        "stoploss": -0.75,
+        "stoploss": -2.5,
         "entry": {
             "conditions": [
                 lambda ss: 10 < ss['rsi'] < 40
@@ -35,18 +35,13 @@ TRADE_ALGOS = [
         },
         "target": {
             "conditions": [
-                lambda ss: ss['rsi'] > 70
-            ]
-        },
-        "secondary": {
-            # Add 'percentAth' in trade stats. Sell on percentAth < 0.8
-            # (target not reached + price dropping from peak)
-            "conditions": [
+                lambda ss, t: ss['rsi'] > 70 or \
+                              t['stats']['minRsi'] < ss['rsi'] < 0.95*t['stats']['maxRsi']
             ]
         },
         "failure": {
             "conditions": [
-                lambda ss: ss['rsi'] < 5
+                lambda ss, t: ss['rsi'] < 5
             ]
         }
     },
@@ -58,20 +53,20 @@ TRADE_ALGOS = [
         "entry": {
             "conditions": [
                 lambda ss: ss['macd']['value'] > 0,
-                lambda ss: ss['macd']['bars'] < 2,
+                lambda ss: ss['macd']['bars'] < 3,
                 lambda ss: ss['macd']['priceY'] > 0,
                 lambda ss: ss['macd']['priceX'] > 0
             ]
         },
         "target": {
             "conditions": [
-                lambda ss: (0 < ss['macd']['value'] < ss['macd']['ampMax']),
-                lambda ss: ss['macd']['ampSlope'] < 0
+                lambda ss, t: (0 < ss['macd']['value'] < ss['macd']['ampMax']),
+                lambda ss, t: ss['macd']['ampSlope'] < 0
             ]
         },
         "failure": {
             "conditions": [
-                lambda ss: ss['macd']['value'] < 0 or ss['macd']['ampSlope'] < 0
+                lambda ss, t: ss['macd']['value'] < 0 or ss['macd']['ampSlope'] < 0
             ]
         }
     }

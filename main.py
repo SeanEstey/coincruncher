@@ -55,18 +55,22 @@ if __name__ == '__main__':
         if killer.kill_now:
             e_kill.set()
             break
+
         for t in threads:
-            if t.is_alive() == False:
-                print("Thread {} is dead!".format(t.getName()))
-                time.sleep(1)
+            if t.is_alive() is False:
+                print("{} thread is dead. "\
+                      "Killing remaining threads..."\
+                      .format(t.getName()))
+                threads.pop(threads.index(t))
+                e_kill.set()
+                break
+
         time.sleep(0.1)
 
-    # Wait for trade & websock threads to close.
-    # Scanner sleep period too long to wait.
-    threads[0].join()
-    threads[1].join()
+    # Wait for remaining threads to finish
+    [t.join() for t in threads]
 
     print("Goodbye")
-    log.debug(divstr % "sys.exit()")
-    log.info(divstr % "Terminating")
+    [log.log(lvl, divstr % "Terminating") \
+        for lvl in [DEBUG,INFO,SIGNAL,TRADE,SCAN]]
     sys.exit()

@@ -41,12 +41,17 @@ app.bot.client = client = Client('','')
 #app.bot.dfc = candles.bulk_load(pairs, TRADEFREQS)
 
 # Main
-"""pair = 'POEETH'
-freqstr = '5m'
-df = dfc.loc[pair, strtofreq(freqstr)]
-dfh, phases = macd.histo_phases(df, pair, freqstr, 144, to_bson=True)
-dfmacd = macd.generate(df)
-"""
-
 app.bot.init()
+pair = 'RLCBTC'
+freqstr = '1d'
+t = db.trades.find_one({'status':'open','pair':pair,'freqstr':freqstr})
+app.bot.dfc = candles.bulk_load([pair], TRADEFREQS)
+candles_ = candles.update([pair], [freqstr])
+c = candles_[-1]
+c['close'] = np.float64(c['close'])
+c['closed'] = True
+ss = trade.snapshot(c)
+stats = trade.update_stats(t, ss)
+
+#app.bot.init()
 

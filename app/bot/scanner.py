@@ -1,10 +1,12 @@
 # app.bot.scanner
 import logging
 import time
+import importlib
 import pytz
 import pandas as pd
 import numpy as np
-from docs.botconf import *
+import docs.botconf
+#from docs.botconf import *
 import app, app.bot
 from app.bot import update_pairs
 from app.common.timer import Timer
@@ -12,12 +14,15 @@ from app.common.utils import to_local, utc_datetime as now
 from app.common.utils import strtodt, strtoms
 from app.common.timeutils import strtofreq
 from . import candles, macd, tickers, trade
-def scanlog(msg): log.log(98, msg)
 
 log = logging.getLogger('scanner')
 
+def scanlog(msg): log.log(98, msg)
+
 #---------------------------------------------------------------------------
 def run(e_pairs, e_kill):
+    """Main scanner thread loop.
+    """
     tmr = Timer(name='scanner',
         expire='every 15 clock min utc', quiet=True)
 
@@ -26,21 +31,27 @@ def run(e_pairs, e_kill):
             break
 
         if tmr.remain() == 0:
+            # Edit conf w/o having to restart bot.
+            importlib.reload(docs.botconf)
             # Scan and update enabled trading pairs
             pairs = filter_pairs()
             # Enable and load historic data into dataframe
             update_pairs(pairs, query_all=False)
             # Notify websocket thread to update its sockets
             e_pairs.set()
-            macd_scan()
+            #macd_scan()
             tmr.reset()
 
-        time.sleep(300)
+        time.sleep(3)
 
     print("Scanner thread: terminating")
 
 #------------------------------------------------------------------------------
 def filter_pairs():
+    """First pass filter for trading pairs.
+    """
+    TRADE_PAIR_ALGO = docs.botconf.TRADE_PAIR_ALGO
+
     scanlog('*'*59)
     try:
         dfT = tickers.binance_24h().sort_values('24hPriceChange')
@@ -60,6 +71,9 @@ def filter_pairs():
 
 #------------------------------------------------------------------------------
 def macd_scan():
+    TRADEFREQS = docs.botconf.TRADEFREQS
+    DEF_KLINE_HIST_LEN = docs.botconf.DEF_KLINE_HIST_LEN
+
     for pair in app.bot.get_pairs():
         for freqstr in TRADEFREQS:
             freq = strtofreq(freqstr)

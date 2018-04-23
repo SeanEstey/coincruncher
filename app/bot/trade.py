@@ -3,6 +3,7 @@ import time
 import sys
 import logging
 import pytz
+from pprint import pformat
 import inspect
 import numpy as np
 import pandas as pd
@@ -59,6 +60,7 @@ def run(e_pairs, e_kill):
 
             # Eval position entries/exits
             for trade in db.trades.find(query):
+                update_stats(trade, ss)
                 ex_ids += eval_exit(trade, c, ss)
             if c['closed']:
                 ent_ids += eval_entry(c, ss)
@@ -75,7 +77,6 @@ def run(e_pairs, e_kill):
 
         if n > 0:
             ms_per = t1.elapsed()/n
-            #sys.stdout.flush()
             print('{} queue items processed. [{:,.0f} ms/item]'.format(n, ms_per))
 
         time.sleep(0.1)
@@ -85,6 +86,10 @@ def run(e_pairs, e_kill):
 
 #------------------------------------------------------------------------------
 def eval_entry(c, ss):
+    """
+    @c: candle dict
+    @ss: snapshot dict
+    """
     db = app.get_db()
     ids = []
     for algo in TRADE_ALGOS:
@@ -99,35 +104,26 @@ def eval_entry(c, ss):
     return ids
 
 #------------------------------------------------------------------------------
-def eval_exit(trade, c, ss):
-    db = app.get_db()
-
-    stats_ = trade['stats']
-    stats = {
-        'maxPrice': max(stats_['maxPrice'], c['close']),
-        'maxRsi': max(stats_['maxRsi'], ss['indicators']['rsi']),
-        'maxMacdValue': max(stats_['maxMacdValue'], ss['indicators']['macd']['value']),
-        'maxMacdAmpSlope': max(stats_['maxMacdAmpSlope'], ss['indicators']['macd']['ampSlope']),
-        'maxWickSlope': max(stats_['maxWickSlope'], ss['indicators']['wickSlope'])
-    }
-    db.trades.update_one({'_id':trade['_id']}, {'$set':{'stats':stats}})
-
-    algo = [n for n in TRADE_ALGOS if n['name'] == trade['algo']][0]
+def eval_exit(t, c, ss):
+    """
+    @t: trade document dict
+    @s: candle dict
+    @ss: snapshot dict
+    """
+    algo = [n for n in TRADE_ALGOS if n['name'] == t['algo']][0]
 
     # Stop loss.
-    diff = pct_diff(trade['snapshots'][0]['candle']['close'], c['close'])
+    diff = pct_diff(t['snapshots'][0]['candle']['close'], c['close'])
     if diff < algo['stoploss']:
-        return [sell(trade, ss, 'stoploss')]
+        return [sell(t, ss, 'stoploss')]
 
     # Target (success)
-    conds = algo['target']['conditions']
-    if all([fn(ss['indicators']) for fn in conds]):
-        return [sell(trade, ss, 'target')]
+    if all([fn(ss['indicators'], t) for fn in algo['target']['conditions']]):
+        return [sell(t, ss, 'target')]
 
     # Failure
-    conds = algo['failure']['conditions']
-    if all([ fn(ss['indicators']) for fn in conds]):
-        return [sell(trade, ss, 'failure')]
+    if all([fn(ss['indicators'], t) for fn in algo['failure']['conditions']]):
+        return [sell(t, ss, 'failure')]
 
     return []
 
@@ -154,13 +150,7 @@ def buy(ss, algo):
         'algo': algo['name'],
         'stoploss': algo['stoploss'],
         'snapshots': [ss],
-        'stats': {
-            'maxPrice': ss['candle']['close'],
-            'maxRsi': ss['indicators']['rsi'],
-            'maxMacdValue': ss['indicators']['macd']['value'],
-            'maxMacdAmpSlope': ss['indicators']['macd']['ampSlope'],
-            'maxWickSlope': ss['indicators']['wickSlope']
-        },
+        'stats': {},
         'details': [{
             'algo': algo['name'],
             'section': 'entry',
@@ -276,10 +266,13 @@ def snapshot(c, ob=False):
         print(str(e))
         log.exception(str(e))
 
+    log.debug(pformat(dfmacd))
+
     dfm_dict = dfmacd.iloc[-1].to_dict()
     dfm_dict['bars'] = int(dfm_dict['bars'])
+
     phase = phases[-1]
-    amp_slope = phase.diff().ewm(span=len(phase)).mean().iloc[-1]
+    amp_slope = phase.diff().ewm(span=min(3,len(phase)), min_periods=0).mean().iloc[-1]
 
     wick_slope = np.nan
     if c['closed']:
@@ -303,11 +296,40 @@ def snapshot(c, ob=False):
             'macd': {
                 **dfm_dict,
                 **{'ampSlope':amp_slope,
-                  'value':phases[-1].tolist()[-1]
+                  'value':phase.iloc[-1]
                   }
             }
         }
     }
+
+#------------------------------------------------------------------------------
+def update_stats(t, ss):
+    """Track min/max key indicator ranges across trade lifetime.
+    Snapshots in trade record only cover state at each candle close. This
+    method allows us to capture the highs/lows in-between.
+    @t: trade record dict
+    @ss: snapshot dict (from closed or unclosed candle)
+    """
+    keys = {
+        "buy_ratio":       lambda ss: ss['indicators']['buyRatio'],
+        "rsi":             lambda ss: ss['indicators']['rsi'],
+        "wick_slope":      lambda ss: ss['indicators']['wickSlope'],
+        "zscore" :         lambda ss: ss['indicators']['zscore'],
+        "macd":            lambda ss: ss['indicators']['macd']['value'],
+        "macd_amp_slope":  lambda ss: ss['indicators']['macd']['ampSlope']
+    }
+    snaps = t['snapshots'] + [ss]
+    stats = t['stats']
+
+    for k,fn in keys.items():
+        min_k = "min{}".format(k.title().replace('_',''))
+        stats[min_k] = min([fn(ss) for ss in snaps])
+
+        max_k = "max{}".format(k.title().replace('_',''))
+        stats[max_k] = max([fn(ss) for ss in snaps])
+
+    app.get_db().trades.update_one({'_id':t['_id']}, {'$set':{'stats':stats}})
+    return stats
 
 #------------------------------------------------------------------------------
 def algo_to_string(name, section):

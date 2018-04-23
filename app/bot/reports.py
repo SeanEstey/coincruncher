@@ -1,6 +1,7 @@
 # app.bot.printer
 import logging
 from datetime import datetime
+from pprint import pformat
 import pandas as pd
 from docs.botconf import *
 from docs.conf import *
@@ -87,17 +88,15 @@ def positions():
         ss1 = record['snapshots'][0]
         c1 = ss1['candle']
         ss_new = record['snapshots'][-1]
-        df = app.bot.dfc.loc[record['pair'], strtofreq(record['freqstr'])].tail(100).copy()
         freq = strtofreq(record['freqstr'])
-
-        dfmacd, phases = macd.histo_phases(df, record['pair'], record['freqstr'], 100, to_bson=True)
-        macd_val = phases[-1].tolist()[-1]
+        df = app.bot.dfc.loc[record['pair'], freq]
+        dfmacd, phases = macd.histo_phases(df, record['pair'], record['freqstr'], 100)
 
         data.append([
             c1['freqstr'],
             df.iloc[-1]['close'],
             pct_diff(c1['close'], df.iloc[-1]['close']),
-            macd_val,
+            phases[-1].iloc[-1],
             signals.rsi(df['close'], 14),
             signals.zscore(df['close'], df.iloc[-1]['close'], 21),
             to_relative_str(now() - record['start_time']),

@@ -60,13 +60,14 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
     """
     DF = pd.DataFrame
     freq = strtofreq(freqstr)
-    dfmacd = generate(df).tail(periods)['macd_diff'].copy()#.drop_duplicates()
+    df = df.copy()
+    dfmacd = generate(df).tail(periods)['macd_diff']
     np_arr, descs, phases = [],[],[]
     idx = 0
 
     while idx < len(dfmacd):
         try:
-            iloc, row, phase, desc = next_phase(dfmacd, freq, idx) ##.values()
+            iloc, row, phase, desc = next_phase(dfmacd, freq, idx)
         except Exception as e:
             log.info("{}".format(pair))
             pprint(dfmacd)
@@ -97,7 +98,11 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
     for i in range(0, len(dfh)):
         _slice = df.loc[slice(dfh.iloc[i]['start'], dfh.iloc[i]['end'])]
 
-        pct_py.append(pct_diff(_slice['low'].min(), _slice['high'].max()))
+        py = pct_diff(_slice['low'].min(), _slice['high'].max())
+        if dfh['ampMean'].iloc[i] < 0:
+            py *= -1
+        pct_py.append(py)
+
         pct_px.append(pct_diff(_slice.iloc[0]['open'], _slice.iloc[-1]['close']))
 
         if len(phases[i]) == len(_slice):
@@ -125,10 +130,6 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
         dfh['duration'] = dfh['duration'].apply(lambda x: str(x.to_pytimedelta()))
         dfh['bars'].astype('int')
 
-        phases[-1] = phases[-1].round(3)
-        idx = phases[-1].index.to_pydatetime()
-        phases[-1].index = [str(to_local(n.replace(tzinfo=pytz.utc))) for n in idx]
-
     return (dfh, phases)
 
 #------------------------------------------------------------------------------
@@ -153,7 +154,7 @@ def next_phase(dfmacd, freq, start_idx):
 
     end_idx = len(dfmacd)-1 if skip.empty else dfmacd.index.get_loc(skip[0])-1
     n_bars = end_idx - start_idx + 1
-    phase = dfmacd.iloc[start_idx:end_idx+1]#.drop_duplicates() #.copy()
+    phase = dfmacd.iloc[start_idx:end_idx+1]
 
     dt1 = phase.head(1).index[0].to_pydatetime()
     local_dt1 = to_local(dt1.replace(tzinfo=pytz.utc))

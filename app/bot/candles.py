@@ -116,7 +116,11 @@ def update(pairs, freqstrs, startstr=None):
 
     for pair in pairs:
         for freqstr in freqstrs:
-            data = query_api(pair, freqstr, startstr=startstr)
+            if freqstr == '1d':
+                data = query_api(pair, freqstr, startstr="30 days ago utc")
+            else:
+                data = query_api(pair, freqstr, startstr=startstr)
+
             if len(data) == 0:
                 continue
             for i in range(0, len(data)):
@@ -223,5 +227,6 @@ def bulk_append_dfc(candlelist):
 
     # Drop any rows that have duplicate (pair,freq,open_time) indexes.
     app.bot.dfc = app.bot.dfc[~app.bot.dfc.index.duplicated(keep='first')]
+    app.bot.dfc = app.bot.dfc.sort_index()
 
     return app.bot.dfc
