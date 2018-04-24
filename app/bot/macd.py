@@ -6,11 +6,13 @@ from dateparser import parse
 import pytz
 import numpy as np
 import pandas as pd
-from docs.conf import macd_ema
-from app.common.utils import utc_datetime as now, to_relative_str as relative
-from app.common.utils import pct_diff, to_local, abc
+import plotly.graph_objs as go
+from docs.conf import *
+from docs.botconf import *
+from app.common.utils import pct_diff, to_local, abc, strtodt, strtoms
 from app.common.timeutils import strtofreq, freqtostr
-import app.bot
+import app, app.bot
+from . import candles, signals
 
 log = logging.getLogger('macd')
 
@@ -20,7 +22,6 @@ def generate(df, ema=None, normalize=True):
     Normalized values in range(-1,1).
     # TODO: decide whether to leave "min_periods=_ema[1] - 1"
     """
-    df = df.copy()
     _ema = ema if ema else macd_ema
 
     fast = df['close'].ewm(span=_ema[0], adjust=True, ignore_na=False, min_periods=_ema[1]
@@ -134,6 +135,8 @@ def histo_phases(df, pair, freqstr, periods, to_bson=False):
 
 #------------------------------------------------------------------------------
 def next_phase(dfmacd, freq, start_idx):
+    """
+    """
     diff = dfmacd.iloc[start_idx]
 
     try:
@@ -173,146 +176,104 @@ def next_phase(dfmacd, freq, start_idx):
     )
 
 #------------------------------------------------------------------------------
-def plot(pair, freqstr, periods):
-    """
-    # fig['layout']['xaxis1'].update(titlefont=dict(
-    #    family='Arial, sans-serif',
-    #    size=18,
-    #    color='grey'
-    #))
-    """
-    import pytz
-    import plotly.offline as offline
-    import plotly.tools as tools, plotly.graph_objs as go
-    from . import candles
+def plot(pairs=None, freqstr=None, trades=None, startstr=None, indicators=None, normalize=False):
+    '''Generate plotly chart html file.
+    Stacked Subplots with a Shared X-Axis
+    '''
+    from app.bot.candles import api_update, bulk_load, bulk_append_dfc
+    db = app.db
+    startdt = None
+    annotations, indicators, traces, indices = [],[],[],[]
+    def_start = strtodt(startstr or DEF_KLINE_HIST_LEN)
 
-    freq = strtofreq(freqstr)
-    strunit=None
-    if freqstr[-1] == 'm':
-        strunit = 'minutes'
-    elif freqstr[-1] == 'h':
-        strunit = 'hours'
-    elif freqstr[-1] == 'd':
-        strunit = 'days'
-    n = int(freqstr[:-1])
-    startstr = "{} {} ago utc".format(n * periods + 25, strunit)
+    if trades is not None:
+        indices = [ (n['pair'], strtofreq(n['freqstr'])) for n in trades]
+        startdt = min([n['start_time'] for n in trades] + [def_start])
+    else:
+        indices = [(n, strtofreq(freqstr)) for n in pairs]
+        startdt = def_start
 
-    # Query/load candle data
-    candles.api_update([pair], freqstr, start=startstr, force=True)
-    df = candles.bulk_load([pair], [freqstr], startstr=startstr)
-    df = df.loc[pair,freq]
-    # Macd analysis
-    dfmacd = generate(df)
-    #aggdesc = agg_describe(df, pair, freqstr, periods)
-    #aggdesc['summary'] = aggdesc['summary'].replace("\n", "<br>")
+    # Price traces.
+    for idx in set(indices):
+        if idx not in app.bot.dfc.index:
+            bulk_load([idx[0]], [freqtostr(idx[1])], startdt=startdt)
 
-    # Stacked Subplots with a Shared X-Axis
-    t1 = go.Scatter(
-        x=dfmacd.index,
-        y=dfmacd['close'],
-        name="Price")
-    t2 = go.Bar(
-        x=dfmacd.index,
-        y=dfmacd['macd_diff'],
-        name="MACD_diff (normalized)",
-        yaxis='y2')
-    t3 = go.Bar(
-        x=dfmacd.index,
-        y=dfmacd['volume'],
-        name="Volume",
-        yaxis='y3')
-    data = [t1, t2, t3]
+            if idx not in app.bot.dfc.index:
+                bulk_append_dfc(api_update([idx[0]], [freqtostr(idx[1])]))
 
-    annotations = []
-    trades = app.get_db().trades.find(
-        {'pair':pair, 'freq':freqstr, 'status':'closed', 'start_time':{'$gte':parse(startstr)}})
+        df = app.bot.dfc.ix[idx[0:2]]
 
-    yoffset=40
+        traces.append(go.Scatter(
+            x = df.index,
+            y = signals.normalize(df['close']) if normalize else df['close'],
+            name="{} {}".format(idx[0], freqtostr(idx[1]))
+        ))
 
+    # Trade entry/exit annotations
     for trade in trades:
-        row_a = dfmacd[dfmacd.index <= trade['start_time']].iloc[-1]
-        row_b = dfmacd[dfmacd.index <= trade['end_time']].iloc[-1]
+        yoffset=-20
+        df = app.bot.dfc.ix[(trade['pair'],strtofreq(trade['freqstr']))]
+        df_n = signals.normalize(df['close'])
 
-        annotations.append(dict(
-            x=row_a.name.to_pydatetime().replace(tzinfo=pytz.utc),
-            y=row_a['close'],
-            xref='x',
-            yref='y',
-            text='{} entry'.format(trade['strategy']),
-            showarrow=True,
-            arrowhead=7,
-            ax=0,
-            ay=yoffset
-        ))
-        yoffset-=10
-        annotations.append(dict(
-            x=row_b.name.to_pydatetime().replace(tzinfo=pytz.utc),
-            y=row_b['close'],
-            xref='x',
-            yref='y',
-            text='{} exit'.format(trade['strategy']),
-            showarrow=True,
-            arrowhead=7,
-            ax=0,
-            ay=yoffset
-        ))
-        yoffset-=10
+        for n in [0, -1]:
+            ss = trade['snapshots'][n]
+            loc = df.index.get_loc(ss['candle']['open_time'].astimezone(pytz.utc))  #.replace(tzinfo=pytz.utc))
+
+            annotations.append(dict(
+                x = ss['candle']['open_time'].astimezone(pytz.utc), #tzinfo=pytz.utc),
+                y = df_n.iloc[loc],
+                xref='x', yref='y',
+                text='{} {}'.format(trade['algo'], 'entry' if n == 0 else 'exit'),
+                showarrow=True, arrowhead=7, ax=0, ay=yoffset
+            ))
 
     print("{} annotations".format(len(annotations)))
 
+
+    # Indicators
+    for indic in indicators:
+        '''
+        dfmacd = generate(df)
+        t2 = go.Bar(
+            x=dfmacd.index,
+            y=dfmacd['macd_diff'],
+            name="MACD_diff (normalized)",
+            yaxis='y2')
+        t3 = go.Bar(
+            x=dfmacd.index,
+            y=dfmacd['volume'],
+            name="Volume",
+            yaxis='y3')
+        data = [t1, t2, t3]
+        '''
+        pass
+
+    n_div = [len(traces)>0, len(indicators)>0].count(True) #len(annotations)>0].count(True)
+
+    # Setup axes/formatting
     layout = go.Layout(
-        title='{} {} Trade Summary (24 Hours)'.format(pair, freqstr),
-        margin = dict(l=100, r=100, b=400, t=75, pad=25),
-        xaxis=dict(
+        title = '{} {} Trade Summary (24 Hours)'\
+            .format(pairs, freqstr),
+        margin = dict(
+            l=100, r=100, b=400, t=75, pad=25
+        ),
+        xaxis = dict(
             anchor = "y3",
             #domain=[0.0, 0.1],
-            title="<BR>" + aggdesc['summary']
+            title="<BR>"
         ),
         yaxis=dict(
-            domain=[0.4, 1]
-        ),
-        yaxis2=dict(
-            domain=[0.2, 0.4]
-        ),
-        yaxis3=dict(
-            domain=[0, 0.2]
+            domain=[1/n_div, 1]
         ),
         annotations=annotations
+
+        #yaxis2=dict(
+        #    domain=[0.2, 0.4]
+        #),
+        #yaxis3=dict(
+        #    domain=[0, 0.2]
+        #),
     )
 
-    fig = go.Figure(data=data, layout=layout)
+    fig = go.Figure(data=traces, layout=layout)
     return fig
-
-
-    """
-    stats = {
-        'pair':pair,
-        'freqstr':freqstr,
-        'periods':len(dfmacd),
-        'phases': len(phases)
-    }
-    stats[sign] = {
-        'n_phases': len(grp),
-        'mean_amplitude': amplitude.mean(),
-        'price_diff':{
-            'sum': price_diff.sum(),
-            'mean': price_diff.mean()
-        },
-        'area': pd.DataFrame(area).describe().to_dict(),
-        'periods': pd.DataFrame(periods).describe().to_dict(),
-        'duration': {
-            'sum': relative(delta(seconds=int(duration.sum()))),
-            'mean': relative(delta(seconds=int(duration.mean())))
-        }
-    }
-    return {
-        'summary':summary,
-        'stats':stats,
-        'phases':phases,
-        'elapsed_ms':t1.elapsed()
-    }
-    """
-    # print("{} MACD Histogram Phases".format(pair))
-    # for i in range(0, len(descs)):
-    #    [print("{}. {}".format(abc[i].upper(), descs[i]))]
-

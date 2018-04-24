@@ -27,6 +27,9 @@ from app.bot import candles, macd, scanner, trade, tickers
 ##### Init
 app.bot.client = client = Client('','')
 
+def db_load():
+    app.bot.dfc = candles.bulk_load(app.bot.get_pairs(), TRD_FREQS)
+
 def histo_hist(df, pair, freqstr, startstr, periods):
     df = df.loc[pair, strtofreq(freqstr)]
     return macd.histo_phases(df, pair, freqstr, periods)
@@ -36,16 +39,14 @@ def test_getphase(df, start_idx, pair, freq, periods):
     return macd.get_phase(dfmacd, freq, start_idx)
 
 def trades():
-    #pairs = app.bot.get_pairs()
-    #app.bot.dfc = candles.bulk_load(pairs, TRD_FREQS)
     app.bot.init()
     pair = 'RLCBTC'
     freqstr = '1d'
     t = db.trades.find_one({'status':'open','pair':pair,'freqstr':freqstr})
-    #app.bot.dfc = candles.bulk_load([pair], TRD_FREQS)
-    #candles_ = candles.api_update([pair], [freqstr])
-    #c = candles_[-1]
-    #c['close'] = np.float64(c['close'])
-    #c['closed'] = True
-    #ss = trade.snapshot(c)
-    #stats = trade.update_stats(t, ss)
+
+
+##### Main
+db_load()
+#idx = app.bot.dfc.index.values[-1][0:2]
+#df = macd.generate(app.bot.dfc.ix[idx])
+results = macd.plot(app.bot.get_pairs(), '1h', startstr="72 hours ago utc")

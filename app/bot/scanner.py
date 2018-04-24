@@ -1,5 +1,6 @@
 # app.bot.scanner
 import logging
+import threading
 import time
 import importlib
 import pytz
@@ -12,6 +13,7 @@ from app.common.utils import to_local, utc_datetime as now, strtoms
 from app.common.timeutils import strtofreq
 from . import enable_pair, update_pairs, get_pairs, macd, tickers, trade
 from .candles import api_update, bulk_append_dfc
+from . import lock
 
 log = logging.getLogger('scanner')
 
@@ -21,7 +23,7 @@ def scanlog(msg): log.log(98, msg)
 def run(e_pairs, e_kill):
     """Main scanner thread loop.
     """
-    tmr = Timer(expire='every 15 clock min utc', quiet=True)
+    tmr = Timer(expire='every 20 minutes utc', quiet=True)
 
     # Initial scan for enabling trading pairs.
     update_pairs([])
@@ -34,9 +36,12 @@ def run(e_pairs, e_kill):
             # Edit conf w/o having to restart bot.
             importlib.reload(docs.botconf)
 
+            lock.acquire()
+            print("{} pairs enabled pre-scan.".format(len(get_pairs())))
+            lock.release()
+
             # Reset enabled pairs to only open trades.
             update_pairs([])
-
             # Scan and enable any additional filtered pairs.
             sma_med_trend_filter()
 
@@ -44,13 +49,19 @@ def run(e_pairs, e_kill):
 
         time.sleep(3)
 
-    print("Scanner thread: terminating")
+    print("Scanner thread: terminating...")
 
 #------------------------------------------------------------------------------
 def sma_med_trend_filter():
     """Identify pairs in intermediate term uptrend via 1d SMA slope. Enable
     each filtered pair in real-time + load its historic data into memory.
     """
+
+    ################################################################
+    # TODO: Repeat on 1h after 1d to filter out recent dips.
+    ################################################################
+
+    n_candles = len(app.bot.dfc)
     trend = docs.botconf.TRD_PAIRS['midterm']
     lbl = "sma{}_slope".format(trend['span'])
     freq = strtofreq(trend['freqstr'])
@@ -58,8 +69,9 @@ def sma_med_trend_filter():
     filtered = trend['filters'][0](tickers.binance_24h())
 
     results = []
+
     for pair in filtered:
-        bulk_append_dfc(api_update([pair], [trend['freqstr']]))
+        bulk_append_dfc(api_update([pair], [trend['freqstr']], silent=True))
 
         sma = app.bot.dfc.loc[pair, freq]['close']\
             .rolling(trend['span']).mean().pct_change()*100
@@ -70,6 +82,8 @@ def sma_med_trend_filter():
                 'pair': pair,
                 lbl: sma.iloc[-1]
             })
+
+        time.sleep(3)
 
     df = pd.DataFrame(results)\
         .set_index('pair').sort_values(lbl).round(1)
@@ -82,8 +96,11 @@ def sma_med_trend_filter():
     [scanlog(line) for line in lines]
     scanlog("")
 
-    print("Filter scan completed. {} trading pairs enabled. {:,} historic candles loaded."\
-        .format(get_pairs(), len(app.bot.dfc)))
+    lock.acquire()
+    print("Scanner thread: sma_med_trend completed. {} trading pairs enabled. "\
+        "{:+,} historic candles loaded."\
+        .format(len(get_pairs()), len(app.bot.dfc) - n_candles))
+    lock.release()
 
     return df
 

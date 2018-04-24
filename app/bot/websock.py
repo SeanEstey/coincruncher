@@ -5,7 +5,7 @@ Binance wss docs:
 https://github.com/binance-exchange/binance-official-api-docs/blob/master/web-socket-streams.md
 """
 import logging
-import itertools
+import threading
 import time
 import sys
 import pandas as pd
@@ -17,10 +17,11 @@ import app, app.bot
 from app.common.utils import colors
 from app.common.timeutils import strtofreq
 from app.common.timer import Timer
-from app.bot import get_pairs, candles
+from app.bot import lock, get_pairs, candles
+
 from main import q
 
-spinner = itertools.cycle(['-', '/', '|', '\\'])
+log = logging.getLogger('websock')
 connkeys, storedata = [], []
 ws = None
 
@@ -29,16 +30,18 @@ def run(e_pairs, e_kill):
     global storedata, connkeys, ws
     client = app.bot.client
 
-    print("Connecting to websocket...")
+    #print("Connecting to websocket...")
     ws = BinanceSocketManager(client)
 
     pairs = get_pairs()
     connkeys += [ws.start_kline_socket(pair, recv_kline, interval=n) \
         for n in TRD_FREQS for pair in pairs]
+    lock.acquire()
     print("Subscribed to {} kline sockets.".format(len(connkeys)))
+    lock.release()
 
     ws.start()
-    print('Connected. Press Ctrl+C to quit')
+    #print('Connected. Press Ctrl+C to quit')
 
     tmr = Timer(name='pairs', expire='every 5 clock min utc', quiet=True)
 
@@ -53,12 +56,12 @@ def run(e_pairs, e_kill):
         if tmr.remain() == 0:
             tmr.reset()
             if len(storedata) > 0:
-                print("websock_thread: saving new candles...")
+                #print("websock_thread: saving new candles...")
                 candles.bulk_save(storedata)
                 storedata = []
 
-        update_spinner()
-        time.sleep(0.1)
+
+        time.sleep(1)
 
     close_all()
     print("Websock thread: Terminating...")
@@ -68,7 +71,7 @@ def update_sockets():
     """conn_key str format: <symbol>@kline_<interval>
     """
     global connkeys, storedata, ws
-    print("Websock thread: updating sockets...")
+    log.debug("Websock thread: update_sockets")
 
     old = set([n[0:n.index('@')].upper() for n in connkeys])
     new = set(app.bot.get_pairs())
@@ -78,14 +81,14 @@ def update_sockets():
         for k in connkeys:
             if pair in k:
                 ws.stop_socket(k)
-                idx = connkeys.index(k)
-                connkeys = connkeys[0:idx] + connkeys[idx+1:]
-    print("{} pair socket(s) removed.".format(len(old-new)))
+                connkeys.pop(k)
 
     # Added pairs: create sockets for each candle frequency.
     newpairs = new - old
     connkeys += [ws.start_kline_socket(i, recv_kline, interval=j) for j in TRD_FREQS for i in newpairs]
-    print("{} pair socket(s) created.".format(len(newpairs)))
+
+    log.debug("{} pair(s) removed, {} added. {} total sockets."\
+        .format(len(old-new), len(newpairs), len(connkeys)))
 
 #-------------------------------------------------------------------------------
 def recv_kline(msg):
@@ -96,7 +99,9 @@ def recv_kline(msg):
     global storedata
 
     if msg['e'] != 'kline':
-        print('not a kline: {}'.format(msg))
+        lock.acquire()
+        print(msg)
+        lock.release()
         return
 
     k = msg['k']
@@ -120,8 +125,11 @@ def recv_kline(msg):
 
     if k['x'] == True:
         storedata.append(candle)
+
+        lock.acquire()
         print("{}{:<7}{}{:>5}{:>12g}{}".format(colors.GRN, candle['pair'], colors.WHITE,
             candle['freqstr'], candle['close'], colors.ENDC))
+        lock.release()
 
     # Send to trade queue.
     q.put(candle)
@@ -134,11 +142,3 @@ def close_all():
     ws.close()
     print('Websock thread: Terminating twisted server...')
     reactor.stop()
-
-#-------------------------------------------------------------------------------
-def update_spinner():
-    msg = 'listening %s' % next(spinner)
-    sys.stdout.write(msg)
-    sys.stdout.flush()
-    sys.stdout.write('\b'*len(msg))
-    #time.sleep(1)

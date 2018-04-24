@@ -2,351 +2,45 @@
 
 Unfinished or non-implemented code.
 """
-#---------------------------------------------------------------------------
-def klines(e_pairs):
-    """tradelog('*'*TRADELOG_WIDTH)
-    duration = to_relative_str(now() - start)
-    hdr = "Cycle #{} {:>%s}" % (31 - len(str(n_cycles)))
-    tradelog(hdr.format(n_cycles, duration))
-    tradelog('-'*TRADELOG_WIDTH)
+
+#------------------------------------------------------------------------------
     """
-    from main import q_closed
-    global n_cycles, cache
-    client = app.bot.client
-    db = app.db
-    n_cycles = 1
-
-    while True:
-        n, exited, entered = 0, None, None
-
-        if q.empty() == False:
-            #app.bot.dfc = candles.bulk_load(get_pairs(), TRD_FREQS,
-            #    dfm=app.bot.dfc)
-
-
-            # Consume queue candles, update trade positions.
-            while q_closed.empty() == False:
-                candle = q_closed.get()
-                clear_cache(candle['freqstr'])
-                ss = closed_snapshot(candle)
-                query = {
-                    'pair':candle['pair'],
-                    'freqstr':candle['freqstr'],
-                    'status':'open'
-                }
-
-                # Eval position exits.
-                for trade in db.trades.find(query):
-                    db.trades.update_one(
-                        {"_id":trade["_id"]},
-                        {"$push": {"snapshots":ss}})
-                    exited = eval_exit(trade, candle, ss)
-                # New position entries.
-                entered = eval_entry(candle, ss)
-                n+=1
-            # End while loop.
-
-            # Log updates.
-            if entered:
-                reports.new_trades(entered)
-                tradelog('-'*TRADELOG_WIDTH)
-            reports.positions('closed_kline')
-            tradelog('-'*TRADELOG_WIDTH)
-            if entered or exited:
-                reports.earnings()
-
-            n_cycles += 1
-            print('{} q_closed items emptied.'.format(n))
-
-        time.sleep(10)
-
-#------------------------------------------------------------------------------
-def part_klines(e_pairs):
-    """consume items from open candle queue. Track trade prices for open
-    # positions and invoke stop losses when necessary.
+    # fig['layout']['xaxis1'].update(titlefont=dict(
+    #    family='Arial, sans-serif',
+    #    size=18,
+    #    color='grey'
+    #))
+    stats = {
+        'pair':pair,
+        'freqstr':freqstr,
+        'periods':len(dfmacd),
+        'phases': len(phases)
+    }
+    stats[sign] = {
+        'n_phases': len(grp),
+        'mean_amplitude': amplitude.mean(),
+        'price_diff':{
+            'sum': price_diff.sum(),
+            'mean': price_diff.mean()
+        },
+        'area': pd.DataFrame(area).describe().to_dict(),
+        'periods': pd.DataFrame(periods).describe().to_dict(),
+        'duration': {
+            'sum': relative(delta(seconds=int(duration.sum()))),
+            'mean': relative(delta(seconds=int(duration.mean())))
+        }
+    }
+    return {
+        'summary':summary,
+        'stats':stats,
+        'phases':phases,
+        'elapsed_ms':t1.elapsed()
+    }
     """
-    from main import q_open
-    global cache
-    db = app.get_db()
-    tmr = Timer(name='open_trade_eval', expire='every 1 clock min utc')
+    # print("{} MACD Histogram Phases".format(pair))
+    # for i in range(0, len(descs)):
+    #    [print("{}. {}".format(abc[i].upper(), descs[i]))]
 
-    # ##########################################################################
-    # TODO: separate closed/unclosed candle snapshots
-    # ##########################################################################
-
-    while True:
-        n = 0
-        # Consome partial candles from queue and eval stop losses.
-        while q_open.empty() == False:
-            candle = q_open.get()
-
-            query = {'pair':candle['pair'], 'freqstr':candle['freqstr'], 'status':'open'}
-
-            for trade in db.trades.find(query):
-                save_cache([candle])
-                diff = pct_diff(trade['snapshots'][0]['candle']['close'], candle['close'])
-
-                if diff < trade['stoploss']:
-                    sell(trade, candle, snapshot(candle), details='Stop Loss')
-            n+=1
-
-        # Eval target/failure conditions via unclosed candles.
-        if tmr.remain() == 0:
-            for trade in db.trades.find({'status':'open'}):
-                cached = cache[trade['pair']][trade['freqstr']]
-
-                if len(cached) > 0:
-                    ss = snapshot(cached[-1], last_ss=trade['snapshots'][0])
-                    eval_exit(cached[-1], ss)
-
-            tmr.reset()
-            reports.positions('open_kline')
-            tradelog('-'*TRADELOG_WIDTH)
-
-        print('{} q_open items empties.'.format(n))
-        time.sleep(10)
-
-#------------------------------------------------------------------------------
-def get_global_loggers():
-    for key in logging.Logger.manager.loggerDict:
-        print(key)
-    print("--------")
-
-#----------------------------------------------------------------------
-def getAttributes(obj):
-    result = ''
-    for name, value in inspect.getmembers(obj):
-        if callable(value) or name.startswith('__'):
-            continue
-        result += pformat("%s: %s" %(name, value)) + "\n"
-    return result
-
-MACD_SCAN_RNG = [
-    #{'freqstr':'5m', 'startstr':'36 hours ago utc', 'periods':350}
-    {'freqstr':'30m', 'startstr':'72 hours ago utc', 'periods':100}
-    #{'freqstr':'1h', 'startstr':'72 hours ago utc', 'periods':72},
-]
-
-#------------------------------------------------------------------------------
-def _old():
-    # FIXME: put on a thread timer
-    # Merge new candle data
-    start = now()
-    app.bot.dfc = candles.bulk_load(pairs, [freqstr],
-        startstr="{} seconds ago utc".format(freq*3),
-        dfm=app.bot.dfc)
-
-    tradelog('*'*TRADELOG_WIDTH)
-    duration = to_relative_str(now() - start)
-    hdr = "Cycle #{}, Period {} {:>%s}" % (31 - len(str(n_cycles)))
-    tradelog(hdr.format(n_cycles, freq_str, duration))
-    tradelog('-'*TRADELOG_WIDTH)
-
-#------------------------------------------------------------------------------
-def scan(freqstr, periods, n_results, min_vol, idx_filter=None, quiet=True):
-    query_cols = ['status', 'active', 'open', 'high', 'low', 'close', 'tradedMoney']
-    np_cols = ['open', 'high', 'low', 'close', 'tradedMoney']
-    del_cols = ['status', 'active', 'high', 'low', 'open']
-
-    # Query data
-    client = Client("","")
-    products = client.get_products()
-    # To DataFrame
-    df = pd.DataFrame(client.get_products()['data'],
-        columns=query_cols,
-        index=pd.Index([x['symbol'] for x in products['data']]))
-    # Str->numpy float
-    df[np_cols] = df[np_cols].astype('float64')
-
-    # Filters
-    df = df[df['active'] == True]
-    if idx_filter:
-        df = df[df.index.str.contains(idx_filter)]
-
-    # Indicators
-    # FIXME: Calculate C-O and H-L for given timespan only. These numbers are
-    # for 24 hour period.
-    df['∆(C-O)'] = (((df['close'] - df['open']) / df['open']) * 100).round(2)
-    df['∆(H-L)'] = ((df['high'] - df['low']) / df['low'] * 100).round(2)
-    df = df.sort_values('∆(C-O)').tail(n_results)
-    results = indicators(df.index, freqstr, periods, quiet=quiet)
-
-    # Format/filter columns some more
-    for col in del_cols:
-        del df[col]
-    df = df.rename(columns={'close':'Price', 'tradedMoney':'quoteVol'})
-    df = df[df['quoteVol'] >= min_vol]
-
-    scanlog('')
-    scanlog('-' * 92)
-    scanlog("Scanner Analysis")
-    scanlog("Freq: '{}', Periods: {}".format(freqstr, periods))
-    scanlog("Symbol Filter: '{}'".format(idx_filter))
-    scanlog("Volume Filter: > {}".format(min_vol))
-
-    k1, k2, k3 = 'candle', 'macd+', 'macd-'
-    df1 = pd.concat([df[['Price', '∆(C-O)', '∆(H-L)', 'quoteVol']]],
-        axis=1, keys=[k1])
-    df2 = pd.concat([results[0]], axis=1, keys=[k2])
-    df3 = pd.concat([results[1]], axis=1, keys=[k3])
-    df = df1.join(df2)
-    df = df.join(df3)
-
-    lines = df.to_string(formatters={
-        (k1,'Price'):      '{:.8g}'.format,
-        (k1, 'quoteVol'):  '{:.0f}'.format,
-        (k1, '∆(C-O)'):    ' {:+.1f}%'.format,
-        (k1, '∆(H-L)'):    ' {:+.1f}%'.format,
-        (k2, 'N'):      '{:}'.format,
-        (k2, 'Amp'):    '{:.2f}'.format,
-        (k2, '∆P'):     ' {:.2f}%'.format,
-        (k2, 'μ∆P'):    ' {:.2f}%'.format,
-        (k2, 'μT'):     '{:}'.format,
-        (k3, 'N'):      '{:}'.format,
-        (k3, 'Amp'):    '{:.2f}'.format,
-        (k3, '∆P'):     ' {:.2f}%'.format,
-        (k3, 'μ∆P'):    ' {:.2f}%'.format,
-        (k3, 'μT'):     '{:}'.format
-    }).split("\n")
-    [ scanlog(line) for line in lines]
-    return df
-
-#------------------------------------------------------------------------------
-def indicators(idx, freqstr, periods, quiet=True):
-    strunit=None
-    if freqstr[-1] == 'm':
-        strunit = 'minutes'
-    elif freqstr[-1] == 'h':
-        strunit = 'hours'
-    elif freqstr[-1] == 'd':
-        strunit = 'days'
-
-    n = int(freqstr[:-1])
-    startstr = "{} {} ago utc".format(n * periods + 25, strunit)
-    freq = strtofreq(freqstr)
-    results=[]
-
-    for sign in ['POSITIVE', 'NEGATIVE']:
-        df = pd.DataFrame(
-            columns=['N', 'Amp', '∆P', 'μ∆P', 'μT'],
-            index=idx
-        ).astype('float64')
-
-        for pair, row in df.iterrows():
-            # Query/load candle data
-            candles.api_update([pair], freqstr, start=startstr, force=True)
-            dfp = candles.bulk_load([pair], freqstr=freqstr, startstr=startstr)
-            dfp = dfp.loc[pair,freq]
-
-            # Run MACD histogram analysis
-            histos = macd.agg_describe(dfp, pair, freqstr, periods)
-            stats = histos['stats'][sign]
-            df.loc[pair] = [
-                stats['n_phases'],
-                stats['mean_amplitude'],
-                stats['price_diff']['sum'],
-                stats['price_diff']['mean'],
-                stats['duration']['mean']
-            ]
-            df = df.round(2)
-
-            if quiet != True:
-                [ scanlog(line) for line in histos['summary'].split('\n') ]
-        results.append(df)
-    return results
-
-#------------------------------------------------------------------------------
-def _unfinished():
-    # *********************************************************************
-    # Calculate Z-Scores, store in dataframe/mongodb
-    # ops=[]
-    # for pair in pairs:
-    #    candle = candles.newest(pair, freq_str, df=dfc)
-    #    scores = signals.z_score(
-    #        dfc.loc[pair,freq], candle, mkt_ma=mkt_ma)
-    #    name = 'ZSCORE_' + freq_str.upper()
-    #   dfc[name].loc[pair,freq][-1] = scores['CLOSE']['ZSCORE'].round(3)
-    #   ops.append(UpdateOne({"open_time":candle["OPEN_TIME"],
-    #       "pair":candle["PAIR"], "freq":candle["FREQ"]},
-    #       {'$set': {name: scores['CLOSE']['ZSCORE']}}
-    #   ))
-    #   db.candles.bulk_write(ops)
-    #
-    #   if c2['OPEN_TIME'] < c1['OPEN_TIME']:
-    #       return False
-    # *********************************************************************
-
-    # ********************************************************************
-    # A. Profit loss
-    # if c2['CLOSE'] < c1['CLOSE']:
-    #    if 'Resistance' not in holding['buy']['details']:
-    #        return sell(holding, c2, scores)
-    #    margin = signals.adjust_support_margin(freq_str, mkt_ma)
-    #    if (c2['CLOSE'] * margin) < c1['CLOSE']:
-    #        return sell(holding, c2, scores)
-    # B. Maximize profit, make sure price still rising.
-    # p_max = df.loc[slice(c1['OPEN_TIME'], df.iloc[-2].name)]['CLOSE'].max()
-    # elif not np.isnan(p_max) and candle['CLOSE'] < p_max:
-    #   return sell(holding, c2, scores)
-    # ********************************************************************
-
-    # ********************************************************************
-    # Open Trades (If Sold at Present Value)
-    # pct_change_hold = []
-    # active = list(db.trades.find({'status':'open'}))
-    # for hold in active:
-    #    candle = candles.newest(hold['pair'], freq_str, df=dfc)
-    #    pct_change_hold.append(pct_diff(hold['buy']['candle']['CLOSE'], candle['CLOSE']))
-    #
-    # if len(pct_change_hold) > 0:
-    #     pct_change_hold = sum(pct_change_hold)/len(pct_change_hold)
-    # else:
-    #     pct_change_hold = 0.0
-    #
-    # siglog("Holdings: {} Open, {:+.2f}% Mean Value".format(len(active), pct_change_hold))
-    # siglog('-'*80)
-    # ********************************************************************
-    pass
-
-#-----------------------------------------------------------------------------
-def print_tickers():
-    # *********************************************************************
-    # TODO: Create another trading log for detailed ticker tarding signals.
-    # Primary siglog will be mostly for active trading/holdings.
-    # *********************************************************************
-    pass
-
-#-----------------------------------------------------------------------------
-def thresh_adapt():
-    # ********************************************************************
-    # TODO: Optimize by trying to group period logically via new "settled"
-    # price range, if possible.
-    # If bull/bear market, shorten historic period range
-    #if abs(mkt_ma) > 0.05 and abs(mkt_ma) < 0.1:
-    #    shorten = 0.75
-    #elif abs(mkt_ma) >= 0.1 and abs(mkt_ma) < 0.15:
-    #    shorten = 0.6
-    #elif abs(mkt_ma) > 0.15:
-    #    shorten = 0.5
-    #
-    # Correct for distorted Z-Score values in sudden bearish/bullish swings.
-    # A volatile bearish swing pushes Z-Scores downwards faster than the mean
-    # adjusts to represent the new "price level", creating innacurate deviation
-    # values for Z-Scores. Offset by temporarily lowering support threshold.
-    #
-    # A) Breakout (ZP > Threshold)
-    #   breakout = strats['Z-SCORE']['BUY_BREAK_REST']
-    #   if z_score > breakout:
-    #       msg="{:+.2f} Z-Score > {:.2f} Breakout.".format(z_score, breakout)
-    #    return open_holding(candle, scores, extra=msg)
-    # ********************************************************************
-    #z_thresh = RULES[freq_str]['Z-SCORE']['THRESH']
-    # Example: -0.1% MA and -2.0 support => -3.0 support
-    if mkt_ma < 0:
-        return z_thresh * (1 + (abs(mkt_ma) * 5))
-    # Example: +0.1% MA and +2.0 support => +0.83 support
-    else:
-        return z_thresh * (1 - (mkt_ma * 1.75))
 
 #------------------------------------------------------------------------------
 def pca(df):

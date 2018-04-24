@@ -1,11 +1,13 @@
 # app.bot.tickers
 import logging
+import threading
 import pandas as pd
 import numpy as np
 from datetime import datetime
 from pymongo import ReplaceOne
 from pprint import pprint
 import app, app.bot
+from . import lock
 from app.common.utils import utc_datetime as now
 
 log = logging.getLogger('tickers')
@@ -16,7 +18,9 @@ def aggregate_mkt(freqstr=None):
     try:
         dfT = binance_24h()
     except Exception as e:
+        lock.acquire()
         return print("Binance client error. {}".format(str(e)))
+        lock.release()
 
     dfV = pd.DataFrame(
         dfT.groupby('quoteAsset').apply(lambda x: x['quoteVol'].sum()),

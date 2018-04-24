@@ -1,5 +1,7 @@
 # app.bot.trade
 import time
+import itertools
+import threading
 import sys
 import logging
 import pytz
@@ -14,11 +16,12 @@ from binance.client import BinanceRequestException
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
-from app.bot import get_pairs, candles, macd, reports, signals
+from app.bot import lock, get_pairs, candles, macd, reports, signals
 from app.common.timeutils import strtofreq
 from app.common.utils import pct_diff, utc_datetime as now
 from app.common.timer import Timer
 
+spinner = itertools.cycle(['-', '/', '|', '\\'])
 log = logging.getLogger('trade')
 dfW = pd.DataFrame()
 start = now()
@@ -39,13 +42,13 @@ def run(e_pairs, e_kill):
     tmr10 = Timer(name='earn', expire='every 10 clock min utc', quiet=True)
     reports.positions()
     reports.earnings()
-    print("Entering trade loop.")
 
     while True:
+        n = 0
+        ent_ids, ex_ids = [], []
+
         if e_kill.isSet():
             break
-
-        n, ent_ids, ex_ids = 0, [], []
 
         while q.empty() == False:
             c = q.get()
@@ -54,13 +57,11 @@ def run(e_pairs, e_kill):
             query = \
                 {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
 
-            if c['closed']:
-                db.trades.update_many(query, {'$push':{'snapshots':ss}})
-
             # Eval position entries/exits
             for trade in db.trades.find(query):
                 update_stats(trade, ss)
                 ex_ids += eval_exit(trade, c, ss)
+
             if c['closed']:
                 ent_ids += eval_entry(c, ss)
 
@@ -72,15 +73,16 @@ def run(e_pairs, e_kill):
                 reports.earnings()
                 tmr10.reset()
             n+=1
-            # End Inner While
 
         if len(ent_ids) + len(ex_ids) > 0:
             reports.trades(ent_ids + ex_ids)
 
-        if n > 0:
-            ms_per = t1.elapsed()/n
-            print('{} queue items processed. [{:,.0f} ms/item]'.format(n, ms_per))
+        if n>0:
+            lock.acquire()
+            print('{} queue items processed. [{:,.0f} ms/item]'.format(n, t1.elapsed()/n))
+            lock.release()
 
+        update_spinner()
         time.sleep(0.1)
         t1.reset()
 
@@ -169,7 +171,9 @@ def buy(ss, algo):
         })]
     }))
 
+    lock.acquire()
     print("BUY {} ({})".format(ss['pair'], algo['name']))
+    lock.release()
     return result.inserted_id
 
 #------------------------------------------------------------------------------
@@ -199,7 +203,9 @@ def sell(trade, ss, section):
             book = odict(client.get_orderbook_ticker(symbol=trade['pair']))
         except (BinanceRequestException, ConnectionError) as e:
             log.debug(str(e))
+            lock.acquire()
             print("Error acquiring orderbook. Sell failed.")
+            lock.release()
             return []
 
         del book['symbol']
@@ -246,24 +252,21 @@ def sell(trade, ss, section):
         }
     )
 
+    lock.acquire()
     print("SELL {} ({}) Details: {}. {}"\
         .format(trade['pair'], details['name'],
             details['section'].title(), details['desc']))
+    lock.release()
     return trade['_id']
 
 #------------------------------------------------------------------------------
-def snapshot(c, ob=False):
+def snapshot(c):
     """Gather state of trade--candle, indicators--each tick and save to DB.
     """
     global dfW
     book = None
     wick_slope = macd_value = amp_slope = np.nan
     pair, freqstr = c['pair'], c['freqstr']
-
-    if ob == True:
-        book = odict(app.bot.client.get_orderbook_ticker(symbol=pair))
-        del book['symbol']
-        [book.update({k:np.float64(v)}) for k,v in book.items()]
 
     buyratio = (c['buy_vol']/c['volume']) if c['volume'] > 0 else 0.0
 
@@ -274,7 +277,10 @@ def snapshot(c, ob=False):
     try:
         dfmacd, phases = macd.histo_phases(df, pair, freqstr, 100, to_bson=True)
     except Exception as e:
-        pass
+        lock.acquire()
+        print('snapshot exc')
+        print(str(e))
+        lock.release()
 
     if len(dfmacd) < 1:
         dfm_dict['bars'] = 0
@@ -295,7 +301,7 @@ def snapshot(c, ob=False):
     return {
         'pair': pair,
         'time': now(),
-        'book': book,
+        'book': None,
         'candle': c,
         'indicators': {
             'buyRatio': round(buyratio, 2),
@@ -304,8 +310,8 @@ def snapshot(c, ob=False):
             'zscore': signals.zscore(df['close'], c['close'], 21),
             'macd': {
                 **dfm_dict,
-                **{'ampSlope':amp_slope,
-                  'value':macd_value
+                **{'ampSlope':round(amp_slope,2),
+                  'value':round(macd_value,2)
                   }
             }
         }
@@ -320,16 +326,18 @@ def update_stats(t, ss):
     @ss: snapshot dict (from closed or unclosed candle)
     """
     keys = {
-        "buy_ratio":       lambda ss: ss['indicators']['buyRatio'],
-        "rsi":             lambda ss: ss['indicators']['rsi'],
-        "wick_slope":      lambda ss: ss['indicators']['wickSlope'],
-        "zscore" :         lambda ss: ss['indicators']['zscore'],
-        "macd":            lambda ss: ss['indicators']['macd']['value'],
-        "macd_amp_slope":  lambda ss: ss['indicators']['macd']['ampSlope']
+        "buy_ratio":       lambda ss: round(ss['indicators']['buyRatio'],2),
+        "macd":            lambda ss: round(ss['indicators']['macd']['value'],2),
+        "macd_amp_slope":  lambda ss: round(ss['indicators']['macd']['ampSlope'],2),
+        "rsi":             lambda ss: round(ss['indicators']['rsi'],0),
+        "wick_slope":      lambda ss: round(ss['indicators']['wickSlope'],2),
+        "zscore" :         lambda ss: round(ss['indicators']['zscore'],2),
+        "price":           lambda ss: ss['candle']['close']
     }
     snaps = t['snapshots'] + [ss]
-    stats = t['stats']
+    stats = odict()
 
+    # Find Min, Max, and Last values for every indicator in trade history.
     for k,fn in keys.items():
         min_k = "min{}".format(k.title().replace('_',''))
         stats[min_k] = min([fn(ss) for ss in snaps])
@@ -337,7 +345,15 @@ def update_stats(t, ss):
         max_k = "max{}".format(k.title().replace('_',''))
         stats[max_k] = max([fn(ss) for ss in snaps])
 
-    app.get_db().trades.update_one({'_id':t['_id']}, {'$set':{'stats':stats}})
+        last_k = "last{}".format(k.title().replace('_',''))
+        stats[last_k] = fn(ss)
+
+    update = {'$set': {'stats':stats}}
+
+    if ss['candle']['closed'] is True:
+        update['$push'] = {'snapshots':ss}
+
+    app.db.trades.update_one({'_id':t['_id']}, update)
     return stats
 
 #------------------------------------------------------------------------------
@@ -352,5 +368,13 @@ def algo_to_string(name, section):
         fstr = fstr.strip('\\n"').strip()
         funcstrs.append(fstr)
 
-    #[print(n) for n in funcstrs]
     return funcstrs
+
+#-------------------------------------------------------------------------------
+def update_spinner():
+    msg = 'listening %s' % next(spinner)
+    lock.acquire()
+    sys.stdout.write(msg)
+    sys.stdout.flush()
+    sys.stdout.write('\b'*len(msg))
+    lock.release()

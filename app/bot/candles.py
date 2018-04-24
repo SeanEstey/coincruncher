@@ -1,5 +1,6 @@
-# app.bot.candles
+# app.bot.candapp.bot.dfc
 import logging
+import threading
 import time
 from dateparser import parse
 import pandas as pd
@@ -10,6 +11,7 @@ from bsonnumpy import sequence_to_ndarray
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
+from . import lock
 from app.common.timer import Timer
 from app.common.utils import strtodt, strtoms
 from app.common.timeutils import strtofreq
@@ -20,7 +22,7 @@ columns = ['pair', 'freq', 'open_time', 'open', 'close', 'high', 'low',
     'trades', 'volume', 'buy_vol']
 
 #------------------------------------------------------------------------------
-def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
+def bulk_load(pairs, freqstrs, startstr=None, startdt=None):
     """Merge only newly updated DB records into dataframe to avoid ~150k
     DB reads every main loop.
     """
@@ -36,11 +38,13 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
 
     if startstr:
         query['open_time'] = {'$gte':parse(startstr)}
+    elif startdt:
+        query['open_time'] = {'$gte':startdt}
 
     batches = db.candles.find_raw_batches(query, proj)
     if batches.count() < 1:
         print("No db matches for query {}.".format(query))
-        return dfm
+        return app.bot.dfc
 
     dtype = np.dtype([
         ('pair', 'S12'),
@@ -60,7 +64,7 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
         ndarray = sequence_to_ndarray(batches, dtype, batches.count())
     except Exception as e:
         print(str(e))
-        return dfm
+        return app.bot.dfc
 
     # Build multi-index dataframe from ndarray
     df = pd.DataFrame(ndarray)
@@ -79,17 +83,20 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
         columns = columns
     ).sort_index()
 
-    # Merge if dataframe passed in
-    n_bulk, n_merged = len(dfc), 0
-    if dfm is not None:
-        dfc = pd.concat([dfm, dfc]).sort_index() #drop_duplicates()
-        n_merged = len(dfc) - n_bulk
-    log.debug("{:,} docs loaded, {:,} merged in {:,.1f} ms.".format(
-        n_bulk, n_merged, t1))
-    return dfc
+    n_bulk = len(dfc)
+
+    app.bot.dfc = pd.concat([app.bot.dfc, dfc])
+    app.bot.dfc = app.bot.dfc[~app.bot.dfc.index.duplicated(keep='first')]
+
+    n_merged = len(dfc) - n_bulk
+
+    log.debug("{:,} docs loaded, {:,} merged in {:,.1f} ms."\
+        .format(n_bulk, n_merged, t1))
+
+    return app.bot.dfc
 
 #------------------------------------------------------------------------------
-def bulk_save(data):
+def bulk_save(data, silent=False):
     """db.candles collection has unique index on (pair, freq, open_time) key
     so we can bulk insert without having to check for duplicates. Just need
     to set ordered=False and catch the exception, but every item insert
@@ -105,10 +112,15 @@ def bulk_save(data):
     else:
         n_insert = len(result.inserted_ids)
 
-    print("Saved {}/{} new records. [{} ms]".format(n_insert, len(data), t1))
+    msg = "Saved {}/{} new records. [{} ms]".format(n_insert, len(data), t1)
+    log.debug(msg)
+    if silent is False:
+        lock.acquire()
+        print(msg)
+        lock.release()
 
 #------------------------------------------------------------------------------
-def api_update(pairs, freqstrs, startstr=None):
+def api_update(pairs, freqstrs, startstr=None, silent=False):
     db = app.get_db()
     client = app.bot.client
     t1 = Timer()
@@ -144,7 +156,7 @@ def api_update(pairs, freqstrs, startstr=None):
                 data[i] = d
             candles += data
 
-    bulk_save(candles)
+    bulk_save(candles, silent=silent)
     return candles
 
 #------------------------------------------------------------------------------

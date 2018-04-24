@@ -19,7 +19,7 @@ TRD_PAIRS = {
         "name": "sma",
         "freqstr": "1d",
         "span": 5,
-        "filters": [lambda tckr: tckr[tckr['24hPriceChange'] > 0].index.tolist()],
+        "filters": [lambda tckr: tckr[tckr['24hPriceChange'] > 15].index.tolist()],
         "conditions": [lambda sma: len(sma) > 0 and sma.iloc[-1] > 3]
     }
 }
@@ -41,7 +41,7 @@ TRD_ALGOS = [
             "conditions": [
                 lambda ss, t: any((
                     ss['rsi'] > 70,
-                    t['stats']['minRsi'] < ss['rsi'] < 0.95*t['stats']['maxRsi']
+                    t['stats']['minRsi'] < ss['rsi'] < 0.95 * t['stats']['maxRsi']
                 ))
            ]
         },
@@ -65,8 +65,10 @@ TRD_ALGOS = [
         },
         "target": {
             "conditions": [
-                lambda ss, t: (0 < ss['macd']['value'] < ss['macd']['ampMax']),
-                lambda ss, t: ss['macd']['ampSlope'] < 0
+                lambda ss, t: any((
+                    0 < ss['macd']['value'] < ss['macd']['ampMax'],
+                    t['stats']['lastPrice'] < 0.95 * t['stats']['maxPrice']
+                ))
             ]
         },
         "failure": {

@@ -34,6 +34,12 @@ def zscore(series, value, span):
     z = (value - ema.mean()) / ema.std()
     return z.round(2)
 
+#-----------------------------------------------------------------------------
+def normalize(s):
+    """Normalize series between between 0..1
+    """
+    return (s - s.min()) / (s.max() - s.min())
+
 #------------------------------------------------------------------------------
 def weighted_avg(values, weights):
     """Apply weight function to points in given series. Weights must be a

@@ -1,4 +1,5 @@
 # app.bot
+import threading
 from pymongo import UpdateOne
 import pandas as pd
 from binance.client import Client
@@ -15,6 +16,7 @@ dfc = pd.DataFrame()
 client = None
 # Pair change event
 e_pairs = None
+lock = threading.Lock()
 
 #------------------------------------------------------------------------------
 def init(evnt_pairs):
@@ -45,22 +47,31 @@ def init(evnt_pairs):
     print('app.bot initialized in {:,.0f} ms.'.format(t1.elapsed()))
 
 #------------------------------------------------------------------------------
-def get_pairs():
-    enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
-    return [ n['symbol'] for n in list(enabled) ]
+def get_pairs(enabled=True):
+    db = app.db
+
+    if enabled is True:
+        return [n['symbol'] for n in list(db.assets.find({'botTradeStatus':'ENABLED'}))]
+    else:
+        return [n['symbol'] for n in list(db.assets.find({}))]
 
 #------------------------------------------------------------------------------
 def enable_pair(pair):
     """Add single pair.
     """
+    lock.acquire()
     print("Retrieving {} candles...".format(pair))
-    candles.bulk_append_dfc(candles.api_update([pair], TRD_FREQS))
+    lock.release()
+
+    candles.bulk_append_dfc(candles.api_update([pair], TRD_FREQS, silent=True))
 
     app.db.assets.update_one({'symbol':pair},
         {'$set':{'botTradeStatus':'ENABLED'}, '$push':{'botTradeFreq':TRD_FREQS}},
         upsert=True)
 
+    lock.acquire()
     print("Enabled {} for trading.".format(pair))
+    lock.release()
 
     # Send pair change event to websock thread to update sockets.
     e_pairs.set()
@@ -82,17 +93,19 @@ def update_pairs(pairs, query_all=True):
 
     if query_all == True:
         querylist = list(set(pairs + list(tradepairs)))
-        print("Querying historic data for all {} pairs...".format(len(querylist)))
+        #print("Querying historic data for all {} pairs...".format(len(querylist)))
     else:
         querylist = list(set(pairs) - set(get_pairs()))
-        print("Querying historic data for {} new pairs...".format(len(querylist)))
+        #print("Querying historic data for {} new pairs...".format(len(querylist)))
 
     if len(querylist) > 0:
         # Retrieve historic data and load.
         candlelist = []
         for pair in querylist:
+            lock.acquire()
             print("Retrieving {} candles...".format(pair))
-            candlelist += candles.api_update([pair], TRD_FREQS)
+            lock.release()
+            candlelist += candles.api_update([pair], TRD_FREQS, silent=True)
         candles.bulk_append_dfc(candlelist)
 
     result = db.assets.update_many({},
@@ -109,7 +122,10 @@ def update_pairs(pairs, query_all=True):
     if len(ops) > 0:
         result = db.assets.bulk_write(ops)
         n_enabled = db.assets.find({'botTradeStatus':'ENABLED'}).count()
+
+        lock.acquire()
         print("{} pairs enabled:".format(n_enabled))
-        print(pairs)
+        print(get_pairs())
+        lock.release()
 
     return enabled

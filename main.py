@@ -61,14 +61,14 @@ if __name__ == '__main__':
         for t in threads:
             if t.is_alive() is False:
                 print("{} thread is dead. Killing all...".format(t.getName()))
-                threads.pop(threads.index(t))
                 e_kill.set()
                 break
 
         time.sleep(0.1)
 
+    print("Broke main loop")
     # Wait for remaining threads to finish
-    [t.join() for t in threads]
+    [t.join() for t in threads if t.is_alive()]
 
     print("Goodbye")
     [log.log(lvl, divstr % "Terminating") \
