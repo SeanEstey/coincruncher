@@ -69,7 +69,7 @@ def bulk_load(pairs, freqstrs, startstr=None, dfm=None):
     df['pair'] = df['pair'].str.decode('utf-8')
     # Convert freqstr->freq to enable index sorting
     df = df.rename(columns={'freqstr':'freq'})
-    [df['freq'].replace(n, strtofreq(n), inplace=True) for n in TRADEFREQS]
+    [df['freq'].replace(n, strtofreq(n), inplace=True) for n in TRD_FREQS]
     df.sort_values(by=['pair','freq','open_time'], inplace=True)
 
     dfc = pd.DataFrame(df[columns].values,
@@ -108,7 +108,7 @@ def bulk_save(data):
     print("Saved {}/{} new records. [{} ms]".format(n_insert, len(data), t1))
 
 #------------------------------------------------------------------------------
-def update(pairs, freqstrs, startstr=None):
+def api_update(pairs, freqstrs, startstr=None):
     db = app.get_db()
     client = app.bot.client
     t1 = Timer()
@@ -117,7 +117,7 @@ def update(pairs, freqstrs, startstr=None):
     for pair in pairs:
         for freqstr in freqstrs:
             if freqstr == '1d':
-                data = query_api(pair, freqstr, startstr="30 days ago utc")
+                data = query_api(pair, freqstr, startstr="120 days ago utc")
             else:
                 data = query_api(pair, freqstr, startstr=startstr)
 
@@ -193,7 +193,12 @@ def modify_dfc(c):
 
     # Modify existing DF index.
     if index in app.bot.dfc.index:
-        app.bot.dfc.ix[index] = [c[n] for n in columns[3:]]
+        try:
+            app.bot.dfc.ix[index] = [c[n] for n in columns[3:]]
+        except Exception as e:
+            log.debug(str(e))
+            log.debug("candle: {}".format(c))
+            log.debug("app.bot.dfc.ix: {}".format(app.bot.dfc.ix[index]))
     # Create index in new DF and append.
     else:
         c_ = c.copy()

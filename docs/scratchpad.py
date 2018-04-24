@@ -20,7 +20,7 @@ def klines(e_pairs):
         n, exited, entered = 0, None, None
 
         if q.empty() == False:
-            #app.bot.dfc = candles.bulk_load(get_pairs(), TRADEFREQS,
+            #app.bot.dfc = candles.bulk_load(get_pairs(), TRD_FREQS,
             #    dfm=app.bot.dfc)
 
 
@@ -234,7 +234,7 @@ def indicators(idx, freqstr, periods, quiet=True):
 
         for pair, row in df.iterrows():
             # Query/load candle data
-            candles.update([pair], freqstr, start=startstr, force=True)
+            candles.api_update([pair], freqstr, start=startstr, force=True)
             dfp = candles.bulk_load([pair], freqstr=freqstr, startstr=startstr)
             dfp = dfp.loc[pair,freq]
 

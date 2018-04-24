@@ -198,7 +198,7 @@ def plot(pair, freqstr, periods):
     startstr = "{} {} ago utc".format(n * periods + 25, strunit)
 
     # Query/load candle data
-    candles.update([pair], freqstr, start=startstr, force=True)
+    candles.api_update([pair], freqstr, start=startstr, force=True)
     df = candles.bulk_load([pair], [freqstr], startstr=startstr)
     df = df.loc[pair,freq]
     # Macd analysis

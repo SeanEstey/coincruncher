@@ -9,6 +9,8 @@ import numpy as np
 import pandas as pd
 from pprint import pprint
 from collections import OrderedDict as odict
+from requests import ConnectionError
+from binance.client import BinanceRequestException
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
@@ -33,11 +35,8 @@ def run(e_pairs, e_kill):
     global dfW
     db = app.get_db()
     t1 = Timer()
-    tmr = Timer(
-        name='positions',
-        expire='every 1 clock min utc',
-        quiet=True
-    )
+    tmr1 = Timer(name='pos', expire='every 1 clock min utc', quiet=True)
+    tmr10 = Timer(name='earn', expire='every 10 clock min utc', quiet=True)
     reports.positions()
     reports.earnings()
     print("Entering trade loop.")
@@ -65,10 +64,13 @@ def run(e_pairs, e_kill):
             if c['closed']:
                 ent_ids += eval_entry(c, ss)
 
-            if tmr.remain() == 0:
+            if tmr1.remain() == 0:
                 reports.positions()
+                tmr1.reset()
+
+            if tmr10.remain() == 0:
                 reports.earnings()
-                tmr.reset()
+                tmr10.reset()
             n+=1
             # End Inner While
 
@@ -92,7 +94,7 @@ def eval_entry(c, ss):
     """
     db = app.get_db()
     ids = []
-    for algo in TRADE_ALGOS:
+    for algo in TRD_ALGOS:
         if db.trades.find_one(
             {'freqstr':c['freqstr'], 'algo':algo['name'], 'status':'open'}):
             continue
@@ -110,7 +112,7 @@ def eval_exit(t, c, ss):
     @s: candle dict
     @ss: snapshot dict
     """
-    algo = [n for n in TRADE_ALGOS if n['name'] == t['algo']][0]
+    algo = [n for n in TRD_ALGOS if n['name'] == t['algo']][0]
 
     # Stop loss.
     diff = pct_diff(t['snapshots'][0]['candle']['close'], c['close'])
@@ -162,8 +164,8 @@ def buy(ss, algo):
             'time': now(),
             'price': ss['book']['askPrice'],
             'volume': 1.0,
-            'quote': TRADE_AMT_MAX,
-            'fee': TRADE_AMT_MAX * (BINANCE_PCT_FEE/100)
+            'quote': TRD_AMT_MAX,
+            'fee': TRD_AMT_MAX * (BINANCE_PCT_FEE/100)
         })]
     }))
 
@@ -180,7 +182,7 @@ def sell(trade, ss, section):
     db, client = app.db, app.bot.client
 
     # Algorithm criteria details
-    algo = [n for n in TRADE_ALGOS \
+    algo = [n for n in TRD_ALGOS \
         if n['name'] == trade['algo']][0]
     details = {
         'name': algo['name'],
@@ -193,7 +195,13 @@ def sell(trade, ss, section):
 
     # Get orderbook if not already stored in snapshot.
     if ss['book'] is None:
-        book = odict(client.get_orderbook_ticker(symbol=trade['pair']))
+        try:
+            book = odict(client.get_orderbook_ticker(symbol=trade['pair']))
+        except (BinanceRequestException, ConnectionError) as e:
+            log.debug(str(e))
+            print("Error acquiring orderbook. Sell failed.")
+            return []
+
         del book['symbol']
         [book.update({k:np.float64(v)}) for k,v in book.items()]
         ss['book'] = book
@@ -249,6 +257,7 @@ def snapshot(c, ob=False):
     """
     global dfW
     book = None
+    wick_slope = macd_value = amp_slope = np.nan
     pair, freqstr = c['pair'], c['freqstr']
 
     if ob == True:
@@ -259,22 +268,22 @@ def snapshot(c, ob=False):
     buyratio = (c['buy_vol']/c['volume']) if c['volume'] > 0 else 0.0
 
     # MACD Indicators
+    dfm_dict = {}
     df = app.bot.dfc.loc[pair, strtofreq(freqstr)]
+
     try:
         dfmacd, phases = macd.histo_phases(df, pair, freqstr, 100, to_bson=True)
     except Exception as e:
-        print(str(e))
-        log.exception(str(e))
+        pass
 
-    log.debug(pformat(dfmacd))
+    if len(dfmacd) < 1:
+        dfm_dict['bars'] = 0
+    else:
+        dfm_dict = dfmacd.iloc[-1].to_dict()
+        dfm_dict['bars'] = int(dfm_dict['bars'])
+        macd_value = phases[-1].iloc[-1]
+        amp_slope = phases[-1].diff().ewm(span=min(3,len(phases[-1])), min_periods=0).mean().iloc[-1]
 
-    dfm_dict = dfmacd.iloc[-1].to_dict()
-    dfm_dict['bars'] = int(dfm_dict['bars'])
-
-    phase = phases[-1]
-    amp_slope = phase.diff().ewm(span=min(3,len(phase)), min_periods=0).mean().iloc[-1]
-
-    wick_slope = np.nan
     if c['closed']:
         # Find price EMA WITHIN the wick (i.e. each trade). Very
         # small movements.
@@ -296,7 +305,7 @@ def snapshot(c, ob=False):
             'macd': {
                 **dfm_dict,
                 **{'ampSlope':amp_slope,
-                  'value':phase.iloc[-1]
+                  'value':macd_value
                   }
             }
         }
@@ -333,7 +342,7 @@ def update_stats(t, ss):
 
 #------------------------------------------------------------------------------
 def algo_to_string(name, section):
-    algo = [n for n in TRADE_ALGOS if n['name'] == name][0]
+    algo = [n for n in TRD_ALGOS if n['name'] == name][0]
     conditions = algo[section]['conditions']
 
     funcstrs = []

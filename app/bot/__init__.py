@@ -13,14 +13,17 @@ dfc = pd.DataFrame()
 # Binance client for all modules in app.bot. Initialized in init as
 # singleton structure.
 client = None
+# Pair change event
+e_pairs = None
 
 #------------------------------------------------------------------------------
-def init():
+def init(evnt_pairs):
     from app.common.timer import Timer
     from app.common.timeutils import strtofreq
     from . import candles, scanner
-    global client, dfc
+    global client, dfc, e_pairs
 
+    e_pairs = evnt_pairs
     t1 = Timer()
     db = app.get_db()
 
@@ -33,20 +36,34 @@ def init():
     ops = [ UpdateOne({'symbol':n['symbol']}, {'$set':n},
         upsert=True) for n in info['symbols'] ]
     db.assets.bulk_write(ops)
-
     print("{} active pairs retrieved from api.".format(len(ops)))
-    print("Running scanner...")
 
-    pairs = update_pairs(scanner.filter_pairs())
+    pairs = update_pairs([])
 
     print("{:,} historic candles loaded.".format(len(dfc)))
-    print('{} trading algorithms.'.format(len(TRADE_ALGOS)))
+    print('{} trading algorithms.'.format(len(TRD_ALGOS)))
     print('app.bot initialized in {:,.0f} ms.'.format(t1.elapsed()))
 
 #------------------------------------------------------------------------------
 def get_pairs():
     enabled = app.get_db().assets.find({'botTradeStatus':'ENABLED'})
     return [ n['symbol'] for n in list(enabled) ]
+
+#------------------------------------------------------------------------------
+def enable_pair(pair):
+    """Add single pair.
+    """
+    print("Retrieving {} candles...".format(pair))
+    candles.bulk_append_dfc(candles.api_update([pair], TRD_FREQS))
+
+    app.db.assets.update_one({'symbol':pair},
+        {'$set':{'botTradeStatus':'ENABLED'}, '$push':{'botTradeFreq':TRD_FREQS}},
+        upsert=True)
+
+    print("Enabled {} for trading.".format(pair))
+
+    # Send pair change event to websock thread to update sockets.
+    e_pairs.set()
 
 #------------------------------------------------------------------------------
 def update_pairs(pairs, query_all=True):
@@ -75,7 +92,7 @@ def update_pairs(pairs, query_all=True):
         candlelist = []
         for pair in querylist:
             print("Retrieving {} candles...".format(pair))
-            candlelist += candles.update([pair], TRADEFREQS)
+            candlelist += candles.api_update([pair], TRD_FREQS)
         candles.bulk_append_dfc(candlelist)
 
     result = db.assets.update_many({},
@@ -85,7 +102,7 @@ def update_pairs(pairs, query_all=True):
     ops = [
         UpdateOne({'symbol':pair},
             {'$set':{'botTradeStatus':'ENABLED'},
-            '$push':{'botTradeFreq':TRADEFREQS}},
+            '$push':{'botTradeFreq':TRD_FREQS}},
             upsert=True) for pair in enabled
     ]
 

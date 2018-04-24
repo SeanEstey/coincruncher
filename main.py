@@ -24,7 +24,7 @@ e_kill = Event()
 if __name__ == '__main__':
     killer = app.GracefulKiller()
     app.set_db(host)
-    app.bot.init()
+    app.bot.init(e_pairs)
 
     from app.bot import candles, scanner, trade, websock
 
@@ -36,7 +36,6 @@ if __name__ == '__main__':
     for opt, arg in opts:
         if opt not in('-c', '--candles'):
             continue
-        #pairs = app.bot.get_pairs()
 
     # Create worker threads. Set as daemons so they terminate
     # automatically if main process is killed.
@@ -52,15 +51,16 @@ if __name__ == '__main__':
 
     # Main loop. Monitors threads and terminates app on CTRL+C.
     while True:
+        if e_kill.isSet():
+            break
+
         if killer.kill_now:
             e_kill.set()
             break
 
         for t in threads:
             if t.is_alive() is False:
-                print("{} thread is dead. "\
-                      "Killing remaining threads..."\
-                      .format(t.getName()))
+                print("{} thread is dead. Killing all...".format(t.getName()))
                 threads.pop(threads.index(t))
                 e_kill.set()
                 break
@@ -72,5 +72,5 @@ if __name__ == '__main__':
 
     print("Goodbye")
     [log.log(lvl, divstr % "Terminating") \
-        for lvl in [DEBUG,INFO,SIGNAL,TRADE,SCAN]]
+        for lvl in [logging.DEBUG,logging.INFO]] #,logging.SIGNAL,logging.TRADE,logging.SCAN]]
     sys.exit()

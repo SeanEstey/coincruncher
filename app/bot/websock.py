@@ -34,7 +34,7 @@ def run(e_pairs, e_kill):
 
     pairs = get_pairs()
     connkeys += [ws.start_kline_socket(pair, recv_kline, interval=n) \
-        for n in TRADEFREQS for pair in pairs]
+        for n in TRD_FREQS for pair in pairs]
     print("Subscribed to {} kline sockets.".format(len(connkeys)))
 
     ws.start()
@@ -68,7 +68,7 @@ def update_sockets():
     """conn_key str format: <symbol>@kline_<interval>
     """
     global connkeys, storedata, ws
-    print("Event: enabled pairs changed. Updating websockets...")
+    print("Websock thread: updating sockets...")
 
     old = set([n[0:n.index('@')].upper() for n in connkeys])
     new = set(app.bot.get_pairs())
@@ -84,7 +84,7 @@ def update_sockets():
 
     # Added pairs: create sockets for each candle frequency.
     newpairs = new - old
-    connkeys += [ws.start_kline_socket(i, recv_kline, interval=j) for j in TRADEFREQS for i in newpairs]
+    connkeys += [ws.start_kline_socket(i, recv_kline, interval=j) for j in TRD_FREQS for i in newpairs]
     print("{} pair socket(s) created.".format(len(newpairs)))
 
 #-------------------------------------------------------------------------------
