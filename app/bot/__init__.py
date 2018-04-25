@@ -38,94 +38,75 @@ def init(evnt_pairs):
     ops = [ UpdateOne({'symbol':n['symbol']}, {'$set':n},
         upsert=True) for n in info['symbols'] ]
     db.assets.bulk_write(ops)
-    print("{} active pairs retrieved from api.".format(len(ops)))
+    #print("{} active pairs retrieved from api.".format(len(ops)))
 
-    pairs = update_pairs([])
+    set_pairs([], 'DISABLED', query_temp=True)
 
-    print("{:,} historic candles loaded.".format(len(dfc)))
+    #print("{:,} historic candles loaded.".format(len(dfc)))
     print('{} trading algorithms.'.format(len(TRD_ALGOS)))
     print('app.bot initialized in {:,.0f} ms.'.format(t1.elapsed()))
 
 #------------------------------------------------------------------------------
-def get_pairs(enabled=True):
-    db = app.db
+def get_pairs(with_temp=False):
+    query = {'botTradeStatus':{'$in':['ENABLED']}}
 
-    if enabled is True:
-        return [n['symbol'] for n in list(db.assets.find({'botTradeStatus':'ENABLED'}))]
-    else:
-        return [n['symbol'] for n in list(db.assets.find({}))]
+    if with_temp is True:
+        query['botTradeStatus']['$in'].append('TEMP')
 
-#------------------------------------------------------------------------------
-def enable_pair(pair):
-    """Add single pair.
-    """
-    lock.acquire()
-    print("Retrieving {} candles...".format(pair))
-    lock.release()
-
-    candles.bulk_append_dfc(candles.api_update([pair], TRD_FREQS, silent=True))
-
-    app.db.assets.update_one({'symbol':pair},
-        {'$set':{'botTradeStatus':'ENABLED'}, '$push':{'botTradeFreq':TRD_FREQS}},
-        upsert=True)
-
-    lock.acquire()
-    print("Enabled {} for trading.".format(pair))
-    lock.release()
-
-    # Send pair change event to websock thread to update sockets.
-    e_pairs.set()
+    return set(n['symbol'] for n in list(app.db.assets.find(query)))
 
 #------------------------------------------------------------------------------
-def update_pairs(pairs, query_all=True):
-    """Update authorized trading pair list, query historic data and load into
-    global dataframe.
-    @query_all: if set to False, will only query historic data for new
-    pairs not already loaded into global candle dataframe.
+def set_pairs(pairs, mode, exclusively=False, query_temp=False):
+    """Set DB permissions for enabling/disabling trading of given pairs.
     """
     db = app.db
-    querylist = []
-    # Add open trade pairs
-    tradepairs = set([n['pair'] for n in list(db.trades.find({'status':'open'}))])
+    enabled, disabled, inverse, trading, ops = [],[],[],[],[]
 
-    if len(set(pairs + list(tradepairs))) == 0:
-        raise Exception("No pairs enabled for trading.")
+    pairs = set(pairs)
+    positions = set(n['pair'] for n in db.trades.find({'status':'open'}))
 
-    if query_all == True:
-        querylist = list(set(pairs + list(tradepairs)))
-        #print("Querying historic data for all {} pairs...".format(len(querylist)))
-    else:
-        querylist = list(set(pairs) - set(get_pairs()))
-        #print("Querying historic data for {} new pairs...".format(len(querylist)))
+    if mode == 'ENABLED':
+        enabled = pairs - positions
+        ops += [UpdateOne({'symbol':n}, {'$set':{'botTradeStatus':'ENABLED'}})\
+            for n in enabled]
+    elif mode == 'DISABLED':
+        disabled = pairs - positions
+        ops += [UpdateOne({'symbol':n}, {'$set':{'botTradeStatus':'DISABLED'}})\
+            for n in disabled]
 
-    if len(querylist) > 0:
-        # Retrieve historic data and load.
-        candlelist = []
-        for pair in querylist:
-            lock.acquire()
-            print("Retrieving {} candles...".format(pair))
-            lock.release()
-            candlelist += candles.api_update([pair], TRD_FREQS, silent=True)
-        candles.bulk_append_dfc(candlelist)
+    if exclusively is True:
+        all_ = set(n['symbol'] for n in db.assets.find({'status':'TRADING'}))
+        inverse = all_ - pairs - positions
+        ops += [UpdateOne({'symbol':n}, {'$set':{'botTradeStatus':'DISABLED'}})\
+            for n in inverse]
 
-    result = db.assets.update_many({},
-        {'$set':{'botTradeStatus':'DISABLED', 'botTradeFreq':[]}})
+    ops += [UpdateOne({'symbol':n}, {'$set':{'botTradeStatus':'TEMP'}})\
+        for n in positions]
+    ops = [n for n in ops if n is not None]
 
-    enabled = list(set(pairs + list(tradepairs)))
-    ops = [
-        UpdateOne({'symbol':pair},
-            {'$set':{'botTradeStatus':'ENABLED'},
-            '$push':{'botTradeFreq':TRD_FREQS}},
-            upsert=True) for pair in enabled
-    ]
+    lock.acquire()
+    print("{} pair(s) enabled, {} disabled, {} temp."\
+        .format(len(enabled), len(inverse) + len(disabled), len(positions)))
+    #print("Querying candles for {} new pairs..."\
+    #    .format(len(enabled)+len(positions)))
+    lock.release()
 
+    querylist = list(enabled)
+    if query_temp is True:
+        querylist += list(positions)
+
+    # Query historic candle data + load.
+    for pair in querylist:
+        lock.acquire()
+        print("Retrieving {} candles...".format(pair))
+        lock.release()
+        candles.bulk_append_dfc(candles.api_update([pair], TRD_FREQS, silent=True))
+
+    # Update DB and alert websock thread to update sockets.
     if len(ops) > 0:
         result = db.assets.bulk_write(ops)
-        n_enabled = db.assets.find({'botTradeStatus':'ENABLED'}).count()
+        #print("Updated {} DB permissions.".format(len(ops)))
 
-        lock.acquire()
-        print("{} pairs enabled:".format(n_enabled))
-        print(get_pairs())
-        lock.release()
+        e_pairs.set()
 
-    return enabled
+    return (enabled,disabled,inverse,positions)

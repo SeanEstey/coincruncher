@@ -16,7 +16,7 @@ from binance.client import BinanceRequestException
 from docs.conf import *
 from docs.botconf import *
 import app, app.bot
-from app.bot import lock, get_pairs, candles, macd, reports, signals
+from app.bot import lock, get_pairs, set_pairs, candles, macd, reports, signals
 from app.common.timeutils import strtofreq
 from app.common.utils import pct_diff, utc_datetime as now
 from app.common.timer import Timer
@@ -35,56 +35,63 @@ def run(e_pairs, e_kill):
         dfW = dfW.drop([(c['pair'], strtofreq(c['freqstr']))])
     """
     from main import q
-    global dfW
     db = app.get_db()
     t1 = Timer()
     tmr1 = Timer(name='pos', expire='every 1 clock min utc', quiet=True)
     tmr10 = Timer(name='earn', expire='every 10 clock min utc', quiet=True)
+
     reports.positions()
     reports.earnings()
 
+    n = 0
     while True:
-        n = 0
-        ent_ids, ex_ids = [], []
-
         if e_kill.isSet():
             break
+        ent_ids, ex_ids = [], []
 
+        # Trading algo inner loop.
         while q.empty() == False:
             c = q.get()
             candles.modify_dfc(c)
             ss = snapshot(c)
-            query = \
-                {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
+            query = {'pair':c['pair'], 'freqstr':c['freqstr'], 'status':'open'}
 
             # Eval position entries/exits
+
             for trade in db.trades.find(query):
                 update_stats(trade, ss)
                 ex_ids += eval_exit(trade, c, ss)
 
-            if c['closed']:
+            if c['closed'] and c['pair'] in get_pairs():
                 ent_ids += eval_entry(c, ss)
 
-            if tmr1.remain() == 0:
-                reports.positions()
-                tmr1.reset()
-
-            if tmr10.remain() == 0:
-                reports.earnings()
-                tmr10.reset()
             n+=1
 
+        # Reporting outer loop.
+        if tmr1.remain() == 0:
+            reports.positions()
+            tmr1.reset()
+        if tmr10.remain() == 0:
+            reports.earnings()
+            tmr10.reset()
         if len(ent_ids) + len(ex_ids) > 0:
             reports.trades(ent_ids + ex_ids)
-
-        if n>0:
+        if n>75:
             lock.acquire()
-            print('{} queue items processed. [{:,.0f} ms/item]'.format(n, t1.elapsed()/n))
+            print('{} queue items processed. [{:,.0f} ms/item]'\
+                .format(n, t1.elapsed()/n))
             lock.release()
+            t1.reset()
+            n=0
 
+        # Outer loop tail
+        if len(ex_ids) > 0:
+            if c['pair'] not in get_pairs():
+                # TODO: check no other open positions hold this pair, safe
+                # for disabling.
+                set_pairs([c['pair']], 'DISABLED')
         update_spinner()
         time.sleep(0.1)
-        t1.reset()
 
     print('Trade thread: Terminating...')
 
@@ -102,9 +109,12 @@ def eval_entry(c, ss):
             continue
 
         # Test conditions eval to True
-        conds = algo['entry']['conditions']
-        if all([fn(ss['indicators']) for fn in conds]):
-            ids.append(buy(ss, algo))
+        try:
+            if all([fn(ss['indicators']) for fn in algo['entry']['conditions']]):
+                ids.append(buy(ss, algo))
+        except Exception as e:
+            print("Error evaluating entry conditions. {}".format(str(e)))
+
     return ids
 
 #------------------------------------------------------------------------------
@@ -121,13 +131,16 @@ def eval_exit(t, c, ss):
     if diff < algo['stoploss']:
         return [sell(t, ss, 'stoploss')]
 
-    # Target (success)
-    if all([fn(ss['indicators'], t) for fn in algo['target']['conditions']]):
-        return [sell(t, ss, 'target')]
+    try:
+        # Target (success)
+        if all([fn(ss['indicators'], t['stats']) for fn in algo['target']['conditions']]):
+            return [sell(t, ss, 'target')]
 
-    # Failure
-    if all([fn(ss['indicators'], t) for fn in algo['failure']['conditions']]):
-        return [sell(t, ss, 'failure')]
+        # Failure
+        if all([fn(ss['indicators'], t['stats']) for fn in algo['failure']['conditions']]):
+            return [sell(t, ss, 'failure')]
+    except Exception as e:
+        print("Error evaluating exit conditions. {}".format(str(e)))
 
     return []
 
@@ -145,7 +158,7 @@ def buy(ss, algo):
         [book.update({k:np.float64(v)}) for k,v in book.items()]
         ss['book'] = book
 
-    result = db.trades.insert_one(odict({
+    record = odict({
         'pair': ss['pair'],
         'quote_asset': db.assets.find_one({'symbol':ss['pair']})['quoteAsset'],
         'freqstr': ss['candle']['freqstr'],
@@ -169,11 +182,15 @@ def buy(ss, algo):
             'quote': TRD_AMT_MAX,
             'fee': TRD_AMT_MAX * (BINANCE_PCT_FEE/100)
         })]
-    }))
+    })
+
+    result = db.trades.insert_one(record)
+    update_stats(record, ss)
 
     lock.acquire()
     print("BUY {} ({})".format(ss['pair'], algo['name']))
     lock.release()
+
     return result.inserted_id
 
 #------------------------------------------------------------------------------

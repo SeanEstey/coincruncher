@@ -1,6 +1,9 @@
 # botconf
 # Configuration and algorithm definitions for trading bot.
 
+
+def pct(a,b): return ((b-a)/a)*100
+
 ##### General ##################################################################
 
 DEF_KLINE_HIST_LEN = "72 hours ago utc"
@@ -19,8 +22,8 @@ TRD_PAIRS = {
         "name": "sma",
         "freqstr": "1d",
         "span": 5,
-        "filters": [lambda tckr: tckr[tckr['24hPriceChange'] > 15].index.tolist()],
-        "conditions": [lambda sma: len(sma) > 0 and sma.iloc[-1] > 3]
+        "filters": [lambda tckr: tckr[tckr['24hPriceChange'] > 5].index.tolist()],
+        "conditions": [lambda sma: len(sma) > 0 and sma.iloc[-1] > 2]
     }
 }
 
@@ -39,15 +42,13 @@ TRD_ALGOS = [
         },
         "target": {
             "conditions": [
-                lambda ss, t: any((
-                    ss['rsi'] > 70,
-                    t['stats']['minRsi'] < ss['rsi'] < 0.95 * t['stats']['maxRsi']
-                ))
+                lambda ss,st: ss['rsi'] > 70,
+                lambda ss,st: pct(st['minPrice'], st['lastPrice']) > 0.75
            ]
         },
         "failure": {
             "conditions": [
-                lambda ss, t: ss['rsi'] < 5
+                lambda ss,st: ss['rsi'] < 5
             ]
         }
     },
@@ -65,15 +66,13 @@ TRD_ALGOS = [
         },
         "target": {
             "conditions": [
-                lambda ss, t: any((
-                    0 < ss['macd']['value'] < ss['macd']['ampMax'],
-                    t['stats']['lastPrice'] < 0.95 * t['stats']['maxPrice']
-                ))
+                lambda ss,st: ss['macd']['ampMax'] > ss['macd']['value'] > 0,
+                lambda ss,st: pct(st['minPrice'], st['lastPrice']) > 0.75
             ]
         },
         "failure": {
             "conditions": [
-                lambda ss, t: ss['macd']['value'] < 0 or ss['macd']['ampSlope'] < 0
+                lambda ss,st: ss['macd']['value'] < 0 or ss['macd']['ampSlope'] < 0
             ]
         }
     }

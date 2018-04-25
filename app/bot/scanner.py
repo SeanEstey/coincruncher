@@ -11,7 +11,7 @@ import app, app.bot
 from app.common.timer import Timer
 from app.common.utils import to_local, utc_datetime as now, strtoms
 from app.common.timeutils import strtofreq
-from . import enable_pair, update_pairs, get_pairs, macd, tickers, trade
+from . import set_pairs, get_pairs, macd, tickers, trade
 from .candles import api_update, bulk_append_dfc
 from . import lock
 
@@ -23,10 +23,7 @@ def scanlog(msg): log.log(98, msg)
 def run(e_pairs, e_kill):
     """Main scanner thread loop.
     """
-    tmr = Timer(expire='every 20 minutes utc', quiet=True)
-
-    # Initial scan for enabling trading pairs.
-    update_pairs([])
+    tmr = Timer(expire='every 20 clock minutes utc', quiet=True)
     sma_med_trend_filter()
 
     while True:
@@ -35,20 +32,15 @@ def run(e_pairs, e_kill):
         if tmr.remain() == 0:
             # Edit conf w/o having to restart bot.
             importlib.reload(docs.botconf)
-
             lock.acquire()
             print("{} pairs enabled pre-scan.".format(len(get_pairs())))
             lock.release()
-
             # Reset enabled pairs to only open trades.
-            update_pairs([])
+            set_pairs([],'ENABLED', exclusively=True)
             # Scan and enable any additional filtered pairs.
             sma_med_trend_filter()
-
             tmr.reset()
-
         time.sleep(3)
-
     print("Scanner thread: terminating...")
 
 #------------------------------------------------------------------------------
@@ -65,24 +57,20 @@ def sma_med_trend_filter():
     trend = docs.botconf.TRD_PAIRS['midterm']
     lbl = "sma{}_slope".format(trend['span'])
     freq = strtofreq(trend['freqstr'])
-
     filtered = trend['filters'][0](tickers.binance_24h())
-
     results = []
 
     for pair in filtered:
         bulk_append_dfc(api_update([pair], [trend['freqstr']], silent=True))
-
         sma = app.bot.dfc.loc[pair, freq]['close']\
             .rolling(trend['span']).mean().pct_change()*100
 
         if all([fn(sma) for fn in trend['conditions']]):
-            enable_pair(pair)
+            set_pairs([pair], 'ENABLED')
             results.append({
                 'pair': pair,
                 lbl: sma.iloc[-1]
             })
-
         time.sleep(3)
 
     df = pd.DataFrame(results)\
@@ -97,11 +85,11 @@ def sma_med_trend_filter():
     scanlog("")
 
     lock.acquire()
-    print("Scanner thread: sma_med_trend completed. {} trading pairs enabled. "\
+    print("Scanner thread: sma_med_trend completed.\n"\
+        "{} trading pairs enabled.\n "\
         "{:+,} historic candles loaded."\
         .format(len(get_pairs()), len(app.bot.dfc) - n_candles))
     lock.release()
-
     return df
 
 #------------------------------------------------------------------------------

@@ -74,7 +74,7 @@ def update_sockets():
     log.debug("Websock thread: update_sockets")
 
     old = set([n[0:n.index('@')].upper() for n in connkeys])
-    new = set(app.bot.get_pairs())
+    new = set(app.bot.get_pairs(with_temp=True))
 
     # Removed pairs: close all sockets w/ matching symbols.
     for pair in (old - new):

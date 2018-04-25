@@ -49,4 +49,4 @@ def trades():
 db_load()
 #idx = app.bot.dfc.index.values[-1][0:2]
 #df = macd.generate(app.bot.dfc.ix[idx])
-results = macd.plot(app.bot.get_pairs(), '1h', startstr="72 hours ago utc")
+#results = macd.plot(app.bot.get_pairs(), '1h', startstr="72 hours ago utc")
